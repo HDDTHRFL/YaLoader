@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
 from typing import cast, override
 from uuid import UUID
 
@@ -10,8 +11,10 @@ from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -31,9 +34,9 @@ from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.services.app_container import AppContainer
 
 WINDOW_INITIAL_WIDTH = 1180
-WINDOW_INITIAL_HEIGHT = 660
+WINDOW_INITIAL_HEIGHT = 700
 WINDOW_MINIMUM_WIDTH = 1040
-WINDOW_MINIMUM_HEIGHT = 560
+WINDOW_MINIMUM_HEIGHT = 600
 
 DOWNLOAD_WORKERS_COUNT = 1
 DOWNLOAD_POLL_INTERVAL_MS = 250
@@ -58,13 +61,18 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self._container = container
+        self._settings = container.settings
+
         self._url_input = QLineEdit(self)
         self._quality_combo_box = QComboBox(self)
         self._format_combo_box = QComboBox(self)
         self._add_to_queue_button = QPushButton("Добавить в очередь", self)
+        self._choose_downloads_dir_button = QPushButton("Выбрать папку", self)
+        self._delete_cookies_button = QPushButton("Удалить cookies.txt", self)
         self._start_download_button = QPushButton("Скачать выбранное", self)
         self._queue_table = QTableWidget(self)
         self._status_label = QLabel("Готов к работе", self)
+        self._downloads_dir_label = QLabel(self)
 
         self._task_ids_by_row: dict[int, UUID] = {}
         self._row_by_task_id: dict[UUID, int] = {}
@@ -81,6 +89,7 @@ class MainWindow(QMainWindow):
         self._configure_widgets()
         self._connect_signals()
         self.setCentralWidget(self._build_central_widget())
+        self._update_downloads_dir_label()
 
     @override
     def closeEvent(self, event: QCloseEvent | None) -> None:
@@ -108,6 +117,13 @@ class MainWindow(QMainWindow):
         self._status_label.setObjectName("StatusLabel")
         self._status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
+        self._downloads_dir_label.setObjectName("MutedLabel")
+        self._downloads_dir_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+
+        self._delete_cookies_button.setToolTip(str(self._container.paths.cookies_file))
+
     def _configure_queue_table(self) -> None:
         self._queue_table.setColumnCount(6)
         self._queue_table.setHorizontalHeaderLabels(
@@ -125,6 +141,9 @@ class MainWindow(QMainWindow):
         self._queue_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._queue_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
+        vertical_header = cast(QHeaderView, self._queue_table.verticalHeader())
+        vertical_header.hide()
+
         self._queue_table.setColumnWidth(MODE_COLUMN_INDEX, MODE_COLUMN_WIDTH)
         self._queue_table.setColumnWidth(URL_COLUMN_INDEX, URL_COLUMN_WIDTH)
         self._queue_table.setColumnWidth(QUALITY_COLUMN_INDEX, QUALITY_COLUMN_WIDTH)
@@ -135,6 +154,8 @@ class MainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self._add_to_queue_button.clicked.connect(self._handle_add_to_queue_clicked)
         self._start_download_button.clicked.connect(self._handle_start_download_clicked)
+        self._choose_downloads_dir_button.clicked.connect(self._handle_choose_downloads_dir_clicked)
+        self._delete_cookies_button.clicked.connect(self._handle_delete_cookies_clicked)
         self._download_poll_timer.timeout.connect(self._poll_download_result)
 
     def _build_central_widget(self) -> QWidget:
@@ -145,6 +166,7 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(self._build_header())
         root_layout.addWidget(self._build_input_panel())
+        root_layout.addWidget(self._build_settings_panel())
         root_layout.addWidget(self._build_queue_panel(), stretch=1)
         root_layout.addWidget(self._build_footer())
 
@@ -187,10 +209,23 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(self._quality_combo_box)
         controls_layout.addWidget(self._format_combo_box)
         controls_layout.addWidget(self._add_to_queue_button)
-        controls_layout.addWidget(self._start_download_button)
 
         layout.addWidget(url_label)
         layout.addLayout(controls_layout)
+
+        return panel
+
+    def _build_settings_panel(self) -> QFrame:
+        panel = QFrame(self)
+        panel.setObjectName("PanelFrame")
+
+        layout = QHBoxLayout(panel)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(12)
+
+        layout.addWidget(self._downloads_dir_label, stretch=1)
+        layout.addWidget(self._choose_downloads_dir_button)
+        layout.addWidget(self._delete_cookies_button)
 
         return panel
 
@@ -205,8 +240,14 @@ class MainWindow(QMainWindow):
         title_label = QLabel("Очередь загрузок", panel)
         title_label.setObjectName("SectionTitleLabel")
 
+        actions_layout = QHBoxLayout()
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.addStretch(1)
+        actions_layout.addWidget(self._start_download_button)
+
         layout.addWidget(title_label)
         layout.addWidget(self._queue_table, stretch=1)
+        layout.addLayout(actions_layout)
 
         return panel
 
@@ -215,16 +256,8 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(footer)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        downloads_dir_label = QLabel(
-            f"Папка загрузок: {self._container.paths.downloads_dir}",
-            footer,
-        )
-        downloads_dir_label.setObjectName("MutedLabel")
-        downloads_dir_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-
         layout.addWidget(self._status_label)
         layout.addStretch(1)
-        layout.addWidget(downloads_dir_label)
 
         return footer
 
@@ -241,7 +274,7 @@ class MainWindow(QMainWindow):
         try:
             request = DownloadRequest(
                 url=url,
-                target_dir=self._container.paths.downloads_dir,
+                target_dir=self._settings.downloads_dir,
                 mode=get_download_mode_for_output_format(output_format=selected_output_format),
                 output_format=selected_output_format,
                 video_quality=selected_video_quality,
@@ -258,6 +291,40 @@ class MainWindow(QMainWindow):
         self._status_label.setText(
             f"Добавлено в очередь: {self._container.download_queue_service.count()}"
         )
+
+    def _handle_choose_downloads_dir_clicked(self) -> None:
+        selected_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Выберите папку для загрузок",
+            str(self._settings.downloads_dir),
+        )
+
+        if not selected_dir:
+            return
+
+        downloads_dir = Path(selected_dir)
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+
+        self._settings = self._container.settings_service.update_downloads_dir(
+            downloads_dir=downloads_dir,
+        )
+        self._update_downloads_dir_label()
+        self._status_label.setText(f"Папка загрузок изменена: {downloads_dir}")
+
+    def _handle_delete_cookies_clicked(self) -> None:
+        cookies_file = self._container.paths.cookies_file
+
+        if not cookies_file.is_file():
+            self._status_label.setText(f"cookies.txt не найден: {cookies_file}")
+            return
+
+        try:
+            cookies_file.unlink()
+        except OSError as error:
+            self._status_label.setText(f"Не удалось удалить cookies.txt: {error}")
+            return
+
+        self._status_label.setText(f"cookies.txt удалён безвозвратно: {cookies_file}")
 
     def _handle_start_download_clicked(self) -> None:
         if self._active_download_future is not None:
@@ -381,3 +448,6 @@ class MainWindow(QMainWindow):
                 table_item.setText(value)
 
             table_item.setToolTip(value)
+
+    def _update_downloads_dir_label(self) -> None:
+        self._downloads_dir_label.setText(f"Папка загрузок: {self._settings.downloads_dir}")

@@ -8,16 +8,15 @@ YaLoader uses yt-dlp to download media. For YouTube, some videos may require:
 
 - FFmpeg for merging video and audio streams
 - Deno for JavaScript challenge solving
+- yt-dlp for downloading media
 - cookies.txt for authenticated YouTube access
 
 ### 1. Install FFmpeg
 
 Install FFmpeg and make sure it is available in PATH.
 
-Check:
-
 ```powershell
-ffmpeg -version
+winget install -e --id Gyan.FFmpeg
 ```
 
 If the command works, FFmpeg is available.
@@ -38,7 +37,15 @@ deno --version
 
 Deno is used by yt-dlp for YouTube JavaScript challenge solving.
 
-### 3. Prepare cookies.txt
+### 3. Install yt-dlp
+
+Install yt-dlp:
+
+```powershell
+winget install -e --id yt-dlp.yt-dlp
+```
+
+### 4. Prepare cookies.txt
 
 YaLoader automatically looks for cookies here:
 
@@ -64,7 +71,7 @@ Download Mozilla.Firefox if you don't have it:
 winget install Mozilla.Firefox
 ```
 
-Login to YouTube in Firefox, then export cookies from Firefox:
+Log in to YouTube in Firefox, then export cookies from Firefox:
 
 ```powershell
 yt-dlp --cookies-from-browser firefox --cookies "$env:APPDATA\yaloader\cookies.txt"
