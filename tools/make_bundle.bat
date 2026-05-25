@@ -12,13 +12,13 @@ if not exist "%PYTHON_EXE%" (
     echo %PYTHON_EXE%
     echo.
     echo Activate or create project virtual environment first.
-    exit /b 1
+    goto fail
 )
 
 if not exist "%BUNDLE_SCRIPT%" (
     echo Bundle script was not found:
     echo %BUNDLE_SCRIPT%
-    exit /b 1
+    goto fail
 )
 
 "%PYTHON_EXE%" "%BUNDLE_SCRIPT%"
@@ -26,7 +26,14 @@ if not exist "%BUNDLE_SCRIPT%" (
 if errorlevel 1 (
     echo.
     echo Failed to create project bundle.
-    exit /b 1
+    goto fail
 )
 
 endlocal
+exit /b 0
+
+:fail
+echo.
+pause
+endlocal
+exit /b 1

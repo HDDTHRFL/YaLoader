@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class BundleConfig:
     project_name: str = "YaLoader"
     output_dir_name: str = "_bundle"
@@ -64,6 +64,12 @@ class BundleConfig:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class BundleMetadata:
+    created_at: str
+    files_count: int
+
+
 def main() -> None:
     project_root = Path(__file__).resolve().parents[1]
     config = BundleConfig()
@@ -72,6 +78,10 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     files = collect_project_files(project_root=project_root, config=config)
+    metadata = BundleMetadata(
+        created_at=get_local_created_at_text(),
+        files_count=len(files),
+    )
 
     text_bundle_path = output_dir / config.text_bundle_name
     zip_bundle_path = output_dir / config.zip_bundle_name
@@ -82,12 +92,14 @@ def main() -> None:
         files=files,
         output_path=text_bundle_path,
         config=config,
+        metadata=metadata,
     )
     create_zip_bundle(
         project_root=project_root,
         files=files,
         output_path=zip_bundle_path,
         config=config,
+        metadata=metadata,
     )
     create_base64_bundle(
         zip_bundle_path=zip_bundle_path,
@@ -96,10 +108,16 @@ def main() -> None:
     )
 
     print("Bundle created successfully.")
+    print(f"Created:       {metadata.created_at}")
     print(f"Text bundle:   {text_bundle_path}")
     print(f"ZIP bundle:    {zip_bundle_path}")
     print(f"Base64 bundle: {base64_bundle_path}")
-    print(f"Files included: {len(files)}")
+    print(f"Files included: {metadata.files_count}")
+
+
+def get_local_created_at_text() -> str:
+    local_datetime = datetime.now().astimezone()
+    return local_datetime.strftime("%Y-%m-%d %H:%M:%S %Z%z")
 
 
 def collect_project_files(project_root: Path, config: BundleConfig) -> list[Path]:
@@ -143,12 +161,12 @@ def create_text_bundle(
     files: list[Path],
     output_path: Path,
     config: BundleConfig,
+    metadata: BundleMetadata,
 ) -> None:
-    created_at = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     lines: list[str] = [
         f"# {config.project_name} project bundle",
-        f"# Created: {created_at}",
-        f"# Files included: {len(files)}",
+        f"# Created: {metadata.created_at}",
+        f"# Files included: {metadata.files_count}",
         "",
     ]
 
@@ -173,13 +191,13 @@ def create_zip_bundle(
     files: list[Path],
     output_path: Path,
     config: BundleConfig,
+    metadata: BundleMetadata,
 ) -> None:
-    created_at = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     manifest = "\n".join(
         [
             f"Project: {config.project_name}",
-            f"Created: {created_at}",
-            f"Files included: {len(files)}",
+            f"Created: {metadata.created_at}",
+            f"Files included: {metadata.files_count}",
             "",
         ]
     )
