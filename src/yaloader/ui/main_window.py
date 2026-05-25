@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from typing import cast
+
+from pydantic import ValidationError
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -9,15 +13,23 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QPushButton,
-    QSizePolicy,
-    QSpacerItem,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.config.app_info import APP_DISPLAY_NAME
+from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import OutputFormat, VideoQuality
 from yaloader.services.app_container import AppContainer
+
+URL_COLUMN_WIDTH = 420
+QUALITY_COLUMN_WIDTH = 96
+FORMAT_COLUMN_WIDTH = 76
+STATUS_COLUMN_WIDTH = 96
+FOLDER_COLUMN_WIDTH = 260
 
 
 class MainWindow(QMainWindow):
@@ -29,6 +41,7 @@ class MainWindow(QMainWindow):
         self._quality_combo_box = QComboBox(self)
         self._format_combo_box = QComboBox(self)
         self._download_button = QPushButton("Добавить в очередь", self)
+        self._queue_table = QTableWidget(self)
         self._status_label = QLabel("Готов к работе", self)
 
         self._configure_window()
@@ -46,13 +59,37 @@ class MainWindow(QMainWindow):
         self._url_input.setClearButtonEnabled(True)
 
         for quality in VideoQuality:
-            self._quality_combo_box.addItem(quality.value)
+            self._quality_combo_box.addItem(quality.value, quality)
 
         for output_format in OutputFormat:
-            self._format_combo_box.addItem(output_format.value)
+            self._format_combo_box.addItem(output_format.value, output_format)
+
+        self._configure_queue_table()
 
         self._status_label.setObjectName("StatusLabel")
         self._status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+    def _configure_queue_table(self) -> None:
+        self._queue_table.setColumnCount(5)
+        self._queue_table.setHorizontalHeaderLabels(
+            [
+                "Ссылка",
+                "Качество",
+                "Формат",
+                "Статус",
+                "Папка",
+            ]
+        )
+        self._queue_table.setAlternatingRowColors(True)
+        self._queue_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._queue_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._queue_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+
+        self._queue_table.setColumnWidth(0, URL_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(1, QUALITY_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(2, FORMAT_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(3, STATUS_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(4, FOLDER_COLUMN_WIDTH)
 
     def _connect_signals(self) -> None:
         self._download_button.clicked.connect(self._handle_add_to_queue_clicked)
@@ -65,7 +102,7 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(self._build_header())
         root_layout.addWidget(self._build_input_panel())
-        root_layout.addWidget(self._build_queue_placeholder(), stretch=1)
+        root_layout.addWidget(self._build_queue_panel(), stretch=1)
         root_layout.addWidget(self._build_footer())
 
         return central_widget
@@ -113,42 +150,19 @@ class MainWindow(QMainWindow):
 
         return panel
 
-    def _build_queue_placeholder(self) -> QFrame:
+    def _build_queue_panel(self) -> QFrame:
         panel = QFrame(self)
         panel.setObjectName("PanelFrame")
 
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
 
         title_label = QLabel("Очередь загрузок", panel)
         title_label.setObjectName("SectionTitleLabel")
 
-        placeholder_label = QLabel(
-            "Очередь будет добавлена следующим шагом. Сейчас проверяем базовый запуск GUI.",
-            panel,
-        )
-        placeholder_label.setObjectName("MutedLabel")
-        placeholder_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
         layout.addWidget(title_label)
-        layout.addItem(
-            QSpacerItem(
-                20,
-                20,
-                QSizePolicy.Policy.Minimum,
-                QSizePolicy.Policy.Expanding,
-            )
-        )
-        layout.addWidget(placeholder_label)
-        layout.addItem(
-            QSpacerItem(
-                20,
-                20,
-                QSizePolicy.Policy.Minimum,
-                QSizePolicy.Policy.Expanding,
-            )
-        )
+        layout.addWidget(self._queue_table, stretch=1)
 
         return panel
 
@@ -174,7 +188,49 @@ class MainWindow(QMainWindow):
         url = self._url_input.text().strip()
 
         if not url:
-            self._status_label.setText("Сначала вставь ссылку")
+            self._status_label.setText("Сначала вставьте ссылку")
             return
 
-        self._status_label.setText("Следующим шагом подключим создание задачи загрузки")
+        try:
+            request = DownloadRequest(
+                url=url,
+                target_dir=self._container.paths.downloads_dir,
+                output_format=self._get_selected_output_format(),
+                video_quality=self._get_selected_video_quality(),
+            )
+        except ValidationError as error:
+            self._status_label.setText(f"Некорректная задача загрузки: {error.errors()[0]['msg']}")
+            return
+
+        task = self._container.download_queue_service.add_download(request=request)
+        self._append_task_to_table(task=task)
+
+        self._url_input.clear()
+        self._status_label.setText(
+            f"Добавлено в очередь: {self._container.download_queue_service.count()}"
+        )
+
+    def _get_selected_video_quality(self) -> VideoQuality:
+        return cast(VideoQuality, self._quality_combo_box.currentData())
+
+    def _get_selected_output_format(self) -> OutputFormat:
+        return cast(OutputFormat, self._format_combo_box.currentData())
+
+    def _append_task_to_table(self, task: DownloadTask) -> None:
+        row_index = self._queue_table.rowCount()
+        self._queue_table.insertRow(row_index)
+
+        values = (
+            task.url.value,
+            task.video_quality.value,
+            task.output_format.value,
+            task.status.value,
+            str(task.target_dir),
+        )
+
+        for column_index, value in enumerate(values):
+            table_item = QTableWidgetItem(value)
+            table_item.setToolTip(value)
+            self._queue_table.setItem(row_index, column_index, table_item)
+
+        self._queue_table.resizeRowsToContents()

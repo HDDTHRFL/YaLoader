@@ -106,4 +106,39 @@ QPushButton:hover {
 QPushButton:pressed {
     background-color: #1F6F2A;
 }
+
+QTableWidget {
+    background-color: #0D1117;
+    alternate-background-color: #111722;
+    color: #F0F3F6;
+    border: 1px solid #30363D;
+    border-radius: 10px;
+    gridline-color: #21262D;
+    selection-background-color: #1F6FEB;
+    selection-color: #FFFFFF;
+}
+
+QTableWidget::item {
+    padding: 8px;
+    border: none;
+}
+
+QTableWidget::item:hover {
+    background-color: #161B22;
+}
+
+QHeaderView::section {
+    background-color: #161B22;
+    color: #C9D1D9;
+    padding: 8px;
+    border: none;
+    border-right: 1px solid #30363D;
+    border-bottom: 1px solid #30363D;
+    font-weight: 600;
+}
+
+QTableCornerButton::section {
+    background-color: #161B22;
+    border: none;
+}
 """
