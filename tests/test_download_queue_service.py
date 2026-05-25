@@ -122,6 +122,36 @@ def test_remove_task_returns_none_for_missing_task(tmp_path: Path) -> None:
     assert removed_task is None
 
 
+def test_clear_tasks_removes_all_tasks_and_returns_removed_count(tmp_path: Path) -> None:
+    service = DownloadQueueService()
+    service.add_download(
+        request=create_video_request(
+            target_dir=tmp_path,
+            url="https://www.youtube.com/watch?v=first",
+        )
+    )
+    service.add_download(
+        request=create_video_request(
+            target_dir=tmp_path,
+            url="https://www.youtube.com/watch?v=second",
+        )
+    )
+
+    removed_count = service.clear_tasks()
+
+    assert removed_count == 2
+    assert service.count() == 0
+    assert service.list_tasks() == ()
+
+
+def test_clear_tasks_returns_zero_for_empty_queue() -> None:
+    service = DownloadQueueService()
+
+    removed_count = service.clear_tasks()
+
+    assert removed_count == 0
+
+
 def test_list_downloadable_tasks_skips_running_and_completed_tasks(tmp_path: Path) -> None:
     service = DownloadQueueService()
     pending_task = service.add_download(

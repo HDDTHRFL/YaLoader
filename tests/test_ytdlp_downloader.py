@@ -3,12 +3,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
+from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_result import DownloadResult
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, DownloadStatus, OutputFormat, VideoQuality
 from yaloader.domain.value_objects.media_url import MediaUrl
 from yaloader.infrastructure.ytdlp.downloader import (
     YtDlpDownloader,
+    calculate_percent,
     strip_ansi_escape_sequences,
 )
 from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
@@ -55,6 +57,27 @@ def test_ytdlp_downloader_returns_completed_result(tmp_path: Path) -> None:
     assert backend.options["merge_output_format"] == "mp4"
 
 
+def test_ytdlp_downloader_adds_progress_hook_when_callback_is_passed(tmp_path: Path) -> None:
+    backend = RecordingYtDlpBackend()
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(),
+        backend=backend,
+    )
+    task = create_video_task(target_dir=tmp_path)
+    progress_events: list[DownloadProgress] = []
+
+    result = downloader.download(
+        task=task,
+        progress_callback=progress_events.append,
+    )
+
+    assert result.status == DownloadStatus.COMPLETED
+    assert backend.options is not None
+    assert "progress_hooks" in backend.options
+    assert progress_events[0] == DownloadProgress.started(task_id=task.task_id)
+    assert progress_events[-1] == DownloadProgress.completed(task_id=task.task_id)
+
+
 def test_ytdlp_downloader_returns_failed_result_on_backend_error(tmp_path: Path) -> None:
     downloader = YtDlpDownloader(
         options_builder=YtDlpOptionsBuilder(),
@@ -67,6 +90,23 @@ def test_ytdlp_downloader_returns_failed_result_on_backend_error(tmp_path: Path)
     assert result.task_id == task.task_id
     assert result.status == DownloadStatus.FAILED
     assert result.error_message == "download failed"
+
+
+def test_ytdlp_downloader_reports_failed_progress_on_backend_error(tmp_path: Path) -> None:
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(),
+        backend=FailingYtDlpBackend(),
+    )
+    task = create_video_task(target_dir=tmp_path)
+    progress_events: list[DownloadProgress] = []
+
+    result = downloader.download(
+        task=task,
+        progress_callback=progress_events.append,
+    )
+
+    assert result.status == DownloadStatus.FAILED
+    assert progress_events[-1] == DownloadProgress.failed(task_id=task.task_id)
 
 
 def test_ytdlp_downloader_returns_friendly_bot_check_error(tmp_path: Path) -> None:
@@ -85,6 +125,16 @@ def test_ytdlp_downloader_returns_friendly_bot_check_error(tmp_path: Path) -> No
     assert "YouTube запросил подтверждение" in result.error_message
     assert str(cookies_file) in result.error_message
     assert "\x1b" not in result.error_message
+
+
+def test_calculate_percent_returns_none_for_missing_values() -> None:
+    assert calculate_percent(downloaded_bytes=None, total_bytes=100) is None
+    assert calculate_percent(downloaded_bytes=50, total_bytes=None) is None
+    assert calculate_percent(downloaded_bytes=50, total_bytes=0) is None
+
+
+def test_calculate_percent_calculates_valid_percent() -> None:
+    assert calculate_percent(downloaded_bytes=50, total_bytes=200) == 25
 
 
 def test_strip_ansi_escape_sequences_removes_color_codes() -> None:

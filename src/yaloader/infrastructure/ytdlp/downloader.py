@@ -2,19 +2,31 @@ from __future__ import annotations
 
 import importlib
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 from typing import Protocol, Self, cast
+from uuid import UUID
 
+from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
+from yaloader.application.ports.downloader import ProgressCallback
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
 
 ANSI_ESCAPE_SEQUENCE_RE = re.compile(r"\x1b\[[0-9;]*m")
 YOUTUBE_BOT_CHECK_MARKER = "Sign in to confirm"
+
+YTDLP_STATUS_DOWNLOADING = "downloading"
+YTDLP_STATUS_FINISHED = "finished"
+YTDLP_STATUS_ERROR = "error"
+
+PERCENT_MULTIPLIER = 100.0
+
+YtDlpProgressInfo = Mapping[str, object]
+YtDlpProgressHook = Callable[[YtDlpProgressInfo], None]
 
 
 class YtDlpBackend(Protocol):
@@ -69,17 +81,36 @@ class YtDlpDownloader:
             cookies_file=cookies_file,
         )
 
-    def download(self, task: DownloadTask) -> DownloadResult:
+    def download(
+        self,
+        task: DownloadTask,
+        progress_callback: ProgressCallback | None = None,
+    ) -> DownloadResult:
         request = self._build_request_from_task(task=task)
         options = self.options_builder.build(request=request)
+
+        if progress_callback is not None:
+            progress_callback(DownloadProgress.started(task_id=task.task_id))
+            options["progress_hooks"] = [
+                self._build_progress_hook(
+                    task_id=task.task_id,
+                    progress_callback=progress_callback,
+                )
+            ]
 
         try:
             self.backend.download(urls=(task.url.value,), options=options)
         except Exception as error:
+            if progress_callback is not None:
+                progress_callback(DownloadProgress.failed(task_id=task.task_id))
+
             return DownloadResult.failed(
                 task_id=task.task_id,
                 error_message=self._build_error_message(error=error),
             )
+
+        if progress_callback is not None:
+            progress_callback(DownloadProgress.completed(task_id=task.task_id))
 
         return DownloadResult.completed(task_id=task.task_id)
 
@@ -92,6 +123,23 @@ class YtDlpDownloader:
             video_quality=task.video_quality,
             include_playlist=task.include_playlist,
         )
+
+    def _build_progress_hook(
+        self,
+        *,
+        task_id: UUID,
+        progress_callback: ProgressCallback,
+    ) -> YtDlpProgressHook:
+        def hook(progress_info: YtDlpProgressInfo) -> None:
+            progress = build_download_progress(
+                task_id=task_id,
+                progress_info=progress_info,
+            )
+
+            if progress is not None:
+                progress_callback(progress)
+
+        return hook
 
     def _build_error_message(self, error: Exception) -> str:
         error_message = strip_ansi_escape_sequences(text=str(error)).strip()
@@ -107,6 +155,87 @@ class YtDlpDownloader:
             )
 
         return error_message
+
+
+def build_download_progress(
+    *,
+    task_id: UUID,
+    progress_info: YtDlpProgressInfo,
+) -> DownloadProgress | None:
+    status = str(progress_info.get("status", "")).lower()
+
+    if status == YTDLP_STATUS_DOWNLOADING:
+        return build_downloading_progress(
+            task_id=task_id,
+            progress_info=progress_info,
+        )
+
+    if status == YTDLP_STATUS_FINISHED:
+        return DownloadProgress.processing(task_id=task_id)
+
+    if status == YTDLP_STATUS_ERROR:
+        return DownloadProgress.failed(task_id=task_id)
+
+    return None
+
+
+def build_downloading_progress(
+    *,
+    task_id: UUID,
+    progress_info: YtDlpProgressInfo,
+) -> DownloadProgress:
+    downloaded_bytes = get_int_value(progress_info.get("downloaded_bytes"))
+    total_bytes = get_total_bytes(progress_info=progress_info)
+    percent = calculate_percent(
+        downloaded_bytes=downloaded_bytes,
+        total_bytes=total_bytes,
+    )
+    status_text = "Загрузка" if percent is None else f"Загрузка {percent:.1f}%"
+
+    return DownloadProgress(
+        task_id=task_id,
+        percent=percent,
+        status_text=status_text,
+        downloaded_bytes=downloaded_bytes,
+        total_bytes=total_bytes,
+    )
+
+
+def get_total_bytes(progress_info: YtDlpProgressInfo) -> int | None:
+    total_bytes = get_int_value(progress_info.get("total_bytes"))
+
+    if total_bytes is not None:
+        return total_bytes
+
+    return get_int_value(progress_info.get("total_bytes_estimate"))
+
+
+def get_int_value(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+
+    if isinstance(value, int):
+        return value
+
+    if isinstance(value, float):
+        return int(value)
+
+    return None
+
+
+def calculate_percent(
+    *,
+    downloaded_bytes: int | None,
+    total_bytes: int | None,
+) -> float | None:
+    if downloaded_bytes is None or total_bytes is None:
+        return None
+
+    if total_bytes <= 0:
+        return None
+
+    percent = downloaded_bytes / total_bytes * PERCENT_MULTIPLIER
+    return max(0.0, min(PERCENT_MULTIPLIER, percent))
 
 
 def strip_ansi_escape_sequences(text: str) -> str:

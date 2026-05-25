@@ -65,7 +65,7 @@ QLineEdit:focus {
 QComboBox {
     min-height: 36px;
     min-width: 92px;
-    padding: 0 34px 0 10px;
+    padding: 0 24px 0 10px;
     background-color: #0D1117;
     color: #F0F3F6;
     border: 1px solid #30363D;
@@ -83,16 +83,14 @@ QComboBox:focus {
 QComboBox::drop-down {
     subcontrol-origin: border;
     subcontrol-position: top right;
-    width: 32px;
-    background-color: #111722;
-    border-left: 1px solid #30363D;
-    border-top-right-radius: 10px;
-    border-bottom-right-radius: 10px;
+    width: 24px;
+    background-color: transparent;
+    border: none;
 }
 
 QComboBox::down-arrow {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
 }
 
 QComboBox QAbstractItemView {
@@ -125,6 +123,21 @@ QPushButton:pressed {
 QPushButton:disabled {
     background-color: #2D333B;
     color: #7D8590;
+}
+
+QProgressBar {
+    min-height: 18px;
+    background-color: #0D1117;
+    color: #F0F3F6;
+    border: 1px solid #30363D;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 9pt;
+}
+
+QProgressBar::chunk {
+    background-color: #238636;
+    border-radius: 7px;
 }
 
 QTableWidget {

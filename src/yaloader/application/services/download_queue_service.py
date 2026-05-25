@@ -66,6 +66,14 @@ class DownloadQueueService:
 
             return removed_task
 
+    def clear_tasks(self) -> int:
+        with self._lock:
+            removed_count = len(self._tasks)
+            self._tasks.clear()
+            self._task_index_by_id.clear()
+
+            return removed_count
+
     def update_status(
         self,
         *,
