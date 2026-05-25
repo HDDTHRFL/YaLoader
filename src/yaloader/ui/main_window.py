@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from typing import cast
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import cast, override
+from uuid import UUID
 
 from pydantic import ValidationError
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -20,9 +23,10 @@ from PyQt6.QtWidgets import (
 )
 
 from yaloader.application.dto.download_request import DownloadRequest
+from yaloader.application.dto.download_result import DownloadResult
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.entities.download_task import DownloadTask
-from yaloader.domain.enums import OutputFormat, VideoQuality
+from yaloader.domain.enums import DownloadStatus, OutputFormat, VideoQuality
 from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.services.app_container import AppContainer
 
@@ -30,6 +34,16 @@ WINDOW_INITIAL_WIDTH = 1180
 WINDOW_INITIAL_HEIGHT = 660
 WINDOW_MINIMUM_WIDTH = 1040
 WINDOW_MINIMUM_HEIGHT = 560
+
+DOWNLOAD_WORKERS_COUNT = 1
+DOWNLOAD_POLL_INTERVAL_MS = 250
+
+MODE_COLUMN_INDEX = 0
+URL_COLUMN_INDEX = 1
+QUALITY_COLUMN_INDEX = 2
+FORMAT_COLUMN_INDEX = 3
+STATUS_COLUMN_INDEX = 4
+FOLDER_COLUMN_INDEX = 5
 
 MODE_COLUMN_WIDTH = 72
 URL_COLUMN_WIDTH = 420
@@ -47,14 +61,32 @@ class MainWindow(QMainWindow):
         self._url_input = QLineEdit(self)
         self._quality_combo_box = QComboBox(self)
         self._format_combo_box = QComboBox(self)
-        self._download_button = QPushButton("Добавить в очередь", self)
+        self._add_to_queue_button = QPushButton("Добавить в очередь", self)
+        self._start_download_button = QPushButton("Скачать выбранное", self)
         self._queue_table = QTableWidget(self)
         self._status_label = QLabel("Готов к работе", self)
+
+        self._task_ids_by_row: dict[int, UUID] = {}
+        self._row_by_task_id: dict[UUID, int] = {}
+
+        self._download_executor = ThreadPoolExecutor(
+            max_workers=DOWNLOAD_WORKERS_COUNT,
+            thread_name_prefix="yaloader-download",
+        )
+        self._active_download_future: Future[DownloadResult] | None = None
+        self._active_download_task_id: UUID | None = None
+        self._download_poll_timer = QTimer(self)
 
         self._configure_window()
         self._configure_widgets()
         self._connect_signals()
         self.setCentralWidget(self._build_central_widget())
+
+    @override
+    def closeEvent(self, event: QCloseEvent | None) -> None:
+        self._download_poll_timer.stop()
+        self._download_executor.shutdown(wait=False, cancel_futures=True)
+        super().closeEvent(event)
 
     def _configure_window(self) -> None:
         self.setWindowTitle(APP_DISPLAY_NAME)
@@ -93,15 +125,17 @@ class MainWindow(QMainWindow):
         self._queue_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._queue_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
-        self._queue_table.setColumnWidth(0, MODE_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(1, URL_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(2, QUALITY_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(3, FORMAT_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(4, STATUS_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(5, FOLDER_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(MODE_COLUMN_INDEX, MODE_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(URL_COLUMN_INDEX, URL_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(QUALITY_COLUMN_INDEX, QUALITY_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(FORMAT_COLUMN_INDEX, FORMAT_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(STATUS_COLUMN_INDEX, STATUS_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(FOLDER_COLUMN_INDEX, FOLDER_COLUMN_WIDTH)
 
     def _connect_signals(self) -> None:
-        self._download_button.clicked.connect(self._handle_add_to_queue_clicked)
+        self._add_to_queue_button.clicked.connect(self._handle_add_to_queue_clicked)
+        self._start_download_button.clicked.connect(self._handle_start_download_clicked)
+        self._download_poll_timer.timeout.connect(self._poll_download_result)
 
     def _build_central_widget(self) -> QWidget:
         central_widget = QWidget(self)
@@ -152,7 +186,8 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(self._url_input, stretch=1)
         controls_layout.addWidget(self._quality_combo_box)
         controls_layout.addWidget(self._format_combo_box)
-        controls_layout.addWidget(self._download_button)
+        controls_layout.addWidget(self._add_to_queue_button)
+        controls_layout.addWidget(self._start_download_button)
 
         layout.addWidget(url_label)
         layout.addLayout(controls_layout)
@@ -224,6 +259,84 @@ class MainWindow(QMainWindow):
             f"Добавлено в очередь: {self._container.download_queue_service.count()}"
         )
 
+    def _handle_start_download_clicked(self) -> None:
+        if self._active_download_future is not None:
+            self._status_label.setText("Сейчас уже выполняется загрузка")
+            return
+
+        selected_task = self._get_selected_task()
+
+        if selected_task is None:
+            self._status_label.setText("Выберите задачу в очереди")
+            return
+
+        if selected_task.status is DownloadStatus.COMPLETED:
+            self._status_label.setText("Эта задача уже завершена")
+            return
+
+        running_task = self._container.download_queue_service.update_status(
+            task_id=selected_task.task_id,
+            status=DownloadStatus.RUNNING,
+        )
+
+        if running_task is None:
+            self._status_label.setText("Задача не найдена")
+            return
+
+        self._update_task_row(task=running_task)
+        self._active_download_task_id = running_task.task_id
+        self._active_download_future = self._download_executor.submit(
+            self._container.downloader.download,
+            running_task,
+        )
+        self._start_download_button.setEnabled(False)
+        self._download_poll_timer.start(DOWNLOAD_POLL_INTERVAL_MS)
+        self._status_label.setText("Загрузка запущена")
+
+    def _poll_download_result(self) -> None:
+        if self._active_download_future is None:
+            self._download_poll_timer.stop()
+            return
+
+        if not self._active_download_future.done():
+            return
+
+        future = self._active_download_future
+        self._active_download_future = None
+        self._active_download_task_id = None
+        self._download_poll_timer.stop()
+        self._start_download_button.setEnabled(True)
+
+        try:
+            result = future.result()
+        except Exception as error:
+            self._status_label.setText(f"Ошибка загрузки: {error}")
+            return
+
+        updated_task = self._container.download_queue_service.apply_result(result=result)
+
+        if updated_task is not None:
+            self._update_task_row(task=updated_task)
+
+        if result.status is DownloadStatus.COMPLETED:
+            self._status_label.setText("Загрузка завершена")
+            return
+
+        self._status_label.setText(f"Загрузка завершилась ошибкой: {result.error_message}")
+
+    def _get_selected_task(self) -> DownloadTask | None:
+        row_index = self._queue_table.currentRow()
+
+        if row_index < 0:
+            return None
+
+        task_id = self._task_ids_by_row.get(row_index)
+
+        if task_id is None:
+            return None
+
+        return self._container.download_queue_service.get_task(task_id=task_id)
+
     def _get_selected_video_quality(self) -> VideoQuality:
         return cast(VideoQuality, self._quality_combo_box.currentData())
 
@@ -233,7 +346,22 @@ class MainWindow(QMainWindow):
     def _append_task_to_table(self, task: DownloadTask) -> None:
         row_index = self._queue_table.rowCount()
         self._queue_table.insertRow(row_index)
+        self._task_ids_by_row[row_index] = task.task_id
+        self._row_by_task_id[task.task_id] = row_index
 
+        self._set_task_row_values(row_index=row_index, task=task)
+        self._queue_table.resizeRowsToContents()
+
+    def _update_task_row(self, task: DownloadTask) -> None:
+        row_index = self._row_by_task_id.get(task.task_id)
+
+        if row_index is None:
+            return
+
+        self._set_task_row_values(row_index=row_index, task=task)
+        self._queue_table.resizeRowsToContents()
+
+    def _set_task_row_values(self, *, row_index: int, task: DownloadTask) -> None:
         values = (
             task.mode.value,
             task.url.value,
@@ -244,8 +372,12 @@ class MainWindow(QMainWindow):
         )
 
         for column_index, value in enumerate(values):
-            table_item = QTableWidgetItem(value)
-            table_item.setToolTip(value)
-            self._queue_table.setItem(row_index, column_index, table_item)
+            table_item = self._queue_table.item(row_index, column_index)
 
-        self._queue_table.resizeRowsToContents()
+            if table_item is None:
+                table_item = QTableWidgetItem(value)
+                self._queue_table.setItem(row_index, column_index, table_item)
+            else:
+                table_item.setText(value)
+
+            table_item.setToolTip(value)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import fnmatch
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +34,13 @@ class BundleConfig:
     excluded_file_names: frozenset[str] = frozenset(
         {
             "uv.lock",
+            "cookies.txt",
+        }
+    )
+    excluded_file_patterns: frozenset[str] = frozenset(
+        {
+            "*.cookies.txt",
+            "*cookies*.txt",
         }
     )
     included_file_names: frozenset[str] = frozenset(
@@ -146,6 +154,9 @@ def should_include_file(project_root: Path, file_path: Path, config: BundleConfi
     if file_path.name in config.excluded_file_names:
         return False
 
+    if matches_excluded_file_pattern(file_name=file_path.name, config=config):
+        return False
+
     if file_path.name in config.included_file_names:
         return True
 
@@ -154,6 +165,13 @@ def should_include_file(project_root: Path, file_path: Path, config: BundleConfi
 
 def has_excluded_directory(relative_path: Path, config: BundleConfig) -> bool:
     return any(path_part in config.excluded_dir_names for path_part in relative_path.parts)
+
+
+def matches_excluded_file_pattern(file_name: str, config: BundleConfig) -> bool:
+    return any(
+        fnmatch.fnmatchcase(file_name.casefold(), pattern.casefold())
+        for pattern in config.excluded_file_patterns
+    )
 
 
 def create_text_bundle(

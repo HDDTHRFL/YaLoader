@@ -22,6 +22,7 @@ def test_build_video_mp4_best_options(tmp_path: Path) -> None:
     assert options["format"] == "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
     assert options["merge_output_format"] == "mp4"
     assert options["noplaylist"] is True
+    assert options["remote_components"] == ["ejs:github"]
     assert str(tmp_path) in str(options["outtmpl"])
 
 
@@ -54,6 +55,7 @@ def test_build_audio_mp3_options(tmp_path: Path) -> None:
 
     assert options["format"] == "ba/b"
     assert "merge_output_format" not in options
+    assert options["remote_components"] == ["ejs:github"]
     assert options["postprocessors"] == [
         {
             "key": "FFmpegExtractAudio",
@@ -96,3 +98,36 @@ def test_build_playlist_options(tmp_path: Path) -> None:
     options = builder.build(request=request)
 
     assert options["noplaylist"] is False
+
+
+def test_build_adds_cookiefile_when_cookies_file_exists(tmp_path: Path) -> None:
+    cookies_file = tmp_path / "cookies.txt"
+    cookies_file.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+
+    request = DownloadRequest(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        mode=DownloadMode.VIDEO,
+        output_format=OutputFormat.MP4,
+    )
+    builder = YtDlpOptionsBuilder(cookies_file=cookies_file)
+
+    options = builder.build(request=request)
+
+    assert options["cookiefile"] == str(cookies_file)
+
+
+def test_build_skips_cookiefile_when_cookies_file_is_missing(tmp_path: Path) -> None:
+    cookies_file = tmp_path / "cookies.txt"
+
+    request = DownloadRequest(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        mode=DownloadMode.VIDEO,
+        output_format=OutputFormat.MP4,
+    )
+    builder = YtDlpOptionsBuilder(cookies_file=cookies_file)
+
+    options = builder.build(request=request)
+
+    assert "cookiefile" not in options

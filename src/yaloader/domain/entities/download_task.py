@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -50,4 +50,16 @@ class DownloadTask:
             output_format=output_format,
             video_quality=video_quality,
             include_playlist=include_playlist,
+        )
+
+    def with_status(
+        self,
+        *,
+        status: DownloadStatus,
+        error_message: str | None = None,
+    ) -> DownloadTask:
+        return replace(
+            self,
+            status=status,
+            error_message=error_message,
         )

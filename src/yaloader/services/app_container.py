@@ -22,5 +22,5 @@ def build_app_container() -> AppContainer:
     return AppContainer(
         paths=paths,
         download_queue_service=DownloadQueueService(),
-        downloader=YtDlpDownloader.create_default(),
+        downloader=YtDlpDownloader.create_default(cookies_file=paths.cookies_file),
     )

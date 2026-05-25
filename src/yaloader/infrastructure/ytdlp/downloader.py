@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import importlib
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from types import TracebackType
 from typing import Protocol, Self, cast
 
@@ -10,6 +12,9 @@ from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
+
+ANSI_ESCAPE_SEQUENCE_RE = re.compile(r"\x1b\[[0-9;]*m")
+YOUTUBE_BOT_CHECK_MARKER = "Sign in to confirm"
 
 
 class YtDlpBackend(Protocol):
@@ -54,12 +59,14 @@ class YtDlpPythonBackend:
 class YtDlpDownloader:
     options_builder: YtDlpOptionsBuilder
     backend: YtDlpBackend
+    cookies_file: Path | None = None
 
     @classmethod
-    def create_default(cls) -> YtDlpDownloader:
+    def create_default(cls, *, cookies_file: Path | None = None) -> YtDlpDownloader:
         return cls(
-            options_builder=YtDlpOptionsBuilder(),
+            options_builder=YtDlpOptionsBuilder(cookies_file=cookies_file),
             backend=YtDlpPythonBackend.create_default(),
+            cookies_file=cookies_file,
         )
 
     def download(self, task: DownloadTask) -> DownloadResult:
@@ -71,7 +78,7 @@ class YtDlpDownloader:
         except Exception as error:
             return DownloadResult.failed(
                 task_id=task.task_id,
-                error_message=str(error),
+                error_message=self._build_error_message(error=error),
             )
 
         return DownloadResult.completed(task_id=task.task_id)
@@ -85,6 +92,25 @@ class YtDlpDownloader:
             video_quality=task.video_quality,
             include_playlist=task.include_playlist,
         )
+
+    def _build_error_message(self, error: Exception) -> str:
+        error_message = strip_ansi_escape_sequences(text=str(error)).strip()
+
+        if YOUTUBE_BOT_CHECK_MARKER in error_message:
+            cookies_file_text = (
+                str(self.cookies_file) if self.cookies_file is not None else "cookies.txt"
+            )
+            return (
+                "YouTube запросил подтверждение, что вы не бот. "
+                f"Добавьте актуальный cookies.txt сюда: {cookies_file_text}. "
+                "После этого повторите загрузку."
+            )
+
+        return error_message
+
+
+def strip_ansi_escape_sequences(text: str) -> str:
+    return ANSI_ESCAPE_SEQUENCE_RE.sub("", text)
 
 
 def load_youtube_dl_factory() -> YoutubeDLFactory:

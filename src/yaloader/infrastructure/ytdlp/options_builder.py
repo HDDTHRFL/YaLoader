@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
@@ -13,10 +14,13 @@ DEFAULT_RETRIES = 10
 DEFAULT_FRAGMENT_RETRIES = 10
 DEFAULT_AUDIO_QUALITY = "0"
 OUTPUT_TEMPLATE = "%(title).200B [%(id)s].%(ext)s"
+REMOTE_COMPONENTS: Final[list[str]] = ["ejs:github"]
 
 
 @dataclass(frozen=True, slots=True)
 class YtDlpOptionsBuilder:
+    cookies_file: Path | None = None
+
     def build(self, request: DownloadRequest) -> YtDlpOptions:
         options: YtDlpOptions = {
             "format": self._build_format_selector(request=request),
@@ -29,10 +33,14 @@ class YtDlpOptionsBuilder:
             "retries": DEFAULT_RETRIES,
             "fragment_retries": DEFAULT_FRAGMENT_RETRIES,
             "noprogress": True,
+            "remote_components": REMOTE_COMPONENTS,
         }
 
         if request.mode is DownloadMode.VIDEO:
             options["merge_output_format"] = request.output_format.value
+
+        if self.cookies_file is not None and self.cookies_file.is_file():
+            options["cookiefile"] = str(self.cookies_file)
 
         postprocessors = self._build_postprocessors(request=request)
 

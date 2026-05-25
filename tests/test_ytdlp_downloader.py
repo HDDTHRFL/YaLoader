@@ -7,7 +7,10 @@ from yaloader.application.dto.download_result import DownloadResult
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, DownloadStatus, OutputFormat, VideoQuality
 from yaloader.domain.value_objects.media_url import MediaUrl
-from yaloader.infrastructure.ytdlp.downloader import YtDlpDownloader
+from yaloader.infrastructure.ytdlp.downloader import (
+    YtDlpDownloader,
+    strip_ansi_escape_sequences,
+)
 from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
 
 
@@ -24,6 +27,13 @@ class RecordingYtDlpBackend:
 class FailingYtDlpBackend:
     def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
         raise RuntimeError("download failed")
+
+
+class BotCheckYtDlpBackend:
+    def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
+        raise RuntimeError(
+            "\x1b[0;31mERROR:\x1b[0m [youtube] test: Sign in to confirm you're not a bot."
+        )
 
 
 def test_ytdlp_downloader_returns_completed_result(tmp_path: Path) -> None:
@@ -57,6 +67,32 @@ def test_ytdlp_downloader_returns_failed_result_on_backend_error(tmp_path: Path)
     assert result.task_id == task.task_id
     assert result.status == DownloadStatus.FAILED
     assert result.error_message == "download failed"
+
+
+def test_ytdlp_downloader_returns_friendly_bot_check_error(tmp_path: Path) -> None:
+    cookies_file = tmp_path / "cookies.txt"
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(cookies_file=cookies_file),
+        backend=BotCheckYtDlpBackend(),
+        cookies_file=cookies_file,
+    )
+    task = create_video_task(target_dir=tmp_path)
+
+    result = downloader.download(task=task)
+
+    assert result.status == DownloadStatus.FAILED
+    assert result.error_message is not None
+    assert "YouTube запросил подтверждение" in result.error_message
+    assert str(cookies_file) in result.error_message
+    assert "\x1b" not in result.error_message
+
+
+def test_strip_ansi_escape_sequences_removes_color_codes() -> None:
+    text = "\x1b[0;31mERROR:\x1b[0m failed"
+
+    result = strip_ansi_escape_sequences(text=text)
+
+    assert result == "ERROR: failed"
 
 
 def create_video_task(target_dir: Path) -> DownloadTask:
