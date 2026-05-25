@@ -46,7 +46,9 @@ select = [
     "N",
     "RUF",
 ]
-ignore = []
+ignore = [
+    "RUF001",
+]
 
 [tool.ruff.format]
 quote-style = "double"

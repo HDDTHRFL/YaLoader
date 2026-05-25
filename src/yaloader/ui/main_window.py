@@ -6,8 +6,8 @@ from typing import cast, override
 from uuid import UUID
 
 from pydantic import ValidationError
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtCore import QPoint, Qt, QTimer
+from PyQt6.QtGui import QCloseEvent, QResizeEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -27,6 +28,7 @@ from PyQt6.QtWidgets import (
 
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
+from yaloader.application.services.download_queue_service import is_downloadable
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus, OutputFormat, VideoQuality
@@ -34,9 +36,9 @@ from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.services.app_container import AppContainer
 
 WINDOW_INITIAL_WIDTH = 1180
-WINDOW_INITIAL_HEIGHT = 700
+WINDOW_INITIAL_HEIGHT = 850
 WINDOW_MINIMUM_WIDTH = 1040
-WINDOW_MINIMUM_HEIGHT = 600
+WINDOW_MINIMUM_HEIGHT = 680
 
 DOWNLOAD_WORKERS_COUNT = 1
 DOWNLOAD_POLL_INTERVAL_MS = 250
@@ -48,12 +50,23 @@ FORMAT_COLUMN_INDEX = 3
 STATUS_COLUMN_INDEX = 4
 FOLDER_COLUMN_INDEX = 5
 
-MODE_COLUMN_WIDTH = 72
-URL_COLUMN_WIDTH = 420
-QUALITY_COLUMN_WIDTH = 96
-FORMAT_COLUMN_WIDTH = 76
-STATUS_COLUMN_WIDTH = 96
-FOLDER_COLUMN_WIDTH = 260
+MIN_COLUMN_WIDTHS = {
+    MODE_COLUMN_INDEX: 72,
+    URL_COLUMN_INDEX: 320,
+    QUALITY_COLUMN_INDEX: 96,
+    FORMAT_COLUMN_INDEX: 76,
+    STATUS_COLUMN_INDEX: 104,
+    FOLDER_COLUMN_INDEX: 220,
+}
+
+COLUMN_STRETCH_WEIGHTS = {
+    MODE_COLUMN_INDEX: 0.25,
+    URL_COLUMN_INDEX: 6.0,
+    QUALITY_COLUMN_INDEX: 0.35,
+    FORMAT_COLUMN_INDEX: 0.35,
+    STATUS_COLUMN_INDEX: 0.45,
+    FOLDER_COLUMN_INDEX: 2.6,
+}
 
 
 class MainWindow(QMainWindow):
@@ -69,13 +82,16 @@ class MainWindow(QMainWindow):
         self._add_to_queue_button = QPushButton("Добавить в очередь", self)
         self._choose_downloads_dir_button = QPushButton("Выбрать папку", self)
         self._delete_cookies_button = QPushButton("Удалить cookies.txt", self)
-        self._start_download_button = QPushButton("Скачать выбранное", self)
+        self._start_queue_button = QPushButton("Скачать очередь", self)
+        self._remove_from_queue_button = QPushButton("Удалить выбранное", self)
         self._queue_table = QTableWidget(self)
         self._status_label = QLabel("Готов к работе", self)
         self._downloads_dir_label = QLabel(self)
+        self._cookies_status_label = QLabel(self)
 
         self._task_ids_by_row: dict[int, UUID] = {}
         self._row_by_task_id: dict[UUID, int] = {}
+        self._queued_download_task_ids: list[UUID] = []
 
         self._download_executor = ThreadPoolExecutor(
             max_workers=DOWNLOAD_WORKERS_COUNT,
@@ -89,13 +105,21 @@ class MainWindow(QMainWindow):
         self._configure_widgets()
         self._connect_signals()
         self.setCentralWidget(self._build_central_widget())
+
         self._update_downloads_dir_label()
+        self._update_cookies_status_label()
+        self._resize_queue_columns()
 
     @override
     def closeEvent(self, event: QCloseEvent | None) -> None:
         self._download_poll_timer.stop()
         self._download_executor.shutdown(wait=False, cancel_futures=True)
         super().closeEvent(event)
+
+    @override
+    def resizeEvent(self, event: QResizeEvent | None) -> None:
+        super().resizeEvent(event)
+        self._resize_queue_columns()
 
     def _configure_window(self) -> None:
         self.setWindowTitle(APP_DISPLAY_NAME)
@@ -122,6 +146,11 @@ class MainWindow(QMainWindow):
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
 
+        self._cookies_status_label.setObjectName("MutedLabel")
+        self._cookies_status_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+
         self._delete_cookies_button.setToolTip(str(self._container.paths.cookies_file))
 
     def _configure_queue_table(self) -> None:
@@ -140,23 +169,21 @@ class MainWindow(QMainWindow):
         self._queue_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._queue_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._queue_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._queue_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
         vertical_header = cast(QHeaderView, self._queue_table.verticalHeader())
         vertical_header.hide()
 
-        self._queue_table.setColumnWidth(MODE_COLUMN_INDEX, MODE_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(URL_COLUMN_INDEX, URL_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(QUALITY_COLUMN_INDEX, QUALITY_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(FORMAT_COLUMN_INDEX, FORMAT_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(STATUS_COLUMN_INDEX, STATUS_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(FOLDER_COLUMN_INDEX, FOLDER_COLUMN_WIDTH)
+        self._resize_queue_columns()
 
     def _connect_signals(self) -> None:
         self._add_to_queue_button.clicked.connect(self._handle_add_to_queue_clicked)
-        self._start_download_button.clicked.connect(self._handle_start_download_clicked)
+        self._start_queue_button.clicked.connect(self._handle_start_queue_clicked)
+        self._remove_from_queue_button.clicked.connect(self._handle_remove_selected_task_clicked)
         self._choose_downloads_dir_button.clicked.connect(self._handle_choose_downloads_dir_clicked)
         self._delete_cookies_button.clicked.connect(self._handle_delete_cookies_clicked)
         self._download_poll_timer.timeout.connect(self._poll_download_result)
+        self._queue_table.customContextMenuRequested.connect(self._show_queue_context_menu)
 
     def _build_central_widget(self) -> QWidget:
         central_widget = QWidget(self)
@@ -223,7 +250,13 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(18, 14, 18, 14)
         layout.setSpacing(12)
 
-        layout.addWidget(self._downloads_dir_label, stretch=1)
+        labels_layout = QVBoxLayout()
+        labels_layout.setContentsMargins(0, 0, 0, 0)
+        labels_layout.setSpacing(4)
+        labels_layout.addWidget(self._downloads_dir_label)
+        labels_layout.addWidget(self._cookies_status_label)
+
+        layout.addLayout(labels_layout, stretch=1)
         layout.addWidget(self._choose_downloads_dir_button)
         layout.addWidget(self._delete_cookies_button)
 
@@ -242,8 +275,10 @@ class MainWindow(QMainWindow):
 
         actions_layout = QHBoxLayout()
         actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(12)
+        actions_layout.addWidget(self._remove_from_queue_button)
         actions_layout.addStretch(1)
-        actions_layout.addWidget(self._start_download_button)
+        actions_layout.addWidget(self._start_queue_button)
 
         layout.addWidget(title_label)
         layout.addWidget(self._queue_table, stretch=1)
@@ -316,49 +351,120 @@ class MainWindow(QMainWindow):
 
         if not cookies_file.is_file():
             self._status_label.setText(f"cookies.txt не найден: {cookies_file}")
+            self._update_cookies_status_label()
             return
 
         try:
             cookies_file.unlink()
         except OSError as error:
             self._status_label.setText(f"Не удалось удалить cookies.txt: {error}")
+            self._update_cookies_status_label()
             return
 
         self._status_label.setText(f"cookies.txt удалён безвозвратно: {cookies_file}")
+        self._update_cookies_status_label()
 
-    def _handle_start_download_clicked(self) -> None:
+    def _handle_start_queue_clicked(self) -> None:
         if self._active_download_future is not None:
             self._status_label.setText("Сейчас уже выполняется загрузка")
             return
 
+        downloadable_tasks = self._container.download_queue_service.list_downloadable_tasks()
+
+        if not downloadable_tasks:
+            self._status_label.setText("В очереди нет задач для загрузки")
+            return
+
+        self._queued_download_task_ids = [task.task_id for task in downloadable_tasks]
+        self._start_next_queued_download()
+
+    def _handle_remove_selected_task_clicked(self) -> None:
         selected_task = self._get_selected_task()
 
         if selected_task is None:
             self._status_label.setText("Выберите задачу в очереди")
             return
 
-        if selected_task.status is DownloadStatus.COMPLETED:
-            self._status_label.setText("Эта задача уже завершена")
+        self._remove_task_from_queue(task_id=selected_task.task_id)
+
+    def _show_queue_context_menu(self, position: QPoint) -> None:
+        table_item = self._queue_table.itemAt(position)
+
+        if table_item is None:
             return
 
-        running_task = self._container.download_queue_service.update_status(
-            task_id=selected_task.task_id,
-            status=DownloadStatus.RUNNING,
-        )
+        row_index = table_item.row()
+        task_id = self._task_ids_by_row.get(row_index)
 
-        if running_task is None:
+        if task_id is None:
+            return
+
+        self._queue_table.selectRow(row_index)
+
+        context_menu = QMenu(self)
+        download_action = context_menu.addAction("Скачать этот файл")
+        remove_action = context_menu.addAction("Удалить из очереди")
+
+        viewport = cast(QWidget, self._queue_table.viewport())
+        selected_action = context_menu.exec(viewport.mapToGlobal(position))
+
+        if selected_action == download_action:
+            self._start_single_task_download(task_id=task_id)
+            return
+
+        if selected_action == remove_action:
+            self._remove_task_from_queue(task_id=task_id)
+
+    def _start_single_task_download(self, task_id: UUID) -> None:
+        if self._active_download_future is not None:
+            self._status_label.setText("Сейчас уже выполняется загрузка")
+            return
+
+        task = self._container.download_queue_service.get_task(task_id=task_id)
+
+        if task is None:
             self._status_label.setText("Задача не найдена")
             return
 
-        self._update_task_row(task=running_task)
-        self._active_download_task_id = running_task.task_id
-        self._active_download_future = self._download_executor.submit(
-            self._container.downloader.download,
-            running_task,
-        )
-        self._start_download_button.setEnabled(False)
-        self._download_poll_timer.start(DOWNLOAD_POLL_INTERVAL_MS)
-        self._status_label.setText("Загрузка запущена")
+        if not is_downloadable(task):
+            self._status_label.setText("Эту задачу сейчас нельзя скачать повторно")
+            return
+
+        self._queued_download_task_ids = [task_id]
+        self._start_next_queued_download()
+
+    def _start_next_queued_download(self) -> None:
+        if self._active_download_future is not None:
+            return
+
+        while self._queued_download_task_ids:
+            task_id = self._queued_download_task_ids.pop(0)
+            task = self._container.download_queue_service.get_task(task_id=task_id)
+
+            if task is None or not is_downloadable(task):
+                continue
+
+            running_task = self._container.download_queue_service.update_status(
+                task_id=task.task_id,
+                status=DownloadStatus.RUNNING,
+            )
+
+            if running_task is None:
+                continue
+
+            self._update_task_row(task=running_task)
+            self._active_download_task_id = running_task.task_id
+            self._active_download_future = self._download_executor.submit(
+                self._container.downloader.download,
+                running_task,
+            )
+            self._set_download_controls_enabled(is_enabled=False)
+            self._download_poll_timer.start(DOWNLOAD_POLL_INTERVAL_MS)
+            self._status_label.setText(f"Загрузка запущена: {running_task.url.value}")
+            return
+
+        self._set_download_controls_enabled(is_enabled=True)
+        self._status_label.setText("Очередь загрузок завершена")
 
     def _poll_download_result(self) -> None:
         if self._active_download_future is None:
@@ -372,11 +478,11 @@ class MainWindow(QMainWindow):
         self._active_download_future = None
         self._active_download_task_id = None
         self._download_poll_timer.stop()
-        self._start_download_button.setEnabled(True)
 
         try:
             result = future.result()
         except Exception as error:
+            self._set_download_controls_enabled(is_enabled=True)
             self._status_label.setText(f"Ошибка загрузки: {error}")
             return
 
@@ -385,11 +491,36 @@ class MainWindow(QMainWindow):
         if updated_task is not None:
             self._update_task_row(task=updated_task)
 
+        if self._queued_download_task_ids:
+            self._start_next_queued_download()
+            return
+
+        self._set_download_controls_enabled(is_enabled=True)
+
         if result.status is DownloadStatus.COMPLETED:
-            self._status_label.setText("Загрузка завершена")
+            self._status_label.setText("Очередь загрузок завершена")
             return
 
         self._status_label.setText(f"Загрузка завершилась ошибкой: {result.error_message}")
+
+    def _remove_task_from_queue(self, task_id: UUID) -> None:
+        if self._active_download_task_id == task_id:
+            self._status_label.setText("Нельзя удалить задачу, которая сейчас выполняется")
+            return
+
+        removed_task = self._container.download_queue_service.remove_task(task_id=task_id)
+
+        if removed_task is None:
+            self._status_label.setText("Задача не найдена")
+            return
+
+        self._queued_download_task_ids = [
+            queued_task_id
+            for queued_task_id in self._queued_download_task_ids
+            if queued_task_id != task_id
+        ]
+        self._reload_queue_table()
+        self._status_label.setText(f"Удалено из очереди: {removed_task.url.value}")
 
     def _get_selected_task(self) -> DownloadTask | None:
         row_index = self._queue_table.currentRow()
@@ -418,6 +549,7 @@ class MainWindow(QMainWindow):
 
         self._set_task_row_values(row_index=row_index, task=task)
         self._queue_table.resizeRowsToContents()
+        self._resize_queue_columns()
 
     def _update_task_row(self, task: DownloadTask) -> None:
         row_index = self._row_by_task_id.get(task.task_id)
@@ -427,6 +559,17 @@ class MainWindow(QMainWindow):
 
         self._set_task_row_values(row_index=row_index, task=task)
         self._queue_table.resizeRowsToContents()
+        self._resize_queue_columns()
+
+    def _reload_queue_table(self) -> None:
+        self._queue_table.setRowCount(0)
+        self._task_ids_by_row.clear()
+        self._row_by_task_id.clear()
+
+        for task in self._container.download_queue_service.list_tasks():
+            self._append_task_to_table(task=task)
+
+        self._resize_queue_columns()
 
     def _set_task_row_values(self, *, row_index: int, task: DownloadTask) -> None:
         values = (
@@ -449,5 +592,56 @@ class MainWindow(QMainWindow):
 
             table_item.setToolTip(value)
 
+    def _resize_queue_columns(self) -> None:
+        if self._queue_table.columnCount() == 0:
+            return
+
+        viewport = cast(QWidget, self._queue_table.viewport())
+        available_width = max(
+            viewport.width(),
+            sum(MIN_COLUMN_WIDTHS.values()),
+        )
+        minimum_total_width = sum(MIN_COLUMN_WIDTHS.values())
+        extra_width = max(0, available_width - minimum_total_width)
+        total_weight = sum(COLUMN_STRETCH_WEIGHTS.values())
+
+        calculated_widths: dict[int, int] = {}
+
+        for column_index, minimum_width in MIN_COLUMN_WIDTHS.items():
+            weighted_extra = int(extra_width * COLUMN_STRETCH_WEIGHTS[column_index] / total_weight)
+            calculated_widths[column_index] = minimum_width + weighted_extra
+
+        last_column_width = available_width - sum(
+            width
+            for column_index, width in calculated_widths.items()
+            if column_index != FOLDER_COLUMN_INDEX
+        )
+        calculated_widths[FOLDER_COLUMN_INDEX] = max(
+            MIN_COLUMN_WIDTHS[FOLDER_COLUMN_INDEX],
+            last_column_width,
+        )
+
+        for column_index, column_width in calculated_widths.items():
+            self._queue_table.setColumnWidth(column_index, column_width)
+
     def _update_downloads_dir_label(self) -> None:
         self._downloads_dir_label.setText(f"Папка загрузок: {self._settings.downloads_dir}")
+        self._downloads_dir_label.setToolTip(str(self._settings.downloads_dir))
+
+    def _update_cookies_status_label(self) -> None:
+        cookies_file = self._container.paths.cookies_file
+
+        if cookies_file.is_file():
+            file_size = cookies_file.stat().st_size
+            self._cookies_status_label.setText(f"cookies.txt: найден ({file_size} байт)")
+        else:
+            self._cookies_status_label.setText("cookies.txt: не найден")
+
+        self._cookies_status_label.setToolTip(str(cookies_file))
+
+    def _set_download_controls_enabled(self, *, is_enabled: bool) -> None:
+        self._start_queue_button.setEnabled(is_enabled)
+        self._remove_from_queue_button.setEnabled(is_enabled)
+        self._add_to_queue_button.setEnabled(is_enabled)
+        self._choose_downloads_dir_button.setEnabled(is_enabled)
+        self._delete_cookies_button.setEnabled(is_enabled)

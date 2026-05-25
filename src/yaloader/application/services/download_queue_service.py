@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from threading import RLock
+from typing import Final
 from uuid import UUID
 
 from yaloader.application.dto.download_request import DownloadRequest
@@ -8,6 +9,18 @@ from yaloader.application.dto.download_result import DownloadResult
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
 from yaloader.domain.value_objects.media_url import MediaUrl
+
+DOWNLOADABLE_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
+    {
+        DownloadStatus.PENDING,
+        DownloadStatus.FAILED,
+        DownloadStatus.CANCELED,
+    }
+)
+
+
+def is_downloadable(task: DownloadTask) -> bool:
+    return task.status in DOWNLOADABLE_STATUSES
 
 
 class DownloadQueueService:
@@ -41,6 +54,18 @@ class DownloadQueueService:
 
             return self._tasks[task_index]
 
+    def remove_task(self, task_id: UUID) -> DownloadTask | None:
+        with self._lock:
+            task_index = self._task_index_by_id.get(task_id)
+
+            if task_index is None:
+                return None
+
+            removed_task = self._tasks.pop(task_index)
+            self._rebuild_task_index()
+
+            return removed_task
+
     def update_status(
         self,
         *,
@@ -73,6 +98,15 @@ class DownloadQueueService:
         with self._lock:
             return tuple(self._tasks)
 
+    def list_downloadable_tasks(self) -> tuple[DownloadTask, ...]:
+        with self._lock:
+            return tuple(task for task in self._tasks if is_downloadable(task))
+
     def count(self) -> int:
         with self._lock:
             return len(self._tasks)
+
+    def _rebuild_task_index(self) -> None:
+        self._task_index_by_id = {
+            task.task_id: task_index for task_index, task in enumerate(self._tasks)
+        }
