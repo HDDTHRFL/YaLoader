@@ -26,6 +26,11 @@ from yaloader.domain.enums import OutputFormat, VideoQuality
 from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.services.app_container import AppContainer
 
+WINDOW_INITIAL_WIDTH = 1180
+WINDOW_INITIAL_HEIGHT = 660
+WINDOW_MINIMUM_WIDTH = 1040
+WINDOW_MINIMUM_HEIGHT = 560
+
 MODE_COLUMN_WIDTH = 72
 URL_COLUMN_WIDTH = 420
 QUALITY_COLUMN_WIDTH = 96
@@ -53,8 +58,8 @@ class MainWindow(QMainWindow):
 
     def _configure_window(self) -> None:
         self.setWindowTitle(APP_DISPLAY_NAME)
-        self.resize(980, 620)
-        self.setMinimumSize(860, 520)
+        self.resize(WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT)
+        self.setMinimumSize(WINDOW_MINIMUM_WIDTH, WINDOW_MINIMUM_HEIGHT)
 
     def _configure_widgets(self) -> None:
         self._url_input.setPlaceholderText("Вставьте ссылку на YouTube, Shorts или плейлист")
