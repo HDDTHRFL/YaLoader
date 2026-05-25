@@ -9,7 +9,7 @@ from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
 
 
-def test_download_request_accepts_valid_absolute_target_dir(tmp_path: Path) -> None:
+def test_download_request_accepts_valid_video_request(tmp_path: Path) -> None:
     request = DownloadRequest(
         url=" https://www.youtube.com/watch?v=test ",
         target_dir=tmp_path,
@@ -25,6 +25,18 @@ def test_download_request_accepts_valid_absolute_target_dir(tmp_path: Path) -> N
     assert request.video_quality == VideoQuality.BEST
 
 
+def test_download_request_accepts_valid_audio_request(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        mode=DownloadMode.AUDIO,
+        output_format=OutputFormat.MP3,
+    )
+
+    assert request.mode == DownloadMode.AUDIO
+    assert request.output_format == OutputFormat.MP3
+
+
 def test_download_request_rejects_invalid_url(tmp_path: Path) -> None:
     with pytest.raises(ValidationError):
         DownloadRequest(
@@ -38,4 +50,24 @@ def test_download_request_rejects_relative_target_dir() -> None:
         DownloadRequest(
             url="https://www.youtube.com/watch?v=test",
             target_dir=Path("downloads"),
+        )
+
+
+def test_download_request_rejects_audio_format_for_video_mode(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        DownloadRequest(
+            url="https://www.youtube.com/watch?v=test",
+            target_dir=tmp_path,
+            mode=DownloadMode.VIDEO,
+            output_format=OutputFormat.MP3,
+        )
+
+
+def test_download_request_rejects_video_format_for_audio_mode(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        DownloadRequest(
+            url="https://www.youtube.com/watch?v=test",
+            target_dir=tmp_path,
+            mode=DownloadMode.AUDIO,
+            output_format=OutputFormat.MP4,
         )

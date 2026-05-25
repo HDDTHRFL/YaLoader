@@ -23,8 +23,10 @@ from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import OutputFormat, VideoQuality
+from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.services.app_container import AppContainer
 
+MODE_COLUMN_WIDTH = 72
 URL_COLUMN_WIDTH = 420
 QUALITY_COLUMN_WIDTH = 96
 FORMAT_COLUMN_WIDTH = 76
@@ -70,9 +72,10 @@ class MainWindow(QMainWindow):
         self._status_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
     def _configure_queue_table(self) -> None:
-        self._queue_table.setColumnCount(5)
+        self._queue_table.setColumnCount(6)
         self._queue_table.setHorizontalHeaderLabels(
             [
+                "Режим",
                 "Ссылка",
                 "Качество",
                 "Формат",
@@ -85,11 +88,12 @@ class MainWindow(QMainWindow):
         self._queue_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._queue_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
 
-        self._queue_table.setColumnWidth(0, URL_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(1, QUALITY_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(2, FORMAT_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(3, STATUS_COLUMN_WIDTH)
-        self._queue_table.setColumnWidth(4, FOLDER_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(0, MODE_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(1, URL_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(2, QUALITY_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(3, FORMAT_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(4, STATUS_COLUMN_WIDTH)
+        self._queue_table.setColumnWidth(5, FOLDER_COLUMN_WIDTH)
 
     def _connect_signals(self) -> None:
         self._download_button.clicked.connect(self._handle_add_to_queue_clicked)
@@ -191,15 +195,20 @@ class MainWindow(QMainWindow):
             self._status_label.setText("Сначала вставьте ссылку")
             return
 
+        selected_output_format = self._get_selected_output_format()
+        selected_video_quality = self._get_selected_video_quality()
+
         try:
             request = DownloadRequest(
                 url=url,
                 target_dir=self._container.paths.downloads_dir,
-                output_format=self._get_selected_output_format(),
-                video_quality=self._get_selected_video_quality(),
+                mode=get_download_mode_for_output_format(output_format=selected_output_format),
+                output_format=selected_output_format,
+                video_quality=selected_video_quality,
             )
         except ValidationError as error:
-            self._status_label.setText(f"Некорректная задача загрузки: {error.errors()[0]['msg']}")
+            first_error_message = error.errors()[0]["msg"]
+            self._status_label.setText(f"Некорректная задача загрузки: {first_error_message}")
             return
 
         task = self._container.download_queue_service.add_download(request=request)
@@ -221,6 +230,7 @@ class MainWindow(QMainWindow):
         self._queue_table.insertRow(row_index)
 
         values = (
+            task.mode.value,
             task.url.value,
             task.video_quality.value,
             task.output_format.value,
