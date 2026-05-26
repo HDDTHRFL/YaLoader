@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
 from yaloader.domain.format_rules import is_output_format_allowed
+from yaloader.domain.source_policy import validate_supported_media_url
 from yaloader.domain.value_objects.media_url import MediaUrl
 
 
@@ -27,7 +28,8 @@ class DownloadRequest(BaseModel):
     @field_validator("url")
     @classmethod
     def validate_url(cls, value: str) -> str:
-        return MediaUrl(value=value).value
+        media_url = MediaUrl(value=value)
+        return validate_supported_media_url(url=media_url.value)
 
     @field_validator("target_dir")
     @classmethod

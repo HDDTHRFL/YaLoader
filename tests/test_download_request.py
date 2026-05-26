@@ -37,10 +37,27 @@ def test_download_request_accepts_valid_audio_request(tmp_path: Path) -> None:
     assert request.output_format == OutputFormat.MP3
 
 
+def test_download_request_accepts_youtube_short_url(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url="https://youtu.be/test",
+        target_dir=tmp_path,
+    )
+
+    assert request.url == "https://youtu.be/test"
+
+
 def test_download_request_rejects_invalid_url(tmp_path: Path) -> None:
     with pytest.raises(ValidationError):
         DownloadRequest(
             url="not-a-url",
+            target_dir=tmp_path,
+        )
+
+
+def test_download_request_rejects_unsupported_host(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        DownloadRequest(
+            url="https://example.com/video",
             target_dir=tmp_path,
         )
 
