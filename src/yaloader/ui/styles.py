@@ -17,6 +17,12 @@ QFrame#PanelFrame {
     border-radius: 14px;
 }
 
+QFrame#EnvironmentPanel {
+    background-color: #12161D;
+    border: 1px solid #252B35;
+    border-radius: 14px;
+}
+
 QLabel#TitleLabel {
     font-size: 24pt;
     font-weight: 700;
@@ -34,6 +40,12 @@ QLabel#SectionTitleLabel {
     color: #F3F5F7;
 }
 
+QLabel#SmallSectionTitleLabel {
+    font-size: 10pt;
+    font-weight: 600;
+    color: #C9D1D9;
+}
+
 QLabel#FieldLabel {
     font-size: 10pt;
     font-weight: 600;
@@ -46,6 +58,26 @@ QLabel#MutedLabel {
 
 QLabel#StatusLabel {
     color: #9AA4B2;
+}
+
+QLabel#StatusChip {
+    padding: 4px 10px;
+    border-radius: 10px;
+    background-color: #0D1117;
+    border: 1px solid #30363D;
+    color: #AEB8C4;
+}
+
+QLabel#StatusChip[state="ok"] {
+    color: #A7F3D0;
+    border-color: #1F6F4A;
+    background-color: #0D1F18;
+}
+
+QLabel#StatusChip[state="warning"] {
+    color: #FCD34D;
+    border-color: #7C5E10;
+    background-color: #211A0B;
 }
 
 QLineEdit {
@@ -105,24 +137,67 @@ QComboBox QAbstractItemView {
 QPushButton {
     min-height: 36px;
     padding: 0 18px;
-    background-color: #238636;
-    color: #FFFFFF;
     border: none;
     border-radius: 10px;
     font-weight: 600;
 }
 
+QPushButton#PrimaryButton,
+QPushButton {
+    background-color: #238636;
+    color: #FFFFFF;
+}
+
+QPushButton#PrimaryButton:hover,
 QPushButton:hover {
     background-color: #2EA043;
 }
 
+QPushButton#PrimaryButton:pressed,
 QPushButton:pressed {
     background-color: #1F6F2A;
+}
+
+QPushButton#SecondaryButton {
+    background-color: #21262D;
+    color: #C9D1D9;
+    border: 1px solid #30363D;
+}
+
+QPushButton#SecondaryButton:hover {
+    background-color: #30363D;
+}
+
+QPushButton#GhostButton {
+    min-height: 28px;
+    padding: 0 12px;
+    background-color: transparent;
+    color: #8B949E;
+    border: 1px solid #30363D;
+    border-radius: 8px;
+    font-weight: 500;
+}
+
+QPushButton#GhostButton:hover {
+    background-color: #1B2028;
+    color: #C9D1D9;
+}
+
+QPushButton#DangerGhostButton {
+    background-color: transparent;
+    color: #FCA5A5;
+    border: 1px solid #553333;
+}
+
+QPushButton#DangerGhostButton:hover {
+    background-color: #2A1518;
+    color: #FECACA;
 }
 
 QPushButton:disabled {
     background-color: #2D333B;
     color: #7D8590;
+    border-color: #30363D;
 }
 
 QProgressBar {

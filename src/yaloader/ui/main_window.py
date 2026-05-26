@@ -7,8 +7,8 @@ from typing import override
 from uuid import UUID
 
 from pydantic import ValidationError
-from PyQt6.QtCore import QTimerEvent
-from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtCore import QTimerEvent, QUrl
+from PyQt6.QtGui import QCloseEvent, QDesktopServices
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -30,12 +30,13 @@ from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.services.app_container import AppContainer
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
 from yaloader.ui.widgets.download_queue_table import DownloadQueueTable
+from yaloader.ui.widgets.environment_panel import EnvironmentPanel
 from yaloader.ui.widgets.settings_panel import SettingsPanel
 
 WINDOW_INITIAL_WIDTH = 1180
-WINDOW_INITIAL_HEIGHT = 850
+WINDOW_INITIAL_HEIGHT = 920
 WINDOW_MINIMUM_WIDTH = 1040
-WINDOW_MINIMUM_HEIGHT = 680
+WINDOW_MINIMUM_HEIGHT = 760
 
 DOWNLOAD_WORKERS_COUNT = 1
 DOWNLOAD_POLL_INTERVAL_MS = 250
@@ -50,6 +51,7 @@ class MainWindow(QMainWindow):
 
         self._input_panel = DownloadInputPanel(self)
         self._settings_panel = SettingsPanel(self)
+        self._environment_panel = EnvironmentPanel(self)
         self._queue_table = DownloadQueueTable(self)
         self._start_queue_button = QPushButton("Скачать очередь", self)
         self._remove_from_queue_button = QPushButton("Удалить выбранное", self)
@@ -73,7 +75,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self._build_central_widget())
 
         self._update_downloads_dir_label()
-        self._update_cookies_status_label()
+        self._update_cookies_file_path()
+        self._refresh_environment_status()
 
     @override
     def closeEvent(self, event: QCloseEvent | None) -> None:
@@ -96,6 +99,9 @@ class MainWindow(QMainWindow):
 
     def _configure_widgets(self) -> None:
         self._status_label.setObjectName("StatusLabel")
+        self._start_queue_button.setObjectName("PrimaryButton")
+        self._remove_from_queue_button.setObjectName("SecondaryButton")
+        self._clear_queue_button.setObjectName("SecondaryButton")
         self._queue_table.set_context_menu_callbacks(
             on_download_task=self._start_single_task_download,
             on_remove_task=self._remove_task_from_queue,
@@ -112,6 +118,9 @@ class MainWindow(QMainWindow):
         self._settings_panel.delete_cookies_button.clicked.connect(
             self._handle_delete_cookies_clicked
         )
+        self._environment_panel.refresh_button.clicked.connect(self._refresh_environment_status)
+        self._environment_panel.open_cookies_dir_button.clicked.connect(self._open_cookies_dir)
+        self._environment_panel.open_downloads_dir_button.clicked.connect(self._open_downloads_dir)
 
     def _build_central_widget(self) -> QWidget:
         central_widget = QWidget(self)
@@ -123,6 +132,7 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(self._input_panel)
         root_layout.addWidget(self._settings_panel)
         root_layout.addWidget(self._build_queue_panel(), stretch=1)
+        root_layout.addWidget(self._environment_panel)
         root_layout.addWidget(self._build_footer())
 
         return central_widget
@@ -230,6 +240,7 @@ class MainWindow(QMainWindow):
             downloads_dir=downloads_dir,
         )
         self._update_downloads_dir_label()
+        self._refresh_environment_status()
         self._status_label.setText(f"Папка загрузок изменена: {downloads_dir}")
 
     def _handle_delete_cookies_clicked(self) -> None:
@@ -237,18 +248,18 @@ class MainWindow(QMainWindow):
 
         if not cookies_file.is_file():
             self._status_label.setText(f"cookies.txt не найден: {cookies_file}")
-            self._update_cookies_status_label()
+            self._refresh_environment_status()
             return
 
         try:
             cookies_file.unlink()
         except OSError as error:
             self._status_label.setText(f"Не удалось удалить cookies.txt: {error}")
-            self._update_cookies_status_label()
+            self._refresh_environment_status()
             return
 
         self._status_label.setText(f"cookies.txt удалён безвозвратно: {cookies_file}")
-        self._update_cookies_status_label()
+        self._refresh_environment_status()
 
     def _handle_start_queue_clicked(self) -> None:
         if self._active_download_future is not None:
@@ -411,11 +422,28 @@ class MainWindow(QMainWindow):
         self._queue_table.reload_tasks(self._container.download_queue_service.list_tasks())
         self._status_label.setText(f"Удалено из очереди: {removed_task.url.value}")
 
+    def _refresh_environment_status(self) -> None:
+        status = self._container.environment_check_service.check(
+            downloads_dir=self._settings.downloads_dir,
+        )
+        self._environment_panel.set_status(status=status)
+
+    def _open_cookies_dir(self) -> None:
+        self._container.paths.data_dir.mkdir(parents=True, exist_ok=True)
+        self._open_directory(self._container.paths.data_dir)
+
+    def _open_downloads_dir(self) -> None:
+        self._settings.downloads_dir.mkdir(parents=True, exist_ok=True)
+        self._open_directory(self._settings.downloads_dir)
+
+    def _open_directory(self, directory: Path) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
+
     def _update_downloads_dir_label(self) -> None:
         self._settings_panel.set_downloads_dir(downloads_dir=self._settings.downloads_dir)
 
-    def _update_cookies_status_label(self) -> None:
-        self._settings_panel.set_cookies_status(cookies_file=self._container.paths.cookies_file)
+    def _update_cookies_file_path(self) -> None:
+        self._settings_panel.set_cookies_file_path(cookies_file=self._container.paths.cookies_file)
 
     def _set_download_controls_enabled(self, *, is_enabled: bool) -> None:
         self._start_queue_button.setEnabled(is_enabled)
@@ -424,3 +452,6 @@ class MainWindow(QMainWindow):
         self._input_panel.add_to_queue_button.setEnabled(is_enabled)
         self._settings_panel.choose_downloads_dir_button.setEnabled(is_enabled)
         self._settings_panel.delete_cookies_button.setEnabled(is_enabled)
+        self._environment_panel.refresh_button.setEnabled(is_enabled)
+        self._environment_panel.open_cookies_dir_button.setEnabled(is_enabled)
+        self._environment_panel.open_downloads_dir_button.setEnabled(is_enabled)
