@@ -118,3 +118,19 @@ class DownloadQueueService:
         self._task_index_by_id = {
             task.task_id: task_index for task_index, task in enumerate(self._tasks)
         }
+
+    def contains_url(self, url: str) -> bool:
+        normalized_url = MediaUrl(value=url).value
+
+        with self._lock:
+            return any(task.url.value == normalized_url for task in self._tasks)
+
+    def get_task_by_url(self, url: str) -> DownloadTask | None:
+        normalized_url = MediaUrl(value=url).value
+
+        with self._lock:
+            for task in self._tasks:
+                if task.url.value == normalized_url:
+                    return task
+
+        return None

@@ -195,3 +195,41 @@ def create_video_request(
         output_format=output_format,
         video_quality=video_quality,
     )
+
+
+def test_contains_url_returns_true_for_existing_url(tmp_path: Path) -> None:
+    service = DownloadQueueService()
+    service.add_download(
+        request=create_video_request(
+            target_dir=tmp_path,
+            url=" https://www.youtube.com/watch?v=test ",
+        )
+    )
+
+    assert service.contains_url("https://www.youtube.com/watch?v=test") is True
+
+
+def test_contains_url_returns_false_for_missing_url(tmp_path: Path) -> None:
+    service = DownloadQueueService()
+    service.add_download(
+        request=create_video_request(
+            target_dir=tmp_path,
+            url="https://www.youtube.com/watch?v=first",
+        )
+    )
+
+    assert service.contains_url("https://www.youtube.com/watch?v=second") is False
+
+
+def test_get_task_by_url_returns_existing_task(tmp_path: Path) -> None:
+    service = DownloadQueueService()
+    task = service.add_download(
+        request=create_video_request(
+            target_dir=tmp_path,
+            url="https://www.youtube.com/watch?v=test",
+        )
+    )
+
+    found_task = service.get_task_by_url("https://www.youtube.com/watch?v=test")
+
+    assert found_task == task

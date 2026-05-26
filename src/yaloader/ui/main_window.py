@@ -216,6 +216,12 @@ class MainWindow(QMainWindow):
             self._status_label.setText(f"Некорректная задача загрузки: {first_error_message}")
             return
 
+        existing_task = self._container.download_queue_service.get_task_by_url(url=request.url)
+
+        if existing_task is not None:
+            self._status_label.setText("Эта ссылка уже есть в очереди")
+            return
+
         task = self._container.download_queue_service.add_download(request=request)
         self._queue_table.append_task(task=task)
 
