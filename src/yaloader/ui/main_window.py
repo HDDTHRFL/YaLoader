@@ -75,7 +75,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self._build_central_widget())
 
         self._update_downloads_dir_label()
-        self._update_cookies_file_path()
         self._refresh_environment_status()
 
     @override
@@ -115,10 +114,12 @@ class MainWindow(QMainWindow):
         self._settings_panel.choose_downloads_dir_button.clicked.connect(
             self._handle_choose_downloads_dir_clicked
         )
-        self._settings_panel.delete_cookies_button.clicked.connect(
+        self._environment_panel.delete_cookies_button.clicked.connect(
             self._handle_delete_cookies_clicked
         )
-        self._environment_panel.refresh_button.clicked.connect(self._refresh_environment_status)
+        self._environment_panel.refresh_button.clicked.connect(
+            self._handle_refresh_environment_status_clicked
+        )
         self._environment_panel.open_cookies_dir_button.clicked.connect(self._open_cookies_dir)
         self._environment_panel.open_downloads_dir_button.clicked.connect(self._open_downloads_dir)
 
@@ -130,8 +131,8 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(self._build_header())
         root_layout.addWidget(self._input_panel)
-        root_layout.addWidget(self._settings_panel)
         root_layout.addWidget(self._build_queue_panel(), stretch=1)
+        root_layout.addWidget(self._settings_panel)
         root_layout.addWidget(self._environment_panel)
         root_layout.addWidget(self._build_footer())
 
@@ -428,6 +429,10 @@ class MainWindow(QMainWindow):
         )
         self._environment_panel.set_status(status=status)
 
+    def _handle_refresh_environment_status_clicked(self) -> None:
+        self._refresh_environment_status()
+        self._environment_panel.play_refresh_feedback()
+
     def _open_cookies_dir(self) -> None:
         self._container.paths.data_dir.mkdir(parents=True, exist_ok=True)
         self._open_directory(self._container.paths.data_dir)
@@ -442,16 +447,13 @@ class MainWindow(QMainWindow):
     def _update_downloads_dir_label(self) -> None:
         self._settings_panel.set_downloads_dir(downloads_dir=self._settings.downloads_dir)
 
-    def _update_cookies_file_path(self) -> None:
-        self._settings_panel.set_cookies_file_path(cookies_file=self._container.paths.cookies_file)
-
     def _set_download_controls_enabled(self, *, is_enabled: bool) -> None:
         self._start_queue_button.setEnabled(is_enabled)
         self._remove_from_queue_button.setEnabled(is_enabled)
         self._clear_queue_button.setEnabled(is_enabled)
         self._input_panel.add_to_queue_button.setEnabled(is_enabled)
         self._settings_panel.choose_downloads_dir_button.setEnabled(is_enabled)
-        self._settings_panel.delete_cookies_button.setEnabled(is_enabled)
+        self._environment_panel.delete_cookies_button.setEnabled(is_enabled)
         self._environment_panel.refresh_button.setEnabled(is_enabled)
         self._environment_panel.open_cookies_dir_button.setEnabled(is_enabled)
         self._environment_panel.open_downloads_dir_button.setEnabled(is_enabled)

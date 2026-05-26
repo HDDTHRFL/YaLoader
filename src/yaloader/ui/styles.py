@@ -17,12 +17,6 @@ QFrame#PanelFrame {
     border-radius: 14px;
 }
 
-QFrame#EnvironmentPanel {
-    background-color: #12161D;
-    border: 1px solid #252B35;
-    border-radius: 14px;
-}
-
 QLabel#TitleLabel {
     font-size: 24pt;
     font-weight: 700;
@@ -60,24 +54,53 @@ QLabel#StatusLabel {
     color: #9AA4B2;
 }
 
-QLabel#StatusChip {
-    padding: 4px 10px;
+QFrame#StatusChipFrame {
     border-radius: 10px;
     background-color: #0D1117;
     border: 1px solid #30363D;
-    color: #AEB8C4;
 }
 
-QLabel#StatusChip[state="ok"] {
-    color: #A7F3D0;
+QFrame#StatusChipFrame[state="ok"] {
     border-color: #1F6F4A;
     background-color: #0D1F18;
 }
 
-QLabel#StatusChip[state="warning"] {
-    color: #FCD34D;
+QFrame#StatusChipFrame[state="warning"] {
     border-color: #7C5E10;
     background-color: #211A0B;
+}
+
+QFrame#StatusChipFrame[refreshing="true"] {
+    border-color: #2F81F7;
+    background-color: #11233A;
+}
+
+QLabel#StatusDot {
+    min-width: 10px;
+    max-width: 10px;
+    margin-top: -2px;
+    font-size: 8pt;
+    color: #8B949E;
+}
+
+QLabel#StatusDot[state="ok"] {
+    color: #34D399;
+}
+
+QLabel#StatusDot[state="warning"] {
+    color: #FCD34D;
+}
+
+QLabel#StatusChipText {
+    color: #AEB8C4;
+}
+
+QFrame#StatusChipFrame[state="ok"] QLabel#StatusChipText {
+    color: #A7F3D0;
+}
+
+QFrame#StatusChipFrame[state="warning"] QLabel#StatusChipText {
+    color: #FCD34D;
 }
 
 QLineEdit {
@@ -181,6 +204,38 @@ QPushButton#GhostButton {
 QPushButton#GhostButton:hover {
     background-color: #1B2028;
     color: #C9D1D9;
+}
+
+QPushButton#TinyGhostButton {
+    min-height: 24px;
+    padding: 0 10px;
+    background-color: transparent;
+    color: #7D8590;
+    border: 1px solid #30363D;
+    border-radius: 7px;
+    font-weight: 500;
+    font-size: 9pt;
+}
+
+QPushButton#TinyGhostButton:hover {
+    background-color: #1B2028;
+    color: #C9D1D9;
+}
+
+QPushButton#TinyDangerButton {
+    min-height: 24px;
+    padding: 0 10px;
+    background-color: transparent;
+    color: #FCA5A5;
+    border: 1px solid #553333;
+    border-radius: 7px;
+    font-weight: 500;
+    font-size: 9pt;
+}
+
+QPushButton#TinyDangerButton:hover {
+    background-color: #2A1518;
+    color: #FECACA;
 }
 
 QPushButton#DangerGhostButton {
