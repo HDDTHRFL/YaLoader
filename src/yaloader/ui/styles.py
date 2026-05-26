@@ -181,6 +181,19 @@ QPushButton:pressed {
     background-color: #1F6F2A;
 }
 
+QPushButton#DangerButton {
+    background-color: #B42318;
+    color: #FFFFFF;
+}
+
+QPushButton#DangerButton:hover {
+    background-color: #D92D20;
+}
+
+QPushButton#DangerButton:pressed {
+    background-color: #912018;
+}
+
 QPushButton#SecondaryButton {
     background-color: #21262D;
     color: #C9D1D9;

@@ -12,7 +12,7 @@ from uuid import UUID
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
-from yaloader.application.ports.downloader import ProgressCallback
+from yaloader.application.ports.downloader import CancellationToken, ProgressCallback
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
 
@@ -27,6 +27,10 @@ PERCENT_MULTIPLIER = 100.0
 
 YtDlpProgressInfo = Mapping[str, object]
 YtDlpProgressHook = Callable[[YtDlpProgressInfo], None]
+
+
+class DownloadCancelledError(RuntimeError):
+    pass
 
 
 class YtDlpBackend(Protocol):
@@ -85,9 +89,11 @@ class YtDlpDownloader:
         self,
         task: DownloadTask,
         progress_callback: ProgressCallback | None = None,
+        cancellation_token: CancellationToken | None = None,
     ) -> DownloadResult:
         request = self._build_request_from_task(task=task)
         options = self.options_builder.build(request=request)
+        existing_files = collect_files(download_dir=task.target_dir)
 
         if progress_callback is not None:
             progress_callback(DownloadProgress.started(task_id=task.task_id))
@@ -95,11 +101,19 @@ class YtDlpDownloader:
                 self._build_progress_hook(
                     task_id=task.task_id,
                     progress_callback=progress_callback,
+                    cancellation_token=cancellation_token,
                 )
             ]
 
         try:
             self.backend.download(urls=(task.url.value,), options=options)
+        except DownloadCancelledError:
+            cleanup_created_files(download_dir=task.target_dir, existing_files=existing_files)
+
+            if progress_callback is not None:
+                progress_callback(DownloadProgress.canceled(task_id=task.task_id))
+
+            return DownloadResult.canceled(task_id=task.task_id)
         except Exception as error:
             if progress_callback is not None:
                 progress_callback(DownloadProgress.failed(task_id=task.task_id))
@@ -108,6 +122,14 @@ class YtDlpDownloader:
                 task_id=task.task_id,
                 error_message=self._build_error_message(error=error),
             )
+
+        if cancellation_token is not None and cancellation_token.is_cancel_requested:
+            cleanup_created_files(download_dir=task.target_dir, existing_files=existing_files)
+
+            if progress_callback is not None:
+                progress_callback(DownloadProgress.canceled(task_id=task.task_id))
+
+            return DownloadResult.canceled(task_id=task.task_id)
 
         if progress_callback is not None:
             progress_callback(DownloadProgress.completed(task_id=task.task_id))
@@ -129,8 +151,12 @@ class YtDlpDownloader:
         *,
         task_id: UUID,
         progress_callback: ProgressCallback,
+        cancellation_token: CancellationToken | None,
     ) -> YtDlpProgressHook:
         def hook(progress_info: YtDlpProgressInfo) -> None:
+            if cancellation_token is not None and cancellation_token.is_cancel_requested:
+                raise DownloadCancelledError
+
             progress = build_download_progress(
                 task_id=task_id,
                 progress_info=progress_info,
@@ -240,6 +266,32 @@ def calculate_percent(
 
 def strip_ansi_escape_sequences(text: str) -> str:
     return ANSI_ESCAPE_SEQUENCE_RE.sub("", text)
+
+
+def collect_files(*, download_dir: Path) -> frozenset[Path]:
+    if not download_dir.exists():
+        return frozenset()
+
+    return frozenset(path.resolve() for path in download_dir.rglob("*") if path.is_file())
+
+
+def cleanup_created_files(*, download_dir: Path, existing_files: frozenset[Path]) -> None:
+    if not download_dir.exists():
+        return
+
+    for file_path in sorted(download_dir.rglob("*"), reverse=True):
+        if not file_path.is_file():
+            continue
+
+        resolved_path = file_path.resolve()
+
+        if resolved_path in existing_files:
+            continue
+
+        try:
+            file_path.unlink()
+        except OSError:
+            continue
 
 
 def load_youtube_dl_factory() -> YoutubeDLFactory:

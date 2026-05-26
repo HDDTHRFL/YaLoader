@@ -16,10 +16,12 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
 
+from yaloader.application.dto.cancellation import DownloadCancellationToken
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
@@ -67,6 +69,7 @@ class MainWindow(QMainWindow):
         )
         self._active_download_future: Future[DownloadResult] | None = None
         self._active_download_task_id: UUID | None = None
+        self._active_cancellation_token: DownloadCancellationToken | None = None
         self._download_poll_timer = self.startTimer(DOWNLOAD_POLL_INTERVAL_MS)
 
         self._configure_window()
@@ -79,6 +82,9 @@ class MainWindow(QMainWindow):
 
     @override
     def closeEvent(self, event: QCloseEvent | None) -> None:
+        if self._active_cancellation_token is not None:
+            self._active_cancellation_token.request_cancel()
+
         self.killTimer(self._download_poll_timer)
         self._download_executor.shutdown(wait=False, cancel_futures=True)
         super().closeEvent(event)
@@ -103,12 +109,14 @@ class MainWindow(QMainWindow):
         self._clear_queue_button.setObjectName("SecondaryButton")
         self._queue_table.set_context_menu_callbacks(
             on_download_task=self._start_single_task_download,
+            on_cancel_task=self._cancel_task_download,
             on_remove_task=self._remove_task_from_queue,
         )
+        self._sync_start_queue_button_state()
 
     def _connect_signals(self) -> None:
         self._input_panel.add_to_queue_button.clicked.connect(self._handle_add_to_queue_clicked)
-        self._start_queue_button.clicked.connect(self._handle_start_queue_clicked)
+        self._start_queue_button.clicked.connect(self._handle_start_or_cancel_queue_clicked)
         self._remove_from_queue_button.clicked.connect(self._handle_remove_selected_task_clicked)
         self._clear_queue_button.clicked.connect(self._handle_clear_queue_clicked)
         self._settings_panel.choose_downloads_dir_button.clicked.connect(
@@ -268,6 +276,13 @@ class MainWindow(QMainWindow):
         self._status_label.setText(f"cookies.txt удалён безвозвратно: {cookies_file}")
         self._refresh_environment_status()
 
+    def _handle_start_or_cancel_queue_clicked(self) -> None:
+        if self._active_download_future is not None:
+            self._cancel_active_download()
+            return
+
+        self._handle_start_queue_clicked()
+
     def _handle_start_queue_clicked(self) -> None:
         if self._active_download_future is not None:
             self._status_label.setText("Сейчас уже выполняется загрузка")
@@ -348,10 +363,12 @@ class MainWindow(QMainWindow):
                 DownloadProgress.started(task_id=running_task.task_id)
             )
             self._active_download_task_id = running_task.task_id
+            self._active_cancellation_token = DownloadCancellationToken()
             self._active_download_future = self._download_executor.submit(
                 self._container.downloader.download,
-                running_task,
-                self._handle_download_progress,
+                task=running_task,
+                progress_callback=self._handle_download_progress,
+                cancellation_token=self._active_cancellation_token,
             )
             self._set_download_controls_enabled(is_enabled=False)
             self._status_label.setText(f"Загрузка запущена: {running_task.url.value}")
@@ -359,6 +376,22 @@ class MainWindow(QMainWindow):
 
         self._set_download_controls_enabled(is_enabled=True)
         self._status_label.setText("Очередь загрузок завершена")
+
+    def _cancel_active_download(self) -> None:
+        if self._active_cancellation_token is None or self._active_download_task_id is None:
+            self._status_label.setText("Нет активной загрузки для отмены")
+            return
+
+        self._queued_download_task_ids.clear()
+        self._active_cancellation_token.request_cancel()
+        self._status_label.setText("Отмена загрузки... Частичные файлы будут удалены")
+
+    def _cancel_task_download(self, task_id: UUID) -> None:
+        if self._active_download_task_id != task_id:
+            self._status_label.setText("Отменить можно только активную загрузку")
+            return
+
+        self._cancel_active_download()
 
     def _handle_download_progress(self, progress: DownloadProgress) -> None:
         self._progress_events.put(progress)
@@ -375,6 +408,7 @@ class MainWindow(QMainWindow):
         future = self._active_download_future
         self._active_download_future = None
         self._active_download_task_id = None
+        self._active_cancellation_token = None
 
         try:
             result = future.result()
@@ -397,6 +431,10 @@ class MainWindow(QMainWindow):
 
         if result.status is DownloadStatus.COMPLETED:
             self._status_label.setText("Очередь загрузок завершена")
+            return
+
+        if result.status is DownloadStatus.CANCELED:
+            self._status_label.setText("Загрузка отменена. Частичные файлы удалены")
             return
 
         self._status_label.setText(f"Загрузка завершилась ошибкой: {result.error_message}")
@@ -454,7 +492,7 @@ class MainWindow(QMainWindow):
         self._settings_panel.set_downloads_dir(downloads_dir=self._settings.downloads_dir)
 
     def _set_download_controls_enabled(self, *, is_enabled: bool) -> None:
-        self._start_queue_button.setEnabled(is_enabled)
+        self._start_queue_button.setEnabled(True)
         self._remove_from_queue_button.setEnabled(is_enabled)
         self._clear_queue_button.setEnabled(is_enabled)
         self._input_panel.add_to_queue_button.setEnabled(is_enabled)
@@ -463,3 +501,18 @@ class MainWindow(QMainWindow):
         self._environment_panel.refresh_button.setEnabled(is_enabled)
         self._environment_panel.open_cookies_dir_button.setEnabled(is_enabled)
         self._environment_panel.open_downloads_dir_button.setEnabled(is_enabled)
+        self._sync_start_queue_button_state()
+
+    def _sync_start_queue_button_state(self) -> None:
+        if self._active_download_future is not None:
+            self._start_queue_button.setText("Отменить загрузку")
+            self._start_queue_button.setObjectName("DangerButton")
+        else:
+            self._start_queue_button.setText("Скачать очередь")
+            self._start_queue_button.setObjectName("PrimaryButton")
+
+        style = self._start_queue_button.style()
+
+        if isinstance(style, QStyle):
+            style.unpolish(self._start_queue_button)
+            style.polish(self._start_queue_button)

@@ -10,9 +10,15 @@ from yaloader.domain.entities.download_task import DownloadTask
 ProgressCallback = Callable[[DownloadProgress], None]
 
 
+class CancellationToken(Protocol):
+    @property
+    def is_cancel_requested(self) -> bool: ...
+
+
 class Downloader(Protocol):
     def download(
         self,
         task: DownloadTask,
         progress_callback: ProgressCallback | None = None,
+        cancellation_token: CancellationToken | None = None,
     ) -> DownloadResult: ...

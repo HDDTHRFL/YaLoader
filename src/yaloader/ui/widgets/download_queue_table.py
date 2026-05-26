@@ -5,7 +5,7 @@ from typing import cast, override
 from uuid import UUID
 
 from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QResizeEvent
+from PyQt6.QtGui import QAction, QResizeEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -57,7 +57,9 @@ class DownloadQueueTable(QTableWidget):
 
         self._task_ids_by_row: dict[int, UUID] = {}
         self._row_by_task_id: dict[UUID, int] = {}
+        self._tasks_by_id: dict[UUID, DownloadTask] = {}
         self._on_download_task: Callable[[UUID], None] | None = None
+        self._on_cancel_task: Callable[[UUID], None] | None = None
         self._on_remove_task: Callable[[UUID], None] | None = None
 
         self._configure_table()
@@ -71,9 +73,11 @@ class DownloadQueueTable(QTableWidget):
         self,
         *,
         on_download_task: Callable[[UUID], None],
+        on_cancel_task: Callable[[UUID], None],
         on_remove_task: Callable[[UUID], None],
     ) -> None:
         self._on_download_task = on_download_task
+        self._on_cancel_task = on_cancel_task
         self._on_remove_task = on_remove_task
 
     def append_task(self, task: DownloadTask) -> None:
@@ -81,6 +85,7 @@ class DownloadQueueTable(QTableWidget):
         self.insertRow(row_index)
         self._task_ids_by_row[row_index] = task.task_id
         self._row_by_task_id[task.task_id] = row_index
+        self._tasks_by_id[task.task_id] = task
 
         self._set_task_row_values(row_index=row_index, task=task)
         self._set_progress_bar(row_index=row_index, task=task)
@@ -93,6 +98,7 @@ class DownloadQueueTable(QTableWidget):
         if row_index is None:
             return
 
+        self._tasks_by_id[task.task_id] = task
         self._set_task_row_values(row_index=row_index, task=task)
         self._sync_progress_bar_with_status(row_index=row_index, task=task)
         self.resizeRowsToContents()
@@ -102,6 +108,7 @@ class DownloadQueueTable(QTableWidget):
         self.setRowCount(0)
         self._task_ids_by_row.clear()
         self._row_by_task_id.clear()
+        self._tasks_by_id.clear()
 
         for task in tasks:
             self.append_task(task)
@@ -213,16 +220,41 @@ class DownloadQueueTable(QTableWidget):
         if task_id is None:
             return
 
+        task = self._tasks_by_id.get(task_id)
+
+        if task is None:
+            return
+
         self.selectRow(row_index)
 
         context_menu = QMenu(self)
-        download_action = context_menu.addAction("Скачать этот файл")
+
+        download_action: QAction | None = None
+        cancel_action: QAction | None = None
+
+        if task.status is DownloadStatus.RUNNING:
+            cancel_action = context_menu.addAction("Отменить загрузку")
+        else:
+            download_action = context_menu.addAction("Скачать этот файл")
+
         remove_action = context_menu.addAction("Удалить из очереди")
 
         viewport = cast(QWidget, self.viewport())
         selected_action = context_menu.exec(viewport.mapToGlobal(position))
 
-        if selected_action == download_action and self._on_download_task is not None:
+        if (
+            cancel_action is not None
+            and selected_action == cancel_action
+            and self._on_cancel_task is not None
+        ):
+            self._on_cancel_task(task_id)
+            return
+
+        if (
+            download_action is not None
+            and selected_action == download_action
+            and self._on_download_task is not None
+        ):
             self._on_download_task(task_id)
             return
 
@@ -278,6 +310,12 @@ class DownloadQueueTable(QTableWidget):
             progress_bar_widget.setRange(0, 100)
             progress_bar_widget.setValue(0)
             progress_bar_widget.setFormat("Ошибка")
+            return
+
+        if task.status is DownloadStatus.CANCELED:
+            progress_bar_widget.setRange(0, 100)
+            progress_bar_widget.setValue(0)
+            progress_bar_widget.setFormat("Отменено")
             return
 
         progress_bar_widget.setRange(0, 100)

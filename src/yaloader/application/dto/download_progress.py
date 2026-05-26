@@ -52,6 +52,14 @@ class DownloadProgress(BaseModel):
             status_text="Ошибка",
         )
 
+    @classmethod
+    def canceled(cls, *, task_id: UUID) -> DownloadProgress:
+        return cls(
+            task_id=task_id,
+            percent=None,
+            status_text="Отменено",
+        )
+
     @property
     def progress_bar_value(self) -> int:
         if self.percent is None:

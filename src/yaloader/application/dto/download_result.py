@@ -35,3 +35,11 @@ class DownloadResult(BaseModel):
             status=DownloadStatus.FAILED,
             error_message=error_message,
         )
+
+    @classmethod
+    def canceled(cls, *, task_id: UUID) -> DownloadResult:
+        return cls(
+            task_id=task_id,
+            status=DownloadStatus.CANCELED,
+            error_message="Загрузка отменена пользователем.",
+        )
