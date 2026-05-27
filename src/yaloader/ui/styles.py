@@ -262,6 +262,22 @@ QPushButton#DangerGhostButton:hover {
     color: #FECACA;
 }
 
+QPushButton#MenuDangerButton {
+    min-height: 32px;
+    padding: 0 24px;
+    background-color: transparent;
+    color: #FCA5A5;
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+    text-align: left;
+}
+
+QPushButton#MenuDangerButton:hover {
+    background-color: #3A1518;
+    color: #FECACA;
+}
+
 QPushButton:disabled {
     background-color: #2D333B;
     color: #7D8590;

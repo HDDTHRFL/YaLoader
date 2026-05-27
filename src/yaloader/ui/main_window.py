@@ -7,8 +7,8 @@ from typing import override
 from uuid import UUID
 
 from pydantic import ValidationError
-from PyQt6.QtCore import QTimerEvent, QUrl
-from PyQt6.QtGui import QCloseEvent, QDesktopServices
+from PyQt6.QtCore import QEvent, QTimer, QTimerEvent, QUrl
+from PyQt6.QtGui import QCloseEvent, QDesktopServices, QShowEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -79,6 +79,23 @@ class MainWindow(QMainWindow):
 
         self._update_downloads_dir_label()
         self._refresh_environment_status()
+        self._sync_queue_controls_state()
+        self._focus_url_input_later()
+
+    @override
+    def showEvent(self, event: QShowEvent | None) -> None:
+        super().showEvent(event)
+        self._focus_url_input_later()
+
+    @override
+    def changeEvent(self, event: QEvent | None) -> None:
+        super().changeEvent(event)
+
+        if event is None:
+            return
+
+        if event.type() is QEvent.Type.WindowStateChange and not self.isMinimized():
+            self._focus_url_input_later()
 
     @override
     def closeEvent(self, event: QCloseEvent | None) -> None:
@@ -108,17 +125,18 @@ class MainWindow(QMainWindow):
         self._remove_from_queue_button.setObjectName("SecondaryButton")
         self._clear_queue_button.setObjectName("SecondaryButton")
         self._queue_table.set_context_menu_callbacks(
-            on_download_task=self._start_single_task_download,
+            on_download_tasks=self._start_tasks_download,
             on_cancel_task=self._cancel_task_download,
-            on_remove_task=self._remove_task_from_queue,
+            on_remove_tasks=self._remove_tasks_from_queue,
         )
         self._sync_start_queue_button_state()
 
     def _connect_signals(self) -> None:
         self._input_panel.add_to_queue_button.clicked.connect(self._handle_add_to_queue_clicked)
         self._start_queue_button.clicked.connect(self._handle_start_or_cancel_queue_clicked)
-        self._remove_from_queue_button.clicked.connect(self._handle_remove_selected_task_clicked)
+        self._remove_from_queue_button.clicked.connect(self._handle_remove_selected_tasks_clicked)
         self._clear_queue_button.clicked.connect(self._handle_clear_queue_clicked)
+        self._queue_table.itemSelectionChanged.connect(self._sync_queue_controls_state)
         self._settings_panel.choose_downloads_dir_button.clicked.connect(
             self._handle_choose_downloads_dir_clicked
         )
@@ -206,6 +224,7 @@ class MainWindow(QMainWindow):
 
         if not url:
             self._status_label.setText("Сначала вставьте ссылку")
+            self._focus_url_input_later()
             return
 
         selected_output_format = self._input_panel.get_selected_output_format()
@@ -222,12 +241,14 @@ class MainWindow(QMainWindow):
         except ValidationError as error:
             first_error_message = error.errors()[0]["msg"]
             self._status_label.setText(f"Некорректная задача загрузки: {first_error_message}")
+            self._focus_url_input_later()
             return
 
         existing_task = self._container.download_queue_service.get_task_by_url(url=request.url)
 
         if existing_task is not None:
             self._status_label.setText("Эта ссылка уже есть в очереди")
+            self._focus_url_input_later()
             return
 
         task = self._container.download_queue_service.add_download(request=request)
@@ -237,6 +258,8 @@ class MainWindow(QMainWindow):
         self._status_label.setText(
             f"Добавлено в очередь: {self._container.download_queue_service.count()}"
         )
+        self._sync_queue_controls_state()
+        self._focus_url_input_later()
 
     def _handle_choose_downloads_dir_clicked(self) -> None:
         selected_dir = QFileDialog.getExistingDirectory(
@@ -292,19 +315,21 @@ class MainWindow(QMainWindow):
 
         if not downloadable_tasks:
             self._status_label.setText("В очереди нет задач для загрузки")
+            self._sync_queue_controls_state()
             return
 
         self._queued_download_task_ids = [task.task_id for task in downloadable_tasks]
         self._start_next_queued_download()
 
-    def _handle_remove_selected_task_clicked(self) -> None:
-        selected_task_id = self._queue_table.get_selected_task_id()
+    def _handle_remove_selected_tasks_clicked(self) -> None:
+        selected_task_ids = self._queue_table.get_selected_task_ids()
 
-        if selected_task_id is None:
-            self._status_label.setText("Выберите задачу в очереди")
+        if not selected_task_ids:
+            self._status_label.setText("Выберите задачи в очереди")
+            self._sync_queue_controls_state()
             return
 
-        self._remove_task_from_queue(task_id=selected_task_id)
+        self._remove_tasks_from_queue(task_ids=selected_task_ids)
 
     def _handle_clear_queue_clicked(self) -> None:
         if self._active_download_future is not None:
@@ -317,26 +342,31 @@ class MainWindow(QMainWindow):
 
         if removed_count == 0:
             self._status_label.setText("Очередь уже пустая")
+            self._sync_queue_controls_state()
             return
 
         self._status_label.setText(f"Очередь очищена. Удалено задач: {removed_count}")
+        self._sync_queue_controls_state()
 
-    def _start_single_task_download(self, task_id: UUID) -> None:
+    def _start_tasks_download(self, task_ids: tuple[UUID, ...]) -> None:
         if self._active_download_future is not None:
             self._status_label.setText("Сейчас уже выполняется загрузка")
             return
 
-        task = self._container.download_queue_service.get_task(task_id=task_id)
+        downloadable_task_ids: list[UUID] = []
 
-        if task is None:
-            self._status_label.setText("Задача не найдена")
+        for task_id in task_ids:
+            task = self._container.download_queue_service.get_task(task_id=task_id)
+
+            if task is not None and is_downloadable(task):
+                downloadable_task_ids.append(task.task_id)
+
+        if not downloadable_task_ids:
+            self._status_label.setText("Среди выбранных задач нет доступных для загрузки")
+            self._sync_queue_controls_state()
             return
 
-        if not is_downloadable(task):
-            self._status_label.setText("Эту задачу сейчас нельзя скачать повторно")
-            return
-
-        self._queued_download_task_ids = [task_id]
+        self._queued_download_task_ids = downloadable_task_ids
         self._start_next_queued_download()
 
     def _start_next_queued_download(self) -> None:
@@ -448,24 +478,33 @@ class MainWindow(QMainWindow):
 
             self._queue_table.set_task_progress(progress=progress)
 
-    def _remove_task_from_queue(self, task_id: UUID) -> None:
-        if self._active_download_task_id == task_id:
+    def _remove_tasks_from_queue(self, task_ids: tuple[UUID, ...]) -> None:
+        if self._active_download_task_id in task_ids:
             self._status_label.setText("Нельзя удалить задачу, которая сейчас выполняется")
             return
 
-        removed_task = self._container.download_queue_service.remove_task(task_id=task_id)
+        removed_count = 0
 
-        if removed_task is None:
-            self._status_label.setText("Задача не найдена")
-            return
+        for task_id in task_ids:
+            removed_task = self._container.download_queue_service.remove_task(task_id=task_id)
+
+            if removed_task is not None:
+                removed_count += 1
 
         self._queued_download_task_ids = [
             queued_task_id
             for queued_task_id in self._queued_download_task_ids
-            if queued_task_id != task_id
+            if queued_task_id not in task_ids
         ]
         self._queue_table.reload_tasks(self._container.download_queue_service.list_tasks())
-        self._status_label.setText(f"Удалено из очереди: {removed_task.url.value}")
+
+        if removed_count == 0:
+            self._status_label.setText("Выбранные задачи не найдены")
+            self._sync_queue_controls_state()
+            return
+
+        self._status_label.setText(f"Удалено из очереди: {removed_count}")
+        self._sync_queue_controls_state()
 
     def _refresh_environment_status(self) -> None:
         status = self._container.environment_check_service.check(
@@ -492,15 +531,25 @@ class MainWindow(QMainWindow):
         self._settings_panel.set_downloads_dir(downloads_dir=self._settings.downloads_dir)
 
     def _set_download_controls_enabled(self, *, is_enabled: bool) -> None:
-        self._start_queue_button.setEnabled(True)
-        self._remove_from_queue_button.setEnabled(is_enabled)
-        self._clear_queue_button.setEnabled(is_enabled)
         self._input_panel.add_to_queue_button.setEnabled(is_enabled)
         self._settings_panel.choose_downloads_dir_button.setEnabled(is_enabled)
         self._environment_panel.delete_cookies_button.setEnabled(is_enabled)
         self._environment_panel.refresh_button.setEnabled(is_enabled)
         self._environment_panel.open_cookies_dir_button.setEnabled(is_enabled)
         self._environment_panel.open_downloads_dir_button.setEnabled(is_enabled)
+        self._sync_queue_controls_state()
+
+    def _sync_queue_controls_state(self) -> None:
+        has_tasks = self._queue_table.has_tasks()
+        has_selected_tasks = bool(self._queue_table.get_selected_task_ids())
+        has_downloadable_tasks = bool(
+            self._container.download_queue_service.list_downloadable_tasks()
+        )
+        has_active_download = self._active_download_future is not None
+
+        self._start_queue_button.setEnabled(has_active_download or has_downloadable_tasks)
+        self._remove_from_queue_button.setEnabled(has_selected_tasks and not has_active_download)
+        self._clear_queue_button.setEnabled(has_tasks and not has_active_download)
         self._sync_start_queue_button_state()
 
     def _sync_start_queue_button_state(self) -> None:
@@ -516,3 +565,6 @@ class MainWindow(QMainWindow):
         if isinstance(style, QStyle):
             style.unpolish(self._start_queue_button)
             style.polish(self._start_queue_button)
+
+    def _focus_url_input_later(self) -> None:
+        QTimer.singleShot(0, self._input_panel.focus_url_input)

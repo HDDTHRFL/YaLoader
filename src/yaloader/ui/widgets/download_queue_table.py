@@ -11,9 +11,11 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QMenu,
     QProgressBar,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QWidget,
+    QWidgetAction,
 )
 
 from yaloader.application.dto.download_progress import DownloadProgress
@@ -29,6 +31,14 @@ PROGRESS_COLUMN_INDEX = 5
 FOLDER_COLUMN_INDEX = 6
 
 TABLE_WIDTH_SAFETY_MARGIN = 0
+
+DOWNLOADABLE_STATUSES = frozenset(
+    {
+        DownloadStatus.PENDING,
+        DownloadStatus.FAILED,
+        DownloadStatus.CANCELED,
+    }
+)
 
 MIN_COLUMN_WIDTHS = {
     MODE_COLUMN_INDEX: 64,
@@ -58,9 +68,9 @@ class DownloadQueueTable(QTableWidget):
         self._task_ids_by_row: dict[int, UUID] = {}
         self._row_by_task_id: dict[UUID, int] = {}
         self._tasks_by_id: dict[UUID, DownloadTask] = {}
-        self._on_download_task: Callable[[UUID], None] | None = None
+        self._on_download_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._on_cancel_task: Callable[[UUID], None] | None = None
-        self._on_remove_task: Callable[[UUID], None] | None = None
+        self._on_remove_tasks: Callable[[tuple[UUID, ...]], None] | None = None
 
         self._configure_table()
 
@@ -72,13 +82,13 @@ class DownloadQueueTable(QTableWidget):
     def set_context_menu_callbacks(
         self,
         *,
-        on_download_task: Callable[[UUID], None],
+        on_download_tasks: Callable[[tuple[UUID, ...]], None],
         on_cancel_task: Callable[[UUID], None],
-        on_remove_task: Callable[[UUID], None],
+        on_remove_tasks: Callable[[tuple[UUID, ...]], None],
     ) -> None:
-        self._on_download_task = on_download_task
+        self._on_download_tasks = on_download_tasks
         self._on_cancel_task = on_cancel_task
-        self._on_remove_task = on_remove_task
+        self._on_remove_tasks = on_remove_tasks
 
     def append_task(self, task: DownloadTask) -> None:
         row_index = self.rowCount()
@@ -115,13 +125,20 @@ class DownloadQueueTable(QTableWidget):
 
         self.resize_columns_to_viewport()
 
-    def get_selected_task_id(self) -> UUID | None:
-        row_index = self.currentRow()
+    def has_tasks(self) -> bool:
+        return self.rowCount() > 0
 
-        if row_index < 0:
-            return None
+    def get_selected_task_ids(self) -> tuple[UUID, ...]:
+        selected_rows = sorted({index.row() for index in self.selectedIndexes()})
+        task_ids: list[UUID] = []
 
-        return self._task_ids_by_row.get(row_index)
+        for row_index in selected_rows:
+            task_id = self._task_ids_by_row.get(row_index)
+
+            if task_id is not None:
+                task_ids.append(task_id)
+
+        return tuple(task_ids)
 
     def set_task_progress(self, progress: DownloadProgress) -> None:
         row_index = self._row_by_task_id.get(progress.task_id)
@@ -196,7 +213,7 @@ class DownloadQueueTable(QTableWidget):
         )
         self.setAlternatingRowColors(True)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -215,51 +232,122 @@ class DownloadQueueTable(QTableWidget):
             return
 
         row_index = table_item.row()
-        task_id = self._task_ids_by_row.get(row_index)
 
-        if task_id is None:
+        if not self._is_row_selected(row_index=row_index):
+            self.clearSelection()
+            self.selectRow(row_index)
+
+        selected_task_ids = self.get_selected_task_ids()
+
+        if not selected_task_ids:
             return
 
-        task = self._tasks_by_id.get(task_id)
+        selected_tasks = self._get_tasks_by_ids(task_ids=selected_task_ids)
 
-        if task is None:
+        if not selected_tasks:
             return
-
-        self.selectRow(row_index)
 
         context_menu = QMenu(self)
 
         download_action: QAction | None = None
         cancel_action: QAction | None = None
+        remove_action: QAction | None = None
+        downloadable_task_ids: tuple[UUID, ...] = ()
+        cancel_task_id: UUID | None = None
 
-        if task.status is DownloadStatus.RUNNING:
-            cancel_action = context_menu.addAction("Отменить загрузку")
+        if len(selected_tasks) == 1 and selected_tasks[0].status is DownloadStatus.RUNNING:
+            cancel_task_id = selected_tasks[0].task_id
+            cancel_action = self._add_menu_button_action(
+                menu=context_menu,
+                text="Отменить загрузку",
+                object_name="MenuDangerButton",
+            )
         else:
-            download_action = context_menu.addAction("Скачать этот файл")
+            downloadable_task_ids = tuple(
+                task.task_id for task in selected_tasks if task.status in DOWNLOADABLE_STATUSES
+            )
 
-        remove_action = context_menu.addAction("Удалить из очереди")
+            if downloadable_task_ids:
+                action_text = (
+                    "Скачать выбранные" if len(downloadable_task_ids) > 1 else "Скачать этот файл"
+                )
+                download_action = context_menu.addAction(action_text)
+
+        remove_text = "Удалить выбранные" if len(selected_task_ids) > 1 else "Удалить из очереди"
+        remove_action = self._add_menu_button_action(
+            menu=context_menu,
+            text=remove_text,
+            object_name="MenuDangerButton",
+        )
 
         viewport = cast(QWidget, self.viewport())
         selected_action = context_menu.exec(viewport.mapToGlobal(position))
 
+        if selected_action is None:
+            return
+
         if (
             cancel_action is not None
             and selected_action == cancel_action
-            and self._on_cancel_task is not None
+            and cancel_task_id is not None
         ):
+            self._cancel_task(cancel_task_id)
+            return
+
+        if download_action is not None and selected_action == download_action:
+            self._download_tasks(downloadable_task_ids)
+            return
+
+        if remove_action is not None and selected_action == remove_action:
+            self._remove_tasks(selected_task_ids)
+
+    def _is_row_selected(self, *, row_index: int) -> bool:
+        return any(index.row() == row_index for index in self.selectedIndexes())
+
+    def _get_tasks_by_ids(self, *, task_ids: tuple[UUID, ...]) -> tuple[DownloadTask, ...]:
+        tasks: list[DownloadTask] = []
+
+        for task_id in task_ids:
+            task = self._tasks_by_id.get(task_id)
+
+            if task is not None:
+                tasks.append(task)
+
+        return tuple(tasks)
+
+    def _add_menu_button_action(
+        self,
+        *,
+        menu: QMenu,
+        text: str,
+        object_name: str,
+    ) -> QWidgetAction:
+        action = QWidgetAction(menu)
+        button = QPushButton(text, menu)
+        button.setObjectName(object_name)
+
+        def handle_button_clicked(_checked: bool = False) -> None:
+            action.trigger()
+            menu.close()
+
+        button.clicked.connect(handle_button_clicked)
+
+        action.setDefaultWidget(button)
+        menu.addAction(action)
+
+        return action
+
+    def _download_tasks(self, task_ids: tuple[UUID, ...]) -> None:
+        if self._on_download_tasks is not None:
+            self._on_download_tasks(task_ids)
+
+    def _cancel_task(self, task_id: UUID) -> None:
+        if self._on_cancel_task is not None:
             self._on_cancel_task(task_id)
-            return
 
-        if (
-            download_action is not None
-            and selected_action == download_action
-            and self._on_download_task is not None
-        ):
-            self._on_download_task(task_id)
-            return
-
-        if selected_action == remove_action and self._on_remove_task is not None:
-            self._on_remove_task(task_id)
+    def _remove_tasks(self, task_ids: tuple[UUID, ...]) -> None:
+        if self._on_remove_tasks is not None:
+            self._on_remove_tasks(task_ids)
 
     def _set_task_row_values(self, *, row_index: int, task: DownloadTask) -> None:
         values_by_column = {

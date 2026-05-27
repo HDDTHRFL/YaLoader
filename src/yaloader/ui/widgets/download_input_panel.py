@@ -35,6 +35,10 @@ class DownloadInputPanel(QFrame):
     def clear_url(self) -> None:
         self.url_input.clear()
 
+    def focus_url_input(self) -> None:
+        self.url_input.setFocus()
+        self.url_input.selectAll()
+
     def get_selected_video_quality(self) -> VideoQuality:
         return cast(VideoQuality, self.quality_combo_box.currentData())
 
