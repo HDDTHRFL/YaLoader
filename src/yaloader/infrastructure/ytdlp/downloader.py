@@ -9,6 +9,8 @@ from types import TracebackType
 from typing import Protocol, Self, cast
 from uuid import UUID
 
+from loguru import logger
+
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
@@ -63,12 +65,16 @@ class YtDlpPythonBackend:
         return cls(youtube_dl_factory=load_youtube_dl_factory())
 
     def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
+        logger.debug("yt-dlp backend started. urls_count={}", len(urls))
+
         with self.youtube_dl_factory(options) as downloader:
             result_code = downloader.download(list(urls))
 
         if result_code not in (None, 0):
             message = f"yt-dlp finished with non-zero result code: {result_code}"
             raise RuntimeError(message)
+
+        logger.debug("yt-dlp backend finished successfully.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,9 +97,26 @@ class YtDlpDownloader:
         progress_callback: ProgressCallback | None = None,
         cancellation_token: CancellationToken | None = None,
     ) -> DownloadResult:
+        logger.info(
+            "Download started. task_id={} url={} mode={} format={} quality={} target_dir={}",
+            task.task_id,
+            task.url.value,
+            task.mode.value,
+            task.output_format.value,
+            task.video_quality.value,
+            task.target_dir,
+        )
+
         request = self._build_request_from_task(task=task)
         options = self.options_builder.build(request=request)
         existing_files = collect_files(download_dir=task.target_dir)
+
+        logger.debug(
+            "Download options prepared. task_id={} cookies_enabled={} existing_files_count={}",
+            task.task_id,
+            "cookiefile" in options,
+            len(existing_files),
+        )
 
         if progress_callback is not None:
             progress_callback(DownloadProgress.started(task_id=task.task_id))
@@ -108,23 +131,48 @@ class YtDlpDownloader:
         try:
             self.backend.download(urls=(task.url.value,), options=options)
         except DownloadCancelledError:
-            cleanup_created_files(download_dir=task.target_dir, existing_files=existing_files)
+            removed_files_count = cleanup_created_files(
+                download_dir=task.target_dir,
+                existing_files=existing_files,
+            )
+
+            logger.info(
+                "Download canceled by user. task_id={} removed_files_count={}",
+                task.task_id,
+                removed_files_count,
+            )
 
             if progress_callback is not None:
                 progress_callback(DownloadProgress.canceled(task_id=task.task_id))
 
             return DownloadResult.canceled(task_id=task.task_id)
         except Exception as error:
+            error_message = self._build_error_message(error=error)
+            logger.opt(exception=error).warning(
+                "Download failed. task_id={} error={}",
+                task.task_id,
+                error_message,
+            )
+
             if progress_callback is not None:
                 progress_callback(DownloadProgress.failed(task_id=task.task_id))
 
             return DownloadResult.failed(
                 task_id=task.task_id,
-                error_message=self._build_error_message(error=error),
+                error_message=error_message,
             )
 
         if cancellation_token is not None and cancellation_token.is_cancel_requested:
-            cleanup_created_files(download_dir=task.target_dir, existing_files=existing_files)
+            removed_files_count = cleanup_created_files(
+                download_dir=task.target_dir,
+                existing_files=existing_files,
+            )
+
+            logger.info(
+                "Download canceled after backend finished. task_id={} removed_files_count={}",
+                task.task_id,
+                removed_files_count,
+            )
 
             if progress_callback is not None:
                 progress_callback(DownloadProgress.canceled(task_id=task.task_id))
@@ -134,6 +182,7 @@ class YtDlpDownloader:
         if progress_callback is not None:
             progress_callback(DownloadProgress.completed(task_id=task.task_id))
 
+        logger.info("Download completed. task_id={}", task.task_id)
         return DownloadResult.completed(task_id=task.task_id)
 
     def _build_request_from_task(self, task: DownloadTask) -> DownloadRequest:
@@ -270,14 +319,23 @@ def strip_ansi_escape_sequences(text: str) -> str:
 
 def collect_files(*, download_dir: Path) -> frozenset[Path]:
     if not download_dir.exists():
+        logger.debug("Download directory does not exist before download. path={}", download_dir)
         return frozenset()
 
-    return frozenset(path.resolve() for path in download_dir.rglob("*") if path.is_file())
+    files = frozenset(path.resolve() for path in download_dir.rglob("*") if path.is_file())
+    logger.debug(
+        "Collected existing files before download. path={} count={}", download_dir, len(files)
+    )
+
+    return files
 
 
-def cleanup_created_files(*, download_dir: Path, existing_files: frozenset[Path]) -> None:
+def cleanup_created_files(*, download_dir: Path, existing_files: frozenset[Path]) -> int:
     if not download_dir.exists():
-        return
+        logger.debug("Download directory does not exist during cleanup. path={}", download_dir)
+        return 0
+
+    removed_files_count = 0
 
     for file_path in sorted(download_dir.rglob("*"), reverse=True):
         if not file_path.is_file():
@@ -290,8 +348,18 @@ def cleanup_created_files(*, download_dir: Path, existing_files: frozenset[Path]
 
         try:
             file_path.unlink()
-        except OSError:
+        except OSError as error:
+            logger.warning(
+                "Failed to remove partial download file. path={} error={}",
+                file_path,
+                error,
+            )
             continue
+
+        removed_files_count += 1
+        logger.debug("Removed partial download file. path={}", file_path)
+
+    return removed_files_count
 
 
 def load_youtube_dl_factory() -> YoutubeDLFactory:

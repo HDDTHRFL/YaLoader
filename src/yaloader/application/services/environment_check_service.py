@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
+from loguru import logger
+
 from yaloader.application.dto.environment_status import EnvironmentItemStatus, EnvironmentStatus
 from yaloader.application.ports.process_runner import ProcessRunner
 from yaloader.config.paths import AppPaths
@@ -21,7 +23,7 @@ class EnvironmentCheckService:
     process_runner: ProcessRunner
 
     def check(self, *, downloads_dir: Path) -> EnvironmentStatus:
-        return EnvironmentStatus(
+        status = EnvironmentStatus(
             ffmpeg=self._check_executable(
                 title="FFmpeg",
                 executable_name="ffmpeg",
@@ -36,6 +38,17 @@ class EnvironmentCheckService:
             cookies=self._check_cookies_file(),
             downloads_dir=self._check_downloads_dir(downloads_dir=downloads_dir),
         )
+
+        logger.info(
+            "Environment checked. ffmpeg={} deno={} ytdlp={} cookies={} downloads_dir={}",
+            format_environment_item_for_log(status.ffmpeg),
+            format_environment_item_for_log(status.deno),
+            format_environment_item_for_log(status.ytdlp),
+            format_environment_item_for_log(status.cookies),
+            format_environment_item_for_log(status.downloads_dir),
+        )
+
+        return status
 
     def _check_executable(
         self,
@@ -132,3 +145,12 @@ class EnvironmentCheckService:
             message="доступна",
             path=downloads_dir,
         )
+
+
+def format_environment_item_for_log(status: EnvironmentItemStatus) -> str:
+    state = "ok" if status.is_ok else "warning"
+
+    if status.path is None:
+        return f"{status.title}={state}:{status.message}"
+
+    return f"{status.title}={state}:{status.message}; path={status.path}"
