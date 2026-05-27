@@ -181,22 +181,6 @@ def test_list_downloadable_tasks_skips_running_and_completed_tasks(tmp_path: Pat
     assert downloadable_tasks == (pending_task,)
 
 
-def create_video_request(
-    *,
-    target_dir: Path,
-    url: str = "https://www.youtube.com/watch?v=test",
-    output_format: OutputFormat = OutputFormat.MP4,
-    video_quality: VideoQuality = VideoQuality.BEST,
-) -> DownloadRequest:
-    return DownloadRequest(
-        url=url,
-        target_dir=target_dir,
-        mode=DownloadMode.VIDEO,
-        output_format=output_format,
-        video_quality=video_quality,
-    )
-
-
 def test_contains_url_returns_true_for_existing_url(tmp_path: Path) -> None:
     service = DownloadQueueService()
     service.add_download(
@@ -221,6 +205,32 @@ def test_contains_url_returns_false_for_missing_url(tmp_path: Path) -> None:
     assert service.contains_url("https://www.youtube.com/watch?v=second") is False
 
 
+def test_contains_url_returns_true_for_same_video_with_different_youtube_url_shape(
+    tmp_path: Path,
+) -> None:
+    service = DownloadQueueService()
+    service.add_download(
+        request=create_video_request(
+            target_dir=tmp_path,
+            url="https://www.youtube.com/watch?v=test&list=playlist_id&index=10",
+        )
+    )
+
+    assert service.contains_url("https://youtu.be/test?si=share") is True
+
+
+def test_contains_url_returns_true_for_same_shorts_video(tmp_path: Path) -> None:
+    service = DownloadQueueService()
+    service.add_download(
+        request=create_video_request(
+            target_dir=tmp_path,
+            url="https://www.youtube.com/shorts/test",
+        )
+    )
+
+    assert service.contains_url("https://www.youtube.com/watch?v=test") is True
+
+
 def test_get_task_by_url_returns_existing_task(tmp_path: Path) -> None:
     service = DownloadQueueService()
     task = service.add_download(
@@ -233,3 +243,37 @@ def test_get_task_by_url_returns_existing_task(tmp_path: Path) -> None:
     found_task = service.get_task_by_url("https://www.youtube.com/watch?v=test")
 
     assert found_task == task
+
+
+def test_get_task_by_url_returns_existing_task_for_equivalent_youtube_url(
+    tmp_path: Path,
+) -> None:
+    service = DownloadQueueService()
+    task = service.add_download(
+        request=create_video_request(
+            target_dir=tmp_path,
+            url="https://youtu.be/test",
+        )
+    )
+
+    found_task = service.get_task_by_url(
+        "https://www.youtube.com/watch?v=test&list=playlist_id",
+    )
+
+    assert found_task == task
+
+
+def create_video_request(
+    *,
+    target_dir: Path,
+    url: str = "https://www.youtube.com/watch?v=test",
+    output_format: OutputFormat = OutputFormat.MP4,
+    video_quality: VideoQuality = VideoQuality.BEST,
+) -> DownloadRequest:
+    return DownloadRequest(
+        url=url,
+        target_dir=target_dir,
+        mode=DownloadMode.VIDEO,
+        output_format=output_format,
+        video_quality=video_quality,
+    )

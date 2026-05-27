@@ -8,6 +8,7 @@ from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
+from yaloader.domain.source_identity import build_media_source_key
 from yaloader.domain.value_objects.media_url import MediaUrl
 
 DOWNLOADABLE_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
@@ -114,23 +115,25 @@ class DownloadQueueService:
         with self._lock:
             return len(self._tasks)
 
+    def contains_url(self, url: str) -> bool:
+        source_key = build_media_source_key(url=url)
+
+        with self._lock:
+            return any(
+                build_media_source_key(url=task.url.value) == source_key for task in self._tasks
+            )
+
+    def get_task_by_url(self, url: str) -> DownloadTask | None:
+        source_key = build_media_source_key(url=url)
+
+        with self._lock:
+            for task in self._tasks:
+                if build_media_source_key(url=task.url.value) == source_key:
+                    return task
+
+        return None
+
     def _rebuild_task_index(self) -> None:
         self._task_index_by_id = {
             task.task_id: task_index for task_index, task in enumerate(self._tasks)
         }
-
-    def contains_url(self, url: str) -> bool:
-        normalized_url = MediaUrl(value=url).value
-
-        with self._lock:
-            return any(task.url.value == normalized_url for task in self._tasks)
-
-    def get_task_by_url(self, url: str) -> DownloadTask | None:
-        normalized_url = MediaUrl(value=url).value
-
-        with self._lock:
-            for task in self._tasks:
-                if task.url.value == normalized_url:
-                    return task
-
-        return None
