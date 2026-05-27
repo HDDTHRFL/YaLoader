@@ -27,6 +27,7 @@ from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
 from yaloader.application.services.download_queue_service import is_downloadable
 from yaloader.config.app_info import APP_DISPLAY_NAME
+from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
 from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.services.app_container import AppContainer
@@ -318,7 +319,9 @@ class MainWindow(QMainWindow):
             self._sync_queue_controls_state()
             return
 
-        self._queued_download_task_ids = [task.task_id for task in downloadable_tasks]
+        queued_task_ids = tuple(task.task_id for task in downloadable_tasks)
+        self._queued_download_task_ids = list(queued_task_ids)
+        self._queue_table.prepare_tasks_for_download(task_ids=queued_task_ids)
         self._start_next_queued_download()
 
     def _handle_remove_selected_tasks_clicked(self) -> None:
@@ -366,7 +369,9 @@ class MainWindow(QMainWindow):
             self._sync_queue_controls_state()
             return
 
-        self._queued_download_task_ids = downloadable_task_ids
+        queued_task_ids = tuple(downloadable_task_ids)
+        self._queued_download_task_ids = list(queued_task_ids)
+        self._queue_table.prepare_tasks_for_download(task_ids=queued_task_ids)
         self._start_next_queued_download()
 
     def _start_next_queued_download(self) -> None:
@@ -412,9 +417,39 @@ class MainWindow(QMainWindow):
             self._status_label.setText("Нет активной загрузки для отмены")
             return
 
+        task_ids_to_cancel = self._build_prepared_task_ids_for_cancel()
         self._queued_download_task_ids.clear()
         self._active_cancellation_token.request_cancel()
+
+        for task_id in task_ids_to_cancel:
+            canceled_task = self._container.download_queue_service.update_status(
+                task_id=task_id,
+                status=DownloadStatus.CANCELED,
+                error_message="Загрузка отменена пользователем.",
+            )
+
+            if canceled_task is not None:
+                self._queue_table.update_task(task=canceled_task)
+
         self._status_label.setText("Отмена загрузки... Частичные файлы будут удалены")
+        self._sync_queue_controls_state()
+
+    def _build_prepared_task_ids_for_cancel(self) -> tuple[UUID, ...]:
+        task_ids: list[UUID] = []
+        seen_task_ids: set[UUID] = set()
+
+        if self._active_download_task_id is not None:
+            task_ids.append(self._active_download_task_id)
+            seen_task_ids.add(self._active_download_task_id)
+
+        for task_id in self._queued_download_task_ids:
+            if task_id in seen_task_ids:
+                continue
+
+            task_ids.append(task_id)
+            seen_task_ids.add(task_id)
+
+        return tuple(task_ids)
 
     def _cancel_task_download(self, task_id: UUID) -> None:
         if self._active_download_task_id != task_id:
@@ -448,7 +483,7 @@ class MainWindow(QMainWindow):
             return
 
         self._drain_progress_events()
-        updated_task = self._container.download_queue_service.apply_result(result=result)
+        updated_task = self._apply_download_result(result=result)
 
         if updated_task is not None:
             self._queue_table.update_task(task=updated_task)
@@ -459,15 +494,23 @@ class MainWindow(QMainWindow):
 
         self._set_download_controls_enabled(is_enabled=True)
 
+        if updated_task is not None and updated_task.status is DownloadStatus.CANCELED:
+            self._status_label.setText("Загрузка отменена. Частичные файлы удалены")
+            return
+
         if result.status is DownloadStatus.COMPLETED:
             self._status_label.setText("Очередь загрузок завершена")
             return
 
-        if result.status is DownloadStatus.CANCELED:
-            self._status_label.setText("Загрузка отменена. Частичные файлы удалены")
-            return
-
         self._status_label.setText(f"Загрузка завершилась ошибкой: {result.error_message}")
+
+    def _apply_download_result(self, *, result: DownloadResult) -> DownloadTask | None:
+        current_task = self._container.download_queue_service.get_task(task_id=result.task_id)
+
+        if current_task is not None and current_task.status is DownloadStatus.CANCELED:
+            return current_task
+
+        return self._container.download_queue_service.apply_result(result=result)
 
     def _drain_progress_events(self) -> None:
         while True:
@@ -475,6 +518,11 @@ class MainWindow(QMainWindow):
                 progress = self._progress_events.get_nowait()
             except Empty:
                 return
+
+            task = self._container.download_queue_service.get_task(task_id=progress.task_id)
+
+            if task is not None and task.status is DownloadStatus.CANCELED:
+                continue
 
             self._queue_table.set_task_progress(progress=progress)
 
