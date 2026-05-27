@@ -4,14 +4,17 @@ from collections.abc import Callable, Sequence
 from typing import cast, override
 from uuid import UUID
 
-from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QAction, QResizeEvent
+from PyQt6.QtCore import QItemSelectionModel, QModelIndex, QPoint, Qt
+from PyQt6.QtGui import QAction, QFocusEvent, QMouseEvent, QPainter, QResizeEvent
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QMenu,
     QProgressBar,
     QPushButton,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
     QWidget,
@@ -61,6 +64,25 @@ COLUMN_STRETCH_WEIGHTS = {
 }
 
 
+class NoCellFocusItemDelegate(QStyledItemDelegate):
+    @override
+    def paint(
+        self,
+        painter: QPainter | None,
+        option: QStyleOptionViewItem,
+        index: QModelIndex,
+    ) -> None:
+        if painter is None:
+            return
+
+        option_without_cell_focus = QStyleOptionViewItem(option)
+        option_without_cell_focus.state = (
+            option_without_cell_focus.state & ~QStyle.StateFlag.State_HasFocus
+        )
+
+        super().paint(painter, option_without_cell_focus, index)
+
+
 class DownloadQueueTable(QTableWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -78,6 +100,27 @@ class DownloadQueueTable(QTableWidget):
     def resizeEvent(self, event: QResizeEvent | None) -> None:
         super().resizeEvent(event)
         self.resize_columns_to_viewport()
+
+    @override
+    def focusOutEvent(self, event: QFocusEvent | None) -> None:
+        super().focusOutEvent(event)
+        self._clear_current_cell_focus()
+
+    @override
+    def mousePressEvent(self, event: QMouseEvent | None) -> None:
+        if event is None:
+            super().mousePressEvent(event)
+            return
+
+        clicked_position = event.position().toPoint()
+
+        if event.button() == Qt.MouseButton.LeftButton and self.itemAt(clicked_position) is None:
+            self._clear_current_cell_focus()
+            self.clearFocus()
+            event.accept()
+            return
+
+        super().mousePressEvent(event)
 
     def set_context_menu_callbacks(
         self,
@@ -211,6 +254,7 @@ class DownloadQueueTable(QTableWidget):
                 "Папка",
             ]
         )
+        self.setItemDelegate(NoCellFocusItemDelegate(self))
         self.setAlternatingRowColors(True)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -348,6 +392,20 @@ class DownloadQueueTable(QTableWidget):
     def _remove_tasks(self, task_ids: tuple[UUID, ...]) -> None:
         if self._on_remove_tasks is not None:
             self._on_remove_tasks(task_ids)
+
+    def _clear_current_cell_focus(self) -> None:
+        selection_model = self.selectionModel()
+
+        if isinstance(selection_model, QItemSelectionModel):
+            selection_model.setCurrentIndex(
+                QModelIndex(),
+                QItemSelectionModel.SelectionFlag.NoUpdate,
+            )
+
+        self.setCurrentIndex(QModelIndex())
+
+        viewport = cast(QWidget, self.viewport())
+        viewport.update()
 
     def _set_task_row_values(self, *, row_index: int, task: DownloadTask) -> None:
         values_by_column = {

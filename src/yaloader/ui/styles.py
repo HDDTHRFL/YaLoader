@@ -278,10 +278,31 @@ QPushButton#MenuDangerButton:hover {
     color: #FECACA;
 }
 
-QPushButton:disabled {
-    background-color: #2D333B;
-    color: #7D8590;
-    border-color: #30363D;
+QPushButton:disabled,
+QPushButton#PrimaryButton:disabled,
+QPushButton#SecondaryButton:disabled,
+QPushButton#DangerButton:disabled,
+QPushButton#GhostButton:disabled,
+QPushButton#TinyGhostButton:disabled,
+QPushButton#TinyDangerButton:disabled,
+QPushButton#DangerGhostButton:disabled,
+QPushButton#MenuDangerButton:disabled {
+    background-color: #1A1F27;
+    color: #5F6875;
+    border: 1px solid #252B35;
+}
+
+QPushButton#PrimaryButton:disabled:hover,
+QPushButton#SecondaryButton:disabled:hover,
+QPushButton#DangerButton:disabled:hover,
+QPushButton#GhostButton:disabled:hover,
+QPushButton#TinyGhostButton:disabled:hover,
+QPushButton#TinyDangerButton:disabled:hover,
+QPushButton#DangerGhostButton:disabled:hover,
+QPushButton#MenuDangerButton:disabled:hover {
+    background-color: #1A1F27;
+    color: #5F6875;
+    border: 1px solid #252B35;
 }
 
 QProgressBar {
