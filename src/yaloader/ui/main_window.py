@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from queue import Empty, SimpleQueue
-from typing import Final, override
+from typing import override
 from uuid import UUID
 
-from loguru import logger
 from pydantic import ValidationError
 from PyQt6.QtCore import QEvent, Qt, QTimer, QTimerEvent, QUrl
 from PyQt6.QtGui import QCloseEvent, QDesktopServices, QFont, QShowEvent
@@ -22,17 +19,16 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from yaloader.application.dto.cancellation import DownloadCancellationToken
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
-from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_request import DownloadRequest
-from yaloader.application.dto.download_result import DownloadResult
-from yaloader.application.services.download_queue_service import is_downloadable
 from yaloader.config.app_info import APP_DISPLAY_NAME
-from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, DownloadStatus, VideoQuality
 from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.services.app_container import AppContainer
+from yaloader.ui.controllers.download_controller import (
+    DownloadController,
+    DownloadControllerUpdate,
+)
 from yaloader.ui.controllers.media_metadata_controller import (
     MediaMetadataController,
     MediaMetadataResolutionResult,
@@ -48,7 +44,6 @@ WINDOW_INITIAL_HEIGHT = 920
 WINDOW_MINIMUM_WIDTH = 1040
 WINDOW_MINIMUM_HEIGHT = 760
 
-DOWNLOAD_WORKERS_COUNT = 1
 DOWNLOAD_POLL_INTERVAL_MS = 250
 
 HISTORY_TOGGLE_BUTTON_SIZE = 36
@@ -56,14 +51,6 @@ HISTORY_TOGGLE_BUTTON_SIZE = 36
 TITLE_FONT_FAMILY = "Death Stars"
 TITLE_FONT_POINT_SIZE = 40
 TITLE_LETTER_SPACING_PERCENT = 112.0
-
-HISTORY_RECORD_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
-    {
-        DownloadStatus.COMPLETED,
-        DownloadStatus.FAILED,
-        DownloadStatus.CANCELED,
-    }
-)
 
 
 class MainWindow(QMainWindow):
@@ -88,19 +75,13 @@ class MainWindow(QMainWindow):
         self._metadata_controller = MediaMetadataController(
             service=container.media_metadata_service,
         )
+        self._download_controller = DownloadController(
+            queue_service=container.download_queue_service,
+            history_service=container.download_history_service,
+            downloader=container.downloader,
+        )
 
         self._is_history_panel_visible = False
-        self._queued_download_task_ids: list[UUID] = []
-        self._recorded_history_task_ids: set[UUID] = set()
-        self._progress_events: SimpleQueue[DownloadProgress] = SimpleQueue()
-
-        self._download_executor = ThreadPoolExecutor(
-            max_workers=DOWNLOAD_WORKERS_COUNT,
-            thread_name_prefix="yaloader-download",
-        )
-        self._active_download_future: Future[DownloadResult] | None = None
-        self._active_download_task_id: UUID | None = None
-        self._active_cancellation_token: DownloadCancellationToken | None = None
         self._download_poll_timer = self.startTimer(DOWNLOAD_POLL_INTERVAL_MS)
 
         self._configure_window()
@@ -132,11 +113,8 @@ class MainWindow(QMainWindow):
 
     @override
     def closeEvent(self, event: QCloseEvent | None) -> None:
-        if self._active_cancellation_token is not None:
-            self._active_cancellation_token.request_cancel()
-
         self.killTimer(self._download_poll_timer)
-        self._download_executor.shutdown(wait=False, cancel_futures=True)
+        self._download_controller.shutdown()
         self._metadata_controller.shutdown()
         super().closeEvent(event)
 
@@ -147,7 +125,7 @@ class MainWindow(QMainWindow):
             return
 
         self._drain_metadata_events()
-        self._poll_download_result()
+        self._apply_download_update(update=self._download_controller.poll())
 
     def _configure_window(self) -> None:
         self.setWindowTitle(APP_DISPLAY_NAME)
@@ -334,7 +312,7 @@ class MainWindow(QMainWindow):
 
     def _handle_clear_history_clicked(self) -> None:
         removed_count = self._container.download_history_service.clear()
-        self._recorded_history_task_ids.clear()
+        self._download_controller.clear_recorded_history_flags()
         self._reload_history_panel()
 
         if removed_count == 0:
@@ -344,7 +322,7 @@ class MainWindow(QMainWindow):
         self._status_label.setText(f"История очищена. Удалено записей: {removed_count}")
 
     def _handle_add_history_record_to_queue(self, record: DownloadHistoryRecord) -> None:
-        if self._active_download_future is not None:
+        if self._download_controller.is_active:
             self._status_label.setText("Нельзя добавить задачу из истории во время загрузки")
             return
 
@@ -386,7 +364,6 @@ class MainWindow(QMainWindow):
             self._reload_history_panel()
             return
 
-        self._recorded_history_task_ids.discard(record.task_id)
         self._reload_history_panel()
         self._status_label.setText("Запись удалена из истории")
 
@@ -535,28 +512,11 @@ class MainWindow(QMainWindow):
         self._refresh_environment_status()
 
     def _handle_start_or_cancel_queue_clicked(self) -> None:
-        if self._active_download_future is not None:
-            self._cancel_active_download()
+        if self._download_controller.is_active:
+            self._apply_download_update(update=self._download_controller.cancel_active_download())
             return
 
-        self._handle_start_queue_clicked()
-
-    def _handle_start_queue_clicked(self) -> None:
-        if self._active_download_future is not None:
-            self._status_label.setText("Сейчас уже выполняется загрузка")
-            return
-
-        downloadable_tasks = self._container.download_queue_service.list_downloadable_tasks()
-
-        if not downloadable_tasks:
-            self._status_label.setText("В очереди нет задач для загрузки")
-            self._sync_queue_controls_state()
-            return
-
-        queued_task_ids = tuple(task.task_id for task in downloadable_tasks)
-        self._queued_download_task_ids = list(queued_task_ids)
-        self._queue_table.prepare_tasks_for_download(task_ids=queued_task_ids)
-        self._start_next_queued_download()
+        self._apply_download_update(update=self._download_controller.start_downloadable_queue())
 
     def _handle_remove_selected_tasks_clicked(self) -> None:
         selected_task_ids = self._queue_table.get_selected_task_ids()
@@ -569,255 +529,40 @@ class MainWindow(QMainWindow):
         self._remove_tasks_from_queue(task_ids=selected_task_ids)
 
     def _handle_clear_queue_clicked(self) -> None:
-        if self._active_download_future is not None:
-            self._status_label.setText("Нельзя очистить очередь во время загрузки")
-            return
-
-        removed_count = self._container.download_queue_service.clear_tasks()
-        self._queued_download_task_ids.clear()
-        self._queue_table.reload_tasks(())
-
-        if removed_count == 0:
-            self._status_label.setText("Очередь уже пустая")
-            self._sync_queue_controls_state()
-            return
-
-        self._status_label.setText(f"Очередь очищена. Удалено задач: {removed_count}")
-        self._sync_queue_controls_state()
+        self._apply_download_update(update=self._download_controller.clear_queue())
 
     def _start_tasks_download(self, task_ids: tuple[UUID, ...]) -> None:
-        if self._active_download_future is not None:
-            self._status_label.setText("Сейчас уже выполняется загрузка")
-            return
-
-        downloadable_task_ids: list[UUID] = []
-
-        for task_id in task_ids:
-            task = self._container.download_queue_service.get_task(task_id=task_id)
-
-            if task is not None and is_downloadable(task):
-                downloadable_task_ids.append(task.task_id)
-
-        if not downloadable_task_ids:
-            self._status_label.setText("Среди выбранных задач нет доступных для загрузки")
-            self._sync_queue_controls_state()
-            return
-
-        queued_task_ids = tuple(downloadable_task_ids)
-        self._queued_download_task_ids = list(queued_task_ids)
-        self._queue_table.prepare_tasks_for_download(task_ids=queued_task_ids)
-        self._start_next_queued_download()
-
-    def _start_next_queued_download(self) -> None:
-        if self._active_download_future is not None:
-            return
-
-        while self._queued_download_task_ids:
-            task_id = self._queued_download_task_ids.pop(0)
-            task = self._container.download_queue_service.get_task(task_id=task_id)
-
-            if task is None or not is_downloadable(task):
-                continue
-
-            running_task = self._container.download_queue_service.update_status(
-                task_id=task.task_id,
-                status=DownloadStatus.RUNNING,
-            )
-
-            if running_task is None:
-                continue
-
-            self._queue_table.update_task(task=running_task)
-            self._queue_table.set_task_progress(
-                DownloadProgress.started(task_id=running_task.task_id)
-            )
-            self._active_download_task_id = running_task.task_id
-            self._active_cancellation_token = DownloadCancellationToken()
-            self._active_download_future = self._download_executor.submit(
-                self._container.downloader.download,
-                task=running_task,
-                progress_callback=self._handle_download_progress,
-                cancellation_token=self._active_cancellation_token,
-            )
-            self._set_download_controls_enabled(is_enabled=False)
-            self._status_label.setText(f"Загрузка запущена: {running_task.url.value}")
-            return
-
-        self._set_download_controls_enabled(is_enabled=True)
-        self._status_label.setText("Очередь загрузок завершена")
-
-    def _cancel_active_download(self) -> None:
-        if self._active_cancellation_token is None or self._active_download_task_id is None:
-            self._status_label.setText("Нет активной загрузки для отмены")
-            return
-
-        task_ids_to_cancel = self._build_prepared_task_ids_for_cancel()
-        self._queued_download_task_ids.clear()
-        self._active_cancellation_token.request_cancel()
-
-        for task_id in task_ids_to_cancel:
-            canceled_task = self._container.download_queue_service.update_status(
-                task_id=task_id,
-                status=DownloadStatus.CANCELED,
-                error_message="Загрузка отменена пользователем.",
-            )
-
-            if canceled_task is not None:
-                self._queue_table.update_task(task=canceled_task)
-                self._record_download_history(task=canceled_task, output_path=None)
-
-        self._status_label.setText("Отмена загрузки... Частичные файлы будут удалены")
-        self._sync_queue_controls_state()
-
-    def _build_prepared_task_ids_for_cancel(self) -> tuple[UUID, ...]:
-        task_ids: list[UUID] = []
-        seen_task_ids: set[UUID] = set()
-
-        if self._active_download_task_id is not None:
-            task_ids.append(self._active_download_task_id)
-            seen_task_ids.add(self._active_download_task_id)
-
-        for task_id in self._queued_download_task_ids:
-            if task_id in seen_task_ids:
-                continue
-
-            task_ids.append(task_id)
-            seen_task_ids.add(task_id)
-
-        return tuple(task_ids)
+        self._apply_download_update(update=self._download_controller.start_tasks(task_ids=task_ids))
 
     def _cancel_task_download(self, task_id: UUID) -> None:
-        if self._active_download_task_id != task_id:
-            self._status_label.setText("Отменить можно только активную загрузку")
-            return
-
-        self._cancel_active_download()
-
-    def _handle_download_progress(self, progress: DownloadProgress) -> None:
-        self._progress_events.put(progress)
-
-    def _poll_download_result(self) -> None:
-        self._drain_progress_events()
-
-        if self._active_download_future is None:
-            return
-
-        if not self._active_download_future.done():
-            return
-
-        future = self._active_download_future
-        self._active_download_future = None
-        self._active_download_task_id = None
-        self._active_cancellation_token = None
-
-        try:
-            result = future.result()
-        except Exception as error:
-            self._set_download_controls_enabled(is_enabled=True)
-            self._status_label.setText(f"Ошибка загрузки: {error}")
-            return
-
-        self._drain_progress_events()
-        updated_task = self._apply_download_result(result=result)
-
-        if updated_task is not None:
-            self._queue_table.update_task(task=updated_task)
-            self._record_download_history(task=updated_task, output_path=result.output_path)
-
-        if self._queued_download_task_ids:
-            self._start_next_queued_download()
-            return
-
-        self._set_download_controls_enabled(is_enabled=True)
-
-        if updated_task is not None and updated_task.status is DownloadStatus.CANCELED:
-            self._status_label.setText("Загрузка отменена. Частичные файлы удалены")
-            return
-
-        if result.status is DownloadStatus.COMPLETED:
-            self._status_label.setText("Очередь загрузок завершена")
-            return
-
-        self._status_label.setText(f"Загрузка завершилась ошибкой: {result.error_message}")
-
-    def _apply_download_result(self, *, result: DownloadResult) -> DownloadTask | None:
-        current_task = self._container.download_queue_service.get_task(task_id=result.task_id)
-
-        if current_task is not None and current_task.status is DownloadStatus.CANCELED:
-            return current_task
-
-        return self._container.download_queue_service.apply_result(result=result)
-
-    def _record_download_history(
-        self,
-        *,
-        task: DownloadTask,
-        output_path: Path | None,
-    ) -> None:
-        if task.task_id in self._recorded_history_task_ids:
-            return
-
-        if task.status not in HISTORY_RECORD_STATUSES:
-            return
-
-        record = DownloadHistoryRecord.create_from_task(
-            task=task,
-            output_path=output_path,
+        self._apply_download_update(
+            update=self._download_controller.cancel_task_download(task_id=task_id)
         )
 
-        try:
-            self._container.download_history_service.append(record=record)
-        except OSError as error:
-            logger.warning(
-                "Failed to save download history. task_id={} error={}",
-                task.task_id,
-                error,
-            )
-            return
+    def _remove_tasks_from_queue(self, task_ids: tuple[UUID, ...]) -> None:
+        self._apply_download_update(
+            update=self._download_controller.remove_tasks_from_queue(task_ids=task_ids)
+        )
 
-        self._recorded_history_task_ids.add(task.task_id)
-        self._reload_history_panel()
+    def _apply_download_update(self, *, update: DownloadControllerUpdate) -> None:
+        if update.tasks_snapshot is not None:
+            self._queue_table.reload_tasks(update.tasks_snapshot)
 
-    def _drain_progress_events(self) -> None:
-        while True:
-            try:
-                progress = self._progress_events.get_nowait()
-            except Empty:
-                return
+        if update.prepared_task_ids:
+            self._queue_table.prepare_tasks_for_download(task_ids=update.prepared_task_ids)
 
-            task = self._container.download_queue_service.get_task(task_id=progress.task_id)
+        for task in update.updated_tasks:
+            self._queue_table.update_task(task=task)
 
-            if task is not None and task.status is DownloadStatus.CANCELED:
-                continue
-
+        for progress in update.progress_events:
             self._queue_table.set_task_progress(progress=progress)
 
-    def _remove_tasks_from_queue(self, task_ids: tuple[UUID, ...]) -> None:
-        if self._active_download_task_id in task_ids:
-            self._status_label.setText("Нельзя удалить задачу, которая сейчас выполняется")
-            return
+        if update.should_reload_history:
+            self._reload_history_panel()
 
-        removed_count = 0
+        if update.status_message is not None:
+            self._status_label.setText(update.status_message)
 
-        for task_id in task_ids:
-            removed_task = self._container.download_queue_service.remove_task(task_id=task_id)
-
-            if removed_task is not None:
-                removed_count += 1
-
-        self._queued_download_task_ids = [
-            queued_task_id
-            for queued_task_id in self._queued_download_task_ids
-            if queued_task_id not in task_ids
-        ]
-        self._queue_table.reload_tasks(self._container.download_queue_service.list_tasks())
-
-        if removed_count == 0:
-            self._status_label.setText("Выбранные задачи не найдены")
-            self._sync_queue_controls_state()
-            return
-
-        self._status_label.setText(f"Удалено из очереди: {removed_count}")
         self._sync_queue_controls_state()
 
     def _refresh_environment_status(self) -> None:
@@ -844,22 +589,20 @@ class MainWindow(QMainWindow):
     def _update_downloads_dir_label(self) -> None:
         self._settings_panel.set_downloads_dir(downloads_dir=self._settings.downloads_dir)
 
-    def _set_download_controls_enabled(self, *, is_enabled: bool) -> None:
-        self._input_panel.add_to_queue_button.setEnabled(is_enabled)
-        self._settings_panel.choose_downloads_dir_button.setEnabled(is_enabled)
-        self._environment_panel.delete_cookies_button.setEnabled(is_enabled)
-        self._environment_panel.refresh_button.setEnabled(is_enabled)
-        self._environment_panel.open_cookies_dir_button.setEnabled(is_enabled)
-        self._environment_panel.open_downloads_dir_button.setEnabled(is_enabled)
-        self._sync_queue_controls_state()
-
     def _sync_queue_controls_state(self) -> None:
         has_tasks = self._queue_table.has_tasks()
         has_selected_tasks = bool(self._queue_table.get_selected_task_ids())
         has_downloadable_tasks = bool(
             self._container.download_queue_service.list_downloadable_tasks()
         )
-        has_active_download = self._active_download_future is not None
+        has_active_download = self._download_controller.is_active
+
+        self._input_panel.add_to_queue_button.setEnabled(not has_active_download)
+        self._settings_panel.choose_downloads_dir_button.setEnabled(not has_active_download)
+        self._environment_panel.delete_cookies_button.setEnabled(not has_active_download)
+        self._environment_panel.refresh_button.setEnabled(not has_active_download)
+        self._environment_panel.open_cookies_dir_button.setEnabled(not has_active_download)
+        self._environment_panel.open_downloads_dir_button.setEnabled(not has_active_download)
 
         self._start_queue_button.setEnabled(has_active_download or has_downloadable_tasks)
         self._remove_from_queue_button.setEnabled(has_selected_tasks and not has_active_download)
@@ -867,7 +610,7 @@ class MainWindow(QMainWindow):
         self._sync_start_queue_button_state()
 
     def _sync_start_queue_button_state(self) -> None:
-        if self._active_download_future is not None:
+        if self._download_controller.is_active:
             self._start_queue_button.setText("Отменить загрузку")
             self._start_queue_button.setObjectName("DangerButton")
         else:
