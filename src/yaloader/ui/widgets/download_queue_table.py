@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from typing import cast, override
 from uuid import UUID
 
-from PyQt6.QtCore import QEvent, QItemSelectionModel, QModelIndex, QPoint, Qt
+from PyQt6.QtCore import QEvent, QItemSelectionModel, QModelIndex, QPoint, Qt, QTimer
 from PyQt6.QtGui import (
     QAction,
     QClipboard,
@@ -46,6 +46,14 @@ FOLDER_COLUMN_INDEX = 6
 
 TABLE_RIGHT_OVERDRAW_WIDTH = 2
 EMPTY_PROGRESS_TEXT = "—"
+
+QUALITY_RESOLUTION_ANIMATION_INTERVAL_MS = 420
+QUALITY_RESOLUTION_TOOLTIP = "Определяем доступное качество"
+QUALITY_RESOLUTION_TEXT_STATES = (
+    "Checking.",
+    "Checking..",
+    "Checking...",
+)
 
 SELECTED_ROW_BACKGROUND = QColor("#182D46")
 SELECTED_ROW_HOVER_BACKGROUND = QColor("#203A59")
@@ -150,12 +158,17 @@ class DownloadQueueTable(QTableWidget):
         self._task_ids_by_row: dict[int, UUID] = {}
         self._row_by_task_id: dict[UUID, int] = {}
         self._tasks_by_id: dict[UUID, DownloadTask] = {}
+        self._quality_resolution_task_ids: set[UUID] = set()
+        self._quality_resolution_step_index = 0
+        self._quality_resolution_timer = QTimer(self)
+
         self._on_download_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._on_cancel_task: Callable[[UUID], None] | None = None
         self._on_remove_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._suppress_next_context_menu_event = False
 
         self._configure_table()
+        self._configure_quality_resolution_timer()
 
     @override
     def viewportEvent(self, event: QEvent | None) -> bool:
@@ -236,6 +249,10 @@ class DownloadQueueTable(QTableWidget):
         if row_index is None:
             return
 
+        if task.status is not DownloadStatus.PENDING:
+            self._quality_resolution_task_ids.discard(task.task_id)
+            self._sync_quality_resolution_timer()
+
         self._tasks_by_id[task.task_id] = task
         self._set_task_row_values(row_index=row_index, task=task)
         self._sync_progress_cell_with_status(row_index=row_index, task=task)
@@ -243,13 +260,20 @@ class DownloadQueueTable(QTableWidget):
         self.resize_columns_to_viewport()
 
     def reload_tasks(self, tasks: Sequence[DownloadTask]) -> None:
+        pending_quality_task_ids = self._quality_resolution_task_ids.copy()
+
         self.setRowCount(0)
         self._task_ids_by_row.clear()
         self._row_by_task_id.clear()
         self._tasks_by_id.clear()
+        self._quality_resolution_task_ids.clear()
+        self._sync_quality_resolution_timer()
 
         for task in tasks:
             self.append_task(task)
+
+            if task.task_id in pending_quality_task_ids:
+                self.mark_quality_resolution_pending(task_id=task.task_id)
 
         self.resize_columns_to_viewport()
 
@@ -267,6 +291,44 @@ class DownloadQueueTable(QTableWidget):
                 task_ids.append(task_id)
 
         return tuple(task_ids)
+
+    def mark_quality_resolution_pending(self, *, task_id: UUID) -> None:
+        row_index = self._row_by_task_id.get(task_id)
+        task = self._tasks_by_id.get(task_id)
+
+        if row_index is None or task is None:
+            return
+
+        if task.status is not DownloadStatus.PENDING:
+            return
+
+        self._quality_resolution_task_ids.add(task_id)
+        self._set_quality_cell_text(
+            row_index=row_index,
+            text=self._build_quality_resolution_text(),
+            tooltip=QUALITY_RESOLUTION_TOOLTIP,
+        )
+        self._sync_quality_resolution_timer()
+
+    def clear_quality_resolution_pending(self, *, task_id: UUID) -> None:
+        was_pending = task_id in self._quality_resolution_task_ids
+        self._quality_resolution_task_ids.discard(task_id)
+        self._sync_quality_resolution_timer()
+
+        if not was_pending:
+            return
+
+        row_index = self._row_by_task_id.get(task_id)
+        task = self._tasks_by_id.get(task_id)
+
+        if row_index is None or task is None:
+            return
+
+        self._set_quality_cell_text(
+            row_index=row_index,
+            text=task.video_quality.value,
+            tooltip=task.video_quality.value,
+        )
 
     def prepare_tasks_for_download(self, *, task_ids: tuple[UUID, ...]) -> None:
         for task_id in task_ids:
@@ -366,6 +428,10 @@ class DownloadQueueTable(QTableWidget):
         vertical_header.hide()
 
         self.resize_columns_to_viewport()
+
+    def _configure_quality_resolution_timer(self) -> None:
+        self._quality_resolution_timer.setInterval(QUALITY_RESOLUTION_ANIMATION_INTERVAL_MS)
+        self._quality_resolution_timer.timeout.connect(self._advance_quality_resolution_animation)
 
     def _handle_viewport_mouse_press(self, *, event: QMouseEvent) -> bool:
         clicked_position = event.position().toPoint()
@@ -599,7 +665,7 @@ class DownloadQueueTable(QTableWidget):
         values_by_column = {
             MODE_COLUMN_INDEX: task.mode.value,
             URL_COLUMN_INDEX: task.url.value,
-            QUALITY_COLUMN_INDEX: task.video_quality.value,
+            QUALITY_COLUMN_INDEX: self._build_quality_cell_text(task=task),
             FORMAT_COLUMN_INDEX: task.output_format.value,
             STATUS_COLUMN_INDEX: task.status.value,
             FOLDER_COLUMN_INDEX: str(task.target_dir),
@@ -614,7 +680,77 @@ class DownloadQueueTable(QTableWidget):
             else:
                 table_item.setText(value)
 
-            table_item.setToolTip(value)
+            if (
+                column_index == QUALITY_COLUMN_INDEX
+                and task.task_id in self._quality_resolution_task_ids
+            ):
+                table_item.setToolTip(QUALITY_RESOLUTION_TOOLTIP)
+            else:
+                table_item.setToolTip(value)
+
+    def _build_quality_cell_text(self, *, task: DownloadTask) -> str:
+        if task.task_id in self._quality_resolution_task_ids:
+            return self._build_quality_resolution_text()
+
+        return task.video_quality.value
+
+    def _set_quality_cell_text(
+        self,
+        *,
+        row_index: int,
+        text: str,
+        tooltip: str,
+    ) -> None:
+        table_item = self.item(row_index, QUALITY_COLUMN_INDEX)
+
+        if table_item is None:
+            table_item = QTableWidgetItem(text)
+            self.setItem(row_index, QUALITY_COLUMN_INDEX, table_item)
+        else:
+            table_item.setText(text)
+
+        table_item.setToolTip(tooltip)
+
+    def _advance_quality_resolution_animation(self) -> None:
+        if not self._quality_resolution_task_ids:
+            self._sync_quality_resolution_timer()
+            return
+
+        self._quality_resolution_step_index = (self._quality_resolution_step_index + 1) % len(
+            QUALITY_RESOLUTION_TEXT_STATES
+        )
+        text = self._build_quality_resolution_text()
+        missing_task_ids: list[UUID] = []
+
+        for task_id in tuple(self._quality_resolution_task_ids):
+            row_index = self._row_by_task_id.get(task_id)
+
+            if row_index is None:
+                missing_task_ids.append(task_id)
+                continue
+
+            self._set_quality_cell_text(
+                row_index=row_index,
+                text=text,
+                tooltip=QUALITY_RESOLUTION_TOOLTIP,
+            )
+
+        for task_id in missing_task_ids:
+            self._quality_resolution_task_ids.discard(task_id)
+
+        self._sync_quality_resolution_timer()
+
+    def _build_quality_resolution_text(self) -> str:
+        return QUALITY_RESOLUTION_TEXT_STATES[self._quality_resolution_step_index]
+
+    def _sync_quality_resolution_timer(self) -> None:
+        if self._quality_resolution_task_ids:
+            if not self._quality_resolution_timer.isActive():
+                self._quality_resolution_timer.start()
+            return
+
+        if self._quality_resolution_timer.isActive():
+            self._quality_resolution_timer.stop()
 
     def _sync_progress_cell_with_status(self, *, row_index: int, task: DownloadTask) -> None:
         if task.status is DownloadStatus.COMPLETED:

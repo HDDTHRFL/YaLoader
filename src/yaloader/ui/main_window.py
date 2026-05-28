@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, SimpleQueue
 from typing import Final, override
@@ -28,13 +27,16 @@ from yaloader.application.dto.download_history_record import DownloadHistoryReco
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
-from yaloader.application.dto.media_metadata import MediaMetadata
 from yaloader.application.services.download_queue_service import is_downloadable
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, DownloadStatus, VideoQuality
 from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.services.app_container import AppContainer
+from yaloader.ui.controllers.media_metadata_controller import (
+    MediaMetadataController,
+    MediaMetadataResolutionResult,
+)
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
 from yaloader.ui.widgets.download_queue_table import DownloadQueueTable
 from yaloader.ui.widgets.environment_panel import EnvironmentPanel
@@ -47,7 +49,6 @@ WINDOW_MINIMUM_WIDTH = 1040
 WINDOW_MINIMUM_HEIGHT = 760
 
 DOWNLOAD_WORKERS_COUNT = 1
-METADATA_WORKERS_COUNT = 2
 DOWNLOAD_POLL_INTERVAL_MS = 250
 
 HISTORY_TOGGLE_BUTTON_SIZE = 36
@@ -63,13 +64,6 @@ HISTORY_RECORD_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
         DownloadStatus.CANCELED,
     }
 )
-
-
-@dataclass(frozen=True, slots=True)
-class QueuedMediaMetadataResult:
-    task_id: UUID
-    metadata: MediaMetadata | None = None
-    error_message: str | None = None
 
 
 class MainWindow(QMainWindow):
@@ -91,19 +85,18 @@ class MainWindow(QMainWindow):
         self._clear_queue_button = QPushButton("Очистить очередь", self)
         self._status_label = QLabel("Готов к работе", self)
 
+        self._metadata_controller = MediaMetadataController(
+            service=container.media_metadata_service,
+        )
+
         self._is_history_panel_visible = False
         self._queued_download_task_ids: list[UUID] = []
         self._recorded_history_task_ids: set[UUID] = set()
         self._progress_events: SimpleQueue[DownloadProgress] = SimpleQueue()
-        self._metadata_events: SimpleQueue[QueuedMediaMetadataResult] = SimpleQueue()
 
         self._download_executor = ThreadPoolExecutor(
             max_workers=DOWNLOAD_WORKERS_COUNT,
             thread_name_prefix="yaloader-download",
-        )
-        self._metadata_executor = ThreadPoolExecutor(
-            max_workers=METADATA_WORKERS_COUNT,
-            thread_name_prefix="yaloader-metadata",
         )
         self._active_download_future: Future[DownloadResult] | None = None
         self._active_download_task_id: UUID | None = None
@@ -144,7 +137,7 @@ class MainWindow(QMainWindow):
 
         self.killTimer(self._download_poll_timer)
         self._download_executor.shutdown(wait=False, cancel_futures=True)
-        self._metadata_executor.shutdown(wait=False, cancel_futures=True)
+        self._metadata_controller.shutdown()
         super().closeEvent(event)
 
     @override
@@ -403,55 +396,21 @@ class MainWindow(QMainWindow):
         task_id: UUID,
         request: DownloadRequest,
     ) -> None:
-        if request.mode is not DownloadMode.VIDEO:
-            return
-
-        self._metadata_executor.submit(
-            self._resolve_metadata_worker,
+        is_started = self._metadata_controller.start_resolution(
             task_id=task_id,
             request=request,
         )
 
-    def _resolve_metadata_worker(
-        self,
-        *,
-        task_id: UUID,
-        request: DownloadRequest,
-    ) -> None:
-        try:
-            metadata = self._container.media_metadata_service.resolve(request=request)
-        except Exception as error:
-            logger.opt(exception=error).warning(
-                "Failed to resolve media metadata. task_id={} url={} error={}",
-                task_id,
-                request.url,
-                error,
-            )
-            self._metadata_events.put(
-                QueuedMediaMetadataResult(
-                    task_id=task_id,
-                    error_message=str(error),
-                )
-            )
-            return
-
-        self._metadata_events.put(
-            QueuedMediaMetadataResult(
-                task_id=task_id,
-                metadata=metadata,
-            )
-        )
+        if is_started:
+            self._queue_table.mark_quality_resolution_pending(task_id=task_id)
 
     def _drain_metadata_events(self) -> None:
-        while True:
-            try:
-                result = self._metadata_events.get_nowait()
-            except Empty:
-                return
-
+        for result in self._metadata_controller.drain_results():
             self._apply_metadata_result(result=result)
 
-    def _apply_metadata_result(self, *, result: QueuedMediaMetadataResult) -> None:
+    def _apply_metadata_result(self, *, result: MediaMetadataResolutionResult) -> None:
+        self._queue_table.clear_quality_resolution_pending(task_id=result.task_id)
+
         if result.metadata is None:
             self._status_label.setText(
                 "Не удалось определить качество. yt-dlp выберет доступный вариант при скачивании"
