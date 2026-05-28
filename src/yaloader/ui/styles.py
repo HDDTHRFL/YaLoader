@@ -504,13 +504,23 @@ QLabel#HistoryTimeLabel {
 }
 
 QLabel#HistoryUrlLabel {
-    color: #E8EAED;
+    color: #C9D1D9;
     font-size: 9pt;
+}
+
+QLabel#HistoryUrlLabel:hover {
+    color: #FFFFFF;
+    text-decoration: underline;
 }
 
 QLabel#HistoryPathLabel {
     color: #8B949E;
     font-size: 8pt;
+}
+
+QLabel#HistoryPathLabel:hover {
+    color: #C9D1D9;
+    text-decoration: underline;
 }
 
 QLabel#HistoryErrorLabel {

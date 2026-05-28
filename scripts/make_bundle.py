@@ -67,6 +67,7 @@ class BundleConfig:
             ".qss",
             ".svg",
             ".toml",
+            ".ttf",
             ".txt",
             ".ui",
             ".yaml",

@@ -47,8 +47,6 @@ WINDOW_MINIMUM_HEIGHT = 760
 DOWNLOAD_WORKERS_COUNT = 1
 DOWNLOAD_POLL_INTERVAL_MS = 250
 
-HISTORY_TOGGLE_STRIP_WIDTH = 56
-HISTORY_TOGGLE_TOP_OFFSET = 24
 HISTORY_TOGGLE_BUTTON_SIZE = 36
 
 TITLE_FONT_FAMILY = "Death Stars"
@@ -203,7 +201,7 @@ class MainWindow(QMainWindow):
     def _build_main_content_widget(self) -> QWidget:
         main_content_widget = QWidget(self)
         root_layout = QVBoxLayout(main_content_widget)
-        root_layout.setContentsMargins(28, 24, 28, 24)
+        root_layout.setContentsMargins(28, 10, 28, 24)
         root_layout.setSpacing(18)
 
         root_layout.addWidget(self._build_header())
@@ -217,31 +215,34 @@ class MainWindow(QMainWindow):
 
     def _build_header(self) -> QWidget:
         header = QWidget(self)
-        root_layout = QHBoxLayout(header)
+        root_layout = QVBoxLayout(header)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(12)
+        root_layout.setSpacing(4)
 
-        text_container = QWidget(header)
-        text_layout = QVBoxLayout(text_container)
-        text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(6)
+        title_row_layout = QHBoxLayout()
+        title_row_layout.setContentsMargins(0, 0, 0, 0)
+        title_row_layout.setSpacing(12)
 
-        title_label = self._build_title_label(parent=text_container)
+        title_label = self._build_title_label(parent=header)
+
+        title_row_layout.addWidget(
+            title_label,
+            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        )
+        title_row_layout.addStretch(1)
+        title_row_layout.addWidget(
+            self._history_toggle_button,
+            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
 
         subtitle_label = QLabel(
             "Загрузка видео и аудио в максимальном доступном качестве",
-            text_container,
+            header,
         )
         subtitle_label.setObjectName("SubtitleLabel")
 
-        text_layout.addWidget(title_label)
-        text_layout.addWidget(subtitle_label)
-
-        root_layout.addWidget(text_container, stretch=1)
-        root_layout.addWidget(
-            self._history_toggle_button,
-            alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight,
-        )
+        root_layout.addLayout(title_row_layout)
+        root_layout.addWidget(subtitle_label)
 
         return header
 
