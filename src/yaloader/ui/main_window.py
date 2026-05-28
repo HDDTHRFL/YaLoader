@@ -401,6 +401,7 @@ class MainWindow(QMainWindow):
         self._queue_table.clear_quality_resolution_pending(task_id=result.task_id)
 
         if result.metadata is None:
+            self._queue_table.mark_metadata_resolution_failed(task_id=result.task_id)
             self._status_label.setText(
                 "Не удалось определить качество. yt-dlp выберет доступный вариант при скачивании"
             )
