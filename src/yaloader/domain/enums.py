@@ -21,6 +21,8 @@ class VideoQuality(StrEnum):
     P1440 = "1440p"
     P1080 = "1080p"
     P720 = "720p"
+    P480 = "480p"
+    P360 = "360p"
 
 
 class DownloadStatus(StrEnum):

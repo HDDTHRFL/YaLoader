@@ -125,6 +125,10 @@ class YtDlpOptionsBuilder:
                 return 1080
             case VideoQuality.P720:
                 return 720
+            case VideoQuality.P480:
+                return 480
+            case VideoQuality.P360:
+                return 360
 
     def _build_postprocessors(
         self,

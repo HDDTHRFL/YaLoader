@@ -7,7 +7,7 @@ from uuid import UUID
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
 from yaloader.domain.entities.download_task import DownloadTask
-from yaloader.domain.enums import DownloadStatus
+from yaloader.domain.enums import DownloadStatus, VideoQuality
 from yaloader.domain.source_identity import build_media_source_key
 from yaloader.domain.value_objects.media_url import MediaUrl
 
@@ -91,6 +91,32 @@ class DownloadQueueService:
             updated_task = self._tasks[task_index].with_status(
                 status=status,
                 error_message=error_message,
+            )
+            self._tasks[task_index] = updated_task
+
+            return updated_task
+
+    def apply_metadata(
+        self,
+        *,
+        task_id: UUID,
+        title: str | None,
+        video_quality: VideoQuality,
+    ) -> DownloadTask | None:
+        with self._lock:
+            task_index = self._task_index_by_id.get(task_id)
+
+            if task_index is None:
+                return None
+
+            current_task = self._tasks[task_index]
+
+            if current_task.status is DownloadStatus.RUNNING:
+                return current_task
+
+            updated_task = current_task.with_metadata(
+                title=title,
+                video_quality=video_quality,
             )
             self._tasks[task_index] = updated_task
 

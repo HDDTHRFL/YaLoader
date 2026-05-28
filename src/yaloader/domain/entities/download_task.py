@@ -63,3 +63,15 @@ class DownloadTask:
             status=status,
             error_message=error_message,
         )
+
+    def with_metadata(
+        self,
+        *,
+        title: str | None,
+        video_quality: VideoQuality,
+    ) -> DownloadTask:
+        return replace(
+            self,
+            title=title,
+            video_quality=video_quality,
+        )

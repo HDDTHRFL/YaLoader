@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, SimpleQueue
 from typing import Final, override
@@ -27,10 +28,11 @@ from yaloader.application.dto.download_history_record import DownloadHistoryReco
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
+from yaloader.application.dto.media_metadata import MediaMetadata
 from yaloader.application.services.download_queue_service import is_downloadable
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.entities.download_task import DownloadTask
-from yaloader.domain.enums import DownloadStatus
+from yaloader.domain.enums import DownloadMode, DownloadStatus, VideoQuality
 from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.services.app_container import AppContainer
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
@@ -45,6 +47,7 @@ WINDOW_MINIMUM_WIDTH = 1040
 WINDOW_MINIMUM_HEIGHT = 760
 
 DOWNLOAD_WORKERS_COUNT = 1
+METADATA_WORKERS_COUNT = 2
 DOWNLOAD_POLL_INTERVAL_MS = 250
 
 HISTORY_TOGGLE_BUTTON_SIZE = 36
@@ -60,6 +63,13 @@ HISTORY_RECORD_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
         DownloadStatus.CANCELED,
     }
 )
+
+
+@dataclass(frozen=True, slots=True)
+class QueuedMediaMetadataResult:
+    task_id: UUID
+    metadata: MediaMetadata | None = None
+    error_message: str | None = None
 
 
 class MainWindow(QMainWindow):
@@ -85,10 +95,15 @@ class MainWindow(QMainWindow):
         self._queued_download_task_ids: list[UUID] = []
         self._recorded_history_task_ids: set[UUID] = set()
         self._progress_events: SimpleQueue[DownloadProgress] = SimpleQueue()
+        self._metadata_events: SimpleQueue[QueuedMediaMetadataResult] = SimpleQueue()
 
         self._download_executor = ThreadPoolExecutor(
             max_workers=DOWNLOAD_WORKERS_COUNT,
             thread_name_prefix="yaloader-download",
+        )
+        self._metadata_executor = ThreadPoolExecutor(
+            max_workers=METADATA_WORKERS_COUNT,
+            thread_name_prefix="yaloader-metadata",
         )
         self._active_download_future: Future[DownloadResult] | None = None
         self._active_download_task_id: UUID | None = None
@@ -129,6 +144,7 @@ class MainWindow(QMainWindow):
 
         self.killTimer(self._download_poll_timer)
         self._download_executor.shutdown(wait=False, cancel_futures=True)
+        self._metadata_executor.shutdown(wait=False, cancel_futures=True)
         super().closeEvent(event)
 
     @override
@@ -137,6 +153,7 @@ class MainWindow(QMainWindow):
             super().timerEvent(event)
             return
 
+        self._drain_metadata_events()
         self._poll_download_result()
 
     def _configure_window(self) -> None:
@@ -362,6 +379,7 @@ class MainWindow(QMainWindow):
 
         task = self._container.download_queue_service.add_download(request=request)
         self._queue_table.append_task(task=task)
+        self._start_metadata_resolution(task_id=task.task_id, request=request)
         self._sync_queue_controls_state()
         self._status_label.setText("Задача из истории добавлена в очередь загрузок")
 
@@ -378,6 +396,98 @@ class MainWindow(QMainWindow):
         self._recorded_history_task_ids.discard(record.task_id)
         self._reload_history_panel()
         self._status_label.setText("Запись удалена из истории")
+
+    def _start_metadata_resolution(
+        self,
+        *,
+        task_id: UUID,
+        request: DownloadRequest,
+    ) -> None:
+        if request.mode is not DownloadMode.VIDEO:
+            return
+
+        self._metadata_executor.submit(
+            self._resolve_metadata_worker,
+            task_id=task_id,
+            request=request,
+        )
+
+    def _resolve_metadata_worker(
+        self,
+        *,
+        task_id: UUID,
+        request: DownloadRequest,
+    ) -> None:
+        try:
+            metadata = self._container.media_metadata_service.resolve(request=request)
+        except Exception as error:
+            logger.opt(exception=error).warning(
+                "Failed to resolve media metadata. task_id={} url={} error={}",
+                task_id,
+                request.url,
+                error,
+            )
+            self._metadata_events.put(
+                QueuedMediaMetadataResult(
+                    task_id=task_id,
+                    error_message=str(error),
+                )
+            )
+            return
+
+        self._metadata_events.put(
+            QueuedMediaMetadataResult(
+                task_id=task_id,
+                metadata=metadata,
+            )
+        )
+
+    def _drain_metadata_events(self) -> None:
+        while True:
+            try:
+                result = self._metadata_events.get_nowait()
+            except Empty:
+                return
+
+            self._apply_metadata_result(result=result)
+
+    def _apply_metadata_result(self, *, result: QueuedMediaMetadataResult) -> None:
+        if result.metadata is None:
+            self._status_label.setText(
+                "Не удалось определить качество. yt-dlp выберет доступный вариант при скачивании"
+            )
+            return
+
+        updated_task = self._container.download_queue_service.apply_metadata(
+            task_id=result.task_id,
+            title=result.metadata.title,
+            video_quality=result.metadata.resolved_video_quality,
+        )
+
+        if updated_task is None:
+            return
+
+        if updated_task.status is DownloadStatus.RUNNING:
+            return
+
+        self._queue_table.update_task(task=updated_task)
+
+        if result.metadata.requested_video_quality is VideoQuality.BEST:
+            self._status_label.setText(
+                f"Качество определено: {result.metadata.resolved_video_quality.value}"
+            )
+            return
+
+        if result.metadata.resolved_video_quality is not result.metadata.requested_video_quality:
+            self._status_label.setText(
+                "Выбранное качество недоступно. "
+                f"Будет использовано: {result.metadata.resolved_video_quality.value}"
+            )
+            return
+
+        self._status_label.setText(
+            f"Качество подтверждено: {result.metadata.resolved_video_quality.value}"
+        )
 
     def _handle_add_to_queue_clicked(self) -> None:
         url = self._input_panel.get_url_text()
@@ -413,11 +523,17 @@ class MainWindow(QMainWindow):
 
         task = self._container.download_queue_service.add_download(request=request)
         self._queue_table.append_task(task=task)
+        self._start_metadata_resolution(task_id=task.task_id, request=request)
 
         self._input_panel.clear_url()
-        self._status_label.setText(
-            f"Добавлено в очередь: {self._container.download_queue_service.count()}"
-        )
+
+        if request.mode is DownloadMode.VIDEO:
+            self._status_label.setText("Добавлено в очередь. Определяем доступное качество...")
+        else:
+            self._status_label.setText(
+                f"Добавлено в очередь: {self._container.download_queue_service.count()}"
+            )
+
         self._sync_queue_controls_state()
         self._focus_url_input_later()
 
