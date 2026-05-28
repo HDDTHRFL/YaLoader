@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import override
 from uuid import UUID
 
-from pydantic import ValidationError
 from PyQt6.QtCore import QEvent, Qt, QTimer, QTimerEvent, QUrl
 from PyQt6.QtGui import QCloseEvent, QDesktopServices, QFont, QShowEvent
 from PyQt6.QtWidgets import (
@@ -22,8 +21,7 @@ from PyQt6.QtWidgets import (
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.config.app_info import APP_DISPLAY_NAME
-from yaloader.domain.enums import DownloadMode, DownloadStatus, VideoQuality
-from yaloader.domain.format_rules import get_download_mode_for_output_format
+from yaloader.domain.enums import DownloadStatus, VideoQuality
 from yaloader.services.app_container import AppContainer
 from yaloader.ui.controllers.download_controller import (
     DownloadController,
@@ -36,6 +34,10 @@ from yaloader.ui.controllers.history_controller import (
 from yaloader.ui.controllers.media_metadata_controller import (
     MediaMetadataController,
     MediaMetadataResolutionResult,
+)
+from yaloader.ui.controllers.queue_input_controller import (
+    QueueInputController,
+    QueueInputControllerUpdate,
 )
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
 from yaloader.ui.widgets.download_queue_table import DownloadQueueTable
@@ -86,6 +88,9 @@ class MainWindow(QMainWindow):
         )
         self._history_controller = HistoryController(
             history_service=container.download_history_service,
+            queue_service=container.download_queue_service,
+        )
+        self._queue_input_controller = QueueInputController(
             queue_service=container.download_queue_service,
         )
 
@@ -416,52 +421,35 @@ class MainWindow(QMainWindow):
         )
 
     def _handle_add_to_queue_clicked(self) -> None:
-        url = self._input_panel.get_url_text()
-
-        if not url:
-            self._status_label.setText("Сначала вставьте ссылку")
-            self._focus_url_input_later()
-            return
-
-        selected_output_format = self._input_panel.get_selected_output_format()
-        selected_video_quality = self._input_panel.get_selected_video_quality()
-
-        try:
-            request = DownloadRequest(
-                url=url,
+        self._apply_queue_input_update(
+            update=self._queue_input_controller.add_from_input(
+                url=self._input_panel.get_url_text(),
                 target_dir=self._settings.downloads_dir,
-                mode=get_download_mode_for_output_format(output_format=selected_output_format),
-                output_format=selected_output_format,
-                video_quality=selected_video_quality,
+                output_format=self._input_panel.get_selected_output_format(),
+                video_quality=self._input_panel.get_selected_video_quality(),
             )
-        except ValidationError as error:
-            first_error_message = error.errors()[0]["msg"]
-            self._status_label.setText(f"Некорректная задача загрузки: {first_error_message}")
-            self._focus_url_input_later()
-            return
+        )
 
-        existing_task = self._container.download_queue_service.get_task_by_url(url=request.url)
+    def _apply_queue_input_update(self, *, update: QueueInputControllerUpdate) -> None:
+        if update.added_task is not None:
+            self._queue_table.append_task(task=update.added_task)
 
-        if existing_task is not None:
-            self._status_label.setText("Эта ссылка уже есть в очереди")
-            self._focus_url_input_later()
-            return
-
-        task = self._container.download_queue_service.add_download(request=request)
-        self._queue_table.append_task(task=task)
-        self._start_metadata_resolution(task_id=task.task_id, request=request)
-
-        self._input_panel.clear_url()
-
-        if request.mode is DownloadMode.VIDEO:
-            self._status_label.setText("Добавлено в очередь. Определяем доступное качество...")
-        else:
-            self._status_label.setText(
-                f"Добавлено в очередь: {self._container.download_queue_service.count()}"
+        if update.added_task is not None and update.metadata_request is not None:
+            self._start_metadata_resolution(
+                task_id=update.added_task.task_id,
+                request=update.metadata_request,
             )
+
+        if update.should_clear_url_input:
+            self._input_panel.clear_url()
+
+        if update.status_message is not None:
+            self._status_label.setText(update.status_message)
 
         self._sync_queue_controls_state()
-        self._focus_url_input_later()
+
+        if update.should_focus_url_input:
+            self._focus_url_input_later()
 
     def _handle_choose_downloads_dir_clicked(self) -> None:
         selected_dir = QFileDialog.getExistingDirectory(
