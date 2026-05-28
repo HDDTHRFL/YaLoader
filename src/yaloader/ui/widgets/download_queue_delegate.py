@@ -6,7 +6,8 @@ from PyQt6.QtCore import QModelIndex, QRect, QSize, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PyQt6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
-URL_COLUMN_INDEX = 1
+from yaloader.ui.widgets.download_queue_columns import QUEUE_ROW_HEIGHT, URL_COLUMN_INDEX
+
 URL_TITLE_ROLE = int(Qt.ItemDataRole.UserRole)
 URL_TITLE_STATE_ROLE = URL_TITLE_ROLE + 1
 URL_COPY_FEEDBACK_ROLE = URL_TITLE_ROLE + 2
@@ -14,7 +15,6 @@ URL_COPY_FEEDBACK_ROLE = URL_TITLE_ROLE + 2
 URL_TITLE_STATE_DEFAULT = "default"
 URL_TITLE_STATE_ERROR = "error"
 
-QUEUE_ROW_HEIGHT = 48
 URL_CELL_VERTICAL_PADDING = 4
 URL_TITLE_VERTICAL_SPACING = 0
 

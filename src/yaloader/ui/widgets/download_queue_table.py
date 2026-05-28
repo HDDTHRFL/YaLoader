@@ -6,7 +6,6 @@ from uuid import UUID
 
 from PyQt6.QtCore import QEvent, QItemSelectionModel, QModelIndex, QPoint, Qt, QTimer
 from PyQt6.QtGui import (
-    QAction,
     QClipboard,
     QContextMenuEvent,
     QGuiApplication,
@@ -18,20 +17,33 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
-    QMenu,
     QProgressBar,
-    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QWidget,
-    QWidgetAction,
 )
 
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
-from yaloader.ui.widgets.download_queue_delegate import (
+from yaloader.ui.widgets.download_queue_columns import (
+    FOLDER_COLUMN_INDEX,
+    FORMAT_COLUMN_INDEX,
+    MODE_COLUMN_INDEX,
+    PROGRESS_COLUMN_INDEX,
+    QUALITY_COLUMN_INDEX,
+    QUEUE_COLUMN_COUNT,
     QUEUE_ROW_HEIGHT,
+    STATUS_COLUMN_INDEX,
+    TABLE_RIGHT_OVERDRAW_WIDTH,
+    URL_COLUMN_INDEX,
+    calculate_queue_column_widths,
+)
+from yaloader.ui.widgets.download_queue_context_menu import (
+    DownloadQueueContextAction,
+    show_download_queue_context_menu,
+)
+from yaloader.ui.widgets.download_queue_delegate import (
     URL_COPY_FEEDBACK_ROLE,
     URL_TITLE_ROLE,
     URL_TITLE_STATE_DEFAULT,
@@ -40,15 +52,6 @@ from yaloader.ui.widgets.download_queue_delegate import (
     DownloadQueueItemDelegate,
 )
 
-MODE_COLUMN_INDEX = 0
-URL_COLUMN_INDEX = 1
-QUALITY_COLUMN_INDEX = 2
-FORMAT_COLUMN_INDEX = 3
-STATUS_COLUMN_INDEX = 4
-PROGRESS_COLUMN_INDEX = 5
-FOLDER_COLUMN_INDEX = 6
-
-TABLE_RIGHT_OVERDRAW_WIDTH = 2
 EMPTY_PROGRESS_TEXT = "—"
 
 QUALITY_RESOLUTION_ANIMATION_INTERVAL_MS = 420
@@ -62,34 +65,6 @@ QUALITY_RESOLUTION_TEXT_STATES = (
 COPY_FEEDBACK_DURATION_MS = 1000
 COPY_FEEDBACK_TEXT = "Ссылка скопирована..."
 METADATA_RESOLUTION_FAILED_TEXT = "Ссылку не удалось определить..."
-
-DOWNLOADABLE_STATUSES = frozenset(
-    {
-        DownloadStatus.PENDING,
-        DownloadStatus.FAILED,
-        DownloadStatus.CANCELED,
-    }
-)
-
-MIN_COLUMN_WIDTHS = {
-    MODE_COLUMN_INDEX: 64,
-    URL_COLUMN_INDEX: 260,
-    QUALITY_COLUMN_INDEX: 84,
-    FORMAT_COLUMN_INDEX: 68,
-    STATUS_COLUMN_INDEX: 92,
-    PROGRESS_COLUMN_INDEX: 120,
-    FOLDER_COLUMN_INDEX: 190,
-}
-
-COLUMN_STRETCH_WEIGHTS = {
-    MODE_COLUMN_INDEX: 0.2,
-    URL_COLUMN_INDEX: 6.0,
-    QUALITY_COLUMN_INDEX: 0.25,
-    FORMAT_COLUMN_INDEX: 0.25,
-    STATUS_COLUMN_INDEX: 0.35,
-    PROGRESS_COLUMN_INDEX: 1.1,
-    FOLDER_COLUMN_INDEX: 2.8,
-}
 
 
 class DownloadQueueTable(QTableWidget):
@@ -335,40 +310,13 @@ class DownloadQueueTable(QTableWidget):
 
         viewport = cast(QWidget, self.viewport())
         available_width = viewport.width() + TABLE_RIGHT_OVERDRAW_WIDTH
+        column_widths = calculate_queue_column_widths(available_width=available_width)
 
-        if available_width <= 0:
-            return
-
-        minimum_total_width = sum(MIN_COLUMN_WIDTHS.values())
-        total_weight = sum(COLUMN_STRETCH_WEIGHTS.values())
-        calculated_widths: dict[int, int] = {}
-
-        if available_width <= minimum_total_width:
-            scale = available_width / minimum_total_width
-
-            for column_index, minimum_width in MIN_COLUMN_WIDTHS.items():
-                calculated_widths[column_index] = max(1, int(minimum_width * scale))
-        else:
-            extra_width = available_width - minimum_total_width
-
-            for column_index, minimum_width in MIN_COLUMN_WIDTHS.items():
-                weighted_extra = int(
-                    extra_width * COLUMN_STRETCH_WEIGHTS[column_index] / total_weight
-                )
-                calculated_widths[column_index] = minimum_width + weighted_extra
-
-        last_column_width = available_width - sum(
-            width
-            for column_index, width in calculated_widths.items()
-            if column_index != FOLDER_COLUMN_INDEX
-        )
-        calculated_widths[FOLDER_COLUMN_INDEX] = max(1, last_column_width)
-
-        for column_index, column_width in calculated_widths.items():
+        for column_index, column_width in column_widths.items():
             self.setColumnWidth(column_index, column_width)
 
     def _configure_table(self) -> None:
-        self.setColumnCount(7)
+        self.setColumnCount(QUEUE_COLUMN_COUNT)
         self.setHorizontalHeaderLabels(
             [
                 "Режим",
@@ -436,8 +384,7 @@ class DownloadQueueTable(QTableWidget):
         return True
 
     def _handle_viewport_context_menu(self, *, event: QContextMenuEvent) -> bool:
-        position = event.pos()
-        table_item = self.itemAt(position)
+        table_item = self.itemAt(event.pos())
 
         if table_item is None:
             self._clear_current_cell_focus()
@@ -469,67 +416,32 @@ class DownloadQueueTable(QTableWidget):
         selected_task_ids = self._get_context_task_ids(clicked_row_index=clicked_row_index)
         selected_tasks = self._get_tasks_by_ids(task_ids=selected_task_ids)
 
-        if not selected_tasks:
-            return
-
-        context_menu = QMenu(self)
-
-        copy_action = context_menu.addAction(
-            "Копировать ссылки" if len(selected_tasks) > 1 else "Копировать ссылку"
+        menu_result = show_download_queue_context_menu(
+            parent=self,
+            global_position=global_position,
+            selected_tasks=selected_tasks,
+            selected_task_ids=selected_task_ids,
         )
 
-        download_action: QAction | None = None
-        cancel_action: QAction | None = None
-        remove_action: QAction | None = None
-        downloadable_task_ids: tuple[UUID, ...] = ()
-        cancel_task_id: UUID | None = None
+        if menu_result is None:
+            return
 
-        if len(selected_tasks) == 1 and selected_tasks[0].status is DownloadStatus.RUNNING:
-            cancel_task_id = selected_tasks[0].task_id
-            cancel_action = self._add_menu_button_action(
-                menu=context_menu,
-                text="Отменить загрузку",
-                object_name="MenuDangerButton",
+        if menu_result.action is DownloadQueueContextAction.COPY:
+            self._copy_task_urls_to_clipboard(
+                tasks=self._get_tasks_by_ids(task_ids=menu_result.task_ids)
             )
-        else:
-            downloadable_task_ids = tuple(
-                task.task_id for task in selected_tasks if task.status in DOWNLOADABLE_STATUSES
-            )
-
-            if downloadable_task_ids:
-                action_text = "Скачать файлы" if len(downloadable_task_ids) > 1 else "Скачать файл"
-                download_action = context_menu.addAction(action_text)
-
-        remove_text = "Удалить выбранные" if len(selected_task_ids) > 1 else "Удалить из очереди"
-        remove_action = self._add_menu_button_action(
-            menu=context_menu,
-            text=remove_text,
-            object_name="MenuDangerButton",
-        )
-
-        selected_action = context_menu.exec(global_position)
-
-        if selected_action is None:
             return
 
-        if selected_action == copy_action:
-            self._copy_task_urls_to_clipboard(tasks=selected_tasks)
+        if menu_result.action is DownloadQueueContextAction.CANCEL:
+            self._cancel_task(menu_result.task_ids[0])
             return
 
-        if (
-            cancel_action is not None
-            and selected_action == cancel_action
-            and cancel_task_id is not None
-        ):
-            self._cancel_task(cancel_task_id)
+        if menu_result.action is DownloadQueueContextAction.DOWNLOAD:
+            self._download_tasks(menu_result.task_ids)
             return
 
-        if download_action is not None and selected_action == download_action:
-            self._download_tasks(downloadable_task_ids)
-            return
-
-        if remove_action is not None and selected_action == remove_action:
-            self._remove_tasks(selected_task_ids)
+        if menu_result.action is DownloadQueueContextAction.REMOVE:
+            self._remove_tasks(menu_result.task_ids)
 
     def _get_context_task_ids(self, *, clicked_row_index: int) -> tuple[UUID, ...]:
         selected_task_ids = self.get_selected_task_ids()
@@ -568,28 +480,6 @@ class DownloadQueueTable(QTableWidget):
                 tasks.append(task)
 
         return tuple(tasks)
-
-    def _add_menu_button_action(
-        self,
-        *,
-        menu: QMenu,
-        text: str,
-        object_name: str,
-    ) -> QWidgetAction:
-        action = QWidgetAction(menu)
-        button = QPushButton(text, menu)
-        button.setObjectName(object_name)
-
-        def handle_button_clicked(_checked: bool = False) -> None:
-            action.trigger()
-            menu.close()
-
-        button.clicked.connect(handle_button_clicked)
-
-        action.setDefaultWidget(button)
-        menu.addAction(action)
-
-        return action
 
     def _download_tasks(self, task_ids: tuple[UUID, ...]) -> None:
         if self._on_download_tasks is not None:
