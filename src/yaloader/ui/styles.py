@@ -18,8 +18,9 @@ QFrame#PanelFrame {
 }
 
 QLabel#TitleLabel {
-    font-size: 24pt;
-    font-weight: 700;
+    font-family: "Death Stars", "Segoe UI Black", "Arial Black";
+    font-size: 40pt;
+    font-weight: 400;
     color: #FFFFFF;
 }
 
@@ -204,6 +205,12 @@ QPushButton#SecondaryButton:hover {
     background-color: #30363D;
 }
 
+QPushButton#SecondaryButton:pressed {
+    background-color: #151A21;
+    border-color: #2F81F7;
+    color: #FFFFFF;
+}
+
 QPushButton#GhostButton {
     min-height: 28px;
     padding: 0 12px;
@@ -217,6 +224,12 @@ QPushButton#GhostButton {
 QPushButton#GhostButton:hover {
     background-color: #1B2028;
     color: #C9D1D9;
+}
+
+QPushButton#GhostButton:pressed {
+    background-color: #0D1117;
+    border-color: #2F81F7;
+    color: #FFFFFF;
 }
 
 QPushButton#TinyGhostButton {
@@ -235,6 +248,12 @@ QPushButton#TinyGhostButton:hover {
     color: #C9D1D9;
 }
 
+QPushButton#TinyGhostButton:pressed {
+    background-color: #0D1117;
+    border-color: #2F81F7;
+    color: #FFFFFF;
+}
+
 QPushButton#TinyDangerButton {
     min-height: 24px;
     padding: 0 10px;
@@ -251,6 +270,12 @@ QPushButton#TinyDangerButton:hover {
     color: #FECACA;
 }
 
+QPushButton#TinyDangerButton:pressed {
+    background-color: #3A1518;
+    border-color: #D92D20;
+    color: #FFFFFF;
+}
+
 QPushButton#DangerGhostButton {
     background-color: transparent;
     color: #FCA5A5;
@@ -260,6 +285,12 @@ QPushButton#DangerGhostButton {
 QPushButton#DangerGhostButton:hover {
     background-color: #2A1518;
     color: #FECACA;
+}
+
+QPushButton#DangerGhostButton:pressed {
+    background-color: #3A1518;
+    border-color: #D92D20;
+    color: #FFFFFF;
 }
 
 QPushButton#MenuDangerButton {
@@ -385,5 +416,105 @@ QMenu::item {
 QMenu::item:selected {
     background-color: #1F6FEB;
     color: #FFFFFF;
+}
+
+QFrame#HistoryDrawerToggleStrip {
+    background-color: transparent;
+    border: none;
+}
+
+QPushButton#DrawerToggleButton {
+    min-width: 36px;
+    max-width: 36px;
+    min-height: 36px;
+    max-height: 36px;
+    padding: 0;
+    background-color: transparent;
+    color: #C9D1D9;
+    border: none;
+    border-radius: 0;
+    font-size: 22pt;
+    font-weight: 700;
+}
+
+QPushButton#DrawerToggleButton:hover {
+    background-color: transparent;
+    color: #FFFFFF;
+    border: none;
+}
+
+QPushButton#DrawerToggleButton:pressed {
+    background-color: transparent;
+    color: #8B949E;
+    border: none;
+}
+
+QFrame#HistoryPanel {
+    background-color: #13161D;
+    border-left: 1px solid #272C36;
+}
+
+QScrollArea#HistoryScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QScrollArea#HistoryScrollArea QWidget {
+    background-color: transparent;
+}
+
+QFrame#HistoryCard {
+    background-color: #0D1117;
+    border: 1px solid #30363D;
+    border-radius: 10px;
+}
+
+QFrame#HistoryCard[state="completed"] {
+    border-color: #1F6F4A;
+}
+
+QFrame#HistoryCard[state="failed"] {
+    border-color: #553333;
+}
+
+QFrame#HistoryCard[state="canceled"] {
+    border-color: #5C4A1E;
+}
+
+QLabel#HistoryStatusLabel {
+    font-size: 9pt;
+    font-weight: 700;
+}
+
+QLabel#HistoryStatusLabel[state="completed"] {
+    color: #A7F3D0;
+}
+
+QLabel#HistoryStatusLabel[state="failed"] {
+    color: #FCA5A5;
+}
+
+QLabel#HistoryStatusLabel[state="canceled"] {
+    color: #FCD34D;
+}
+
+QLabel#HistoryTimeLabel {
+    color: #7D8590;
+    font-size: 9pt;
+}
+
+QLabel#HistoryUrlLabel {
+    color: #E8EAED;
+    font-size: 9pt;
+}
+
+QLabel#HistoryPathLabel {
+    color: #8B949E;
+    font-size: 8pt;
+}
+
+QLabel#HistoryErrorLabel {
+    color: #FCA5A5;
+    font-size: 8pt;
 }
 """

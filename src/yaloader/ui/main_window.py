@@ -8,8 +8,8 @@ from uuid import UUID
 
 from loguru import logger
 from pydantic import ValidationError
-from PyQt6.QtCore import QEvent, QTimer, QTimerEvent, QUrl
-from PyQt6.QtGui import QCloseEvent, QDesktopServices, QShowEvent
+from PyQt6.QtCore import QEvent, Qt, QTimer, QTimerEvent, QUrl
+from PyQt6.QtGui import QCloseEvent, QDesktopServices, QFont, QShowEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -36,6 +36,7 @@ from yaloader.services.app_container import AppContainer
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
 from yaloader.ui.widgets.download_queue_table import DownloadQueueTable
 from yaloader.ui.widgets.environment_panel import EnvironmentPanel
+from yaloader.ui.widgets.history_panel import HISTORY_PANEL_WIDTH, HistoryPanel
 from yaloader.ui.widgets.settings_panel import SettingsPanel
 
 WINDOW_INITIAL_WIDTH = 1180
@@ -45,6 +46,14 @@ WINDOW_MINIMUM_HEIGHT = 760
 
 DOWNLOAD_WORKERS_COUNT = 1
 DOWNLOAD_POLL_INTERVAL_MS = 250
+
+HISTORY_TOGGLE_STRIP_WIDTH = 56
+HISTORY_TOGGLE_TOP_OFFSET = 24
+HISTORY_TOGGLE_BUTTON_SIZE = 36
+
+TITLE_FONT_FAMILY = "Death Stars"
+TITLE_FONT_POINT_SIZE = 40
+TITLE_LETTER_SPACING_PERCENT = 112.0
 
 HISTORY_RECORD_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
     {
@@ -66,11 +75,15 @@ class MainWindow(QMainWindow):
         self._settings_panel = SettingsPanel(self)
         self._environment_panel = EnvironmentPanel(self)
         self._queue_table = DownloadQueueTable(self)
+        self._history_panel = HistoryPanel(self)
+        self._history_toggle_button = QPushButton("›", self)
+
         self._start_queue_button = QPushButton("Скачать очередь", self)
         self._remove_from_queue_button = QPushButton("Удалить выбранное", self)
         self._clear_queue_button = QPushButton("Очистить очередь", self)
         self._status_label = QLabel("Готов к работе", self)
 
+        self._is_history_panel_visible = False
         self._queued_download_task_ids: list[UUID] = []
         self._recorded_history_task_ids: set[UUID] = set()
         self._progress_events: SimpleQueue[DownloadProgress] = SimpleQueue()
@@ -91,7 +104,9 @@ class MainWindow(QMainWindow):
 
         self._update_downloads_dir_label()
         self._refresh_environment_status()
+        self._reload_history_panel()
         self._sync_queue_controls_state()
+        self._sync_history_panel_visibility()
         self._focus_url_input_later()
 
     @override
@@ -136,6 +151,13 @@ class MainWindow(QMainWindow):
         self._start_queue_button.setObjectName("PrimaryButton")
         self._remove_from_queue_button.setObjectName("SecondaryButton")
         self._clear_queue_button.setObjectName("SecondaryButton")
+        self._history_toggle_button.setObjectName("DrawerToggleButton")
+        self._history_toggle_button.setFixedSize(
+            HISTORY_TOGGLE_BUTTON_SIZE,
+            HISTORY_TOGGLE_BUTTON_SIZE,
+        )
+        self._history_toggle_button.setToolTip("Показать или скрыть историю загрузок")
+
         self._queue_table.set_context_menu_callbacks(
             on_download_tasks=self._start_tasks_download,
             on_cancel_task=self._cancel_task_download,
@@ -149,9 +171,11 @@ class MainWindow(QMainWindow):
         self._remove_from_queue_button.clicked.connect(self._handle_remove_selected_tasks_clicked)
         self._clear_queue_button.clicked.connect(self._handle_clear_queue_clicked)
         self._queue_table.itemSelectionChanged.connect(self._sync_queue_controls_state)
+
         self._settings_panel.choose_downloads_dir_button.clicked.connect(
             self._handle_choose_downloads_dir_clicked
         )
+
         self._environment_panel.delete_cookies_button.clicked.connect(
             self._handle_delete_cookies_clicked
         )
@@ -161,9 +185,24 @@ class MainWindow(QMainWindow):
         self._environment_panel.open_cookies_dir_button.clicked.connect(self._open_cookies_dir)
         self._environment_panel.open_downloads_dir_button.clicked.connect(self._open_downloads_dir)
 
+        self._history_toggle_button.clicked.connect(self._toggle_history_panel)
+        self._history_panel.refresh_button.clicked.connect(self._reload_history_panel)
+        self._history_panel.clear_button.clicked.connect(self._handle_clear_history_clicked)
+
     def _build_central_widget(self) -> QWidget:
         central_widget = QWidget(self)
-        root_layout = QVBoxLayout(central_widget)
+        root_layout = QHBoxLayout(central_widget)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        root_layout.addWidget(self._build_main_content_widget(), stretch=1)
+        root_layout.addWidget(self._history_panel)
+
+        return central_widget
+
+    def _build_main_content_widget(self) -> QWidget:
+        main_content_widget = QWidget(self)
+        root_layout = QVBoxLayout(main_content_widget)
         root_layout.setContentsMargins(28, 24, 28, 24)
         root_layout.setSpacing(18)
 
@@ -174,27 +213,52 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(self._environment_panel)
         root_layout.addWidget(self._build_footer())
 
-        return central_widget
+        return main_content_widget
 
     def _build_header(self) -> QWidget:
         header = QWidget(self)
-        layout = QVBoxLayout(header)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        root_layout = QHBoxLayout(header)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(12)
 
-        title_label = QLabel(APP_DISPLAY_NAME, header)
-        title_label.setObjectName("TitleLabel")
+        text_container = QWidget(header)
+        text_layout = QVBoxLayout(text_container)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(6)
+
+        title_label = self._build_title_label(parent=text_container)
 
         subtitle_label = QLabel(
             "Загрузка видео и аудио в максимальном доступном качестве",
-            header,
+            text_container,
         )
         subtitle_label.setObjectName("SubtitleLabel")
 
-        layout.addWidget(title_label)
-        layout.addWidget(subtitle_label)
+        text_layout.addWidget(title_label)
+        text_layout.addWidget(subtitle_label)
+
+        root_layout.addWidget(text_container, stretch=1)
+        root_layout.addWidget(
+            self._history_toggle_button,
+            alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight,
+        )
 
         return header
+
+    def _build_title_label(self, *, parent: QWidget) -> QLabel:
+        title_label = QLabel(APP_DISPLAY_NAME, parent)
+        title_label.setObjectName("TitleLabel")
+
+        title_font = QFont(TITLE_FONT_FAMILY)
+        title_font.setPointSize(TITLE_FONT_POINT_SIZE)
+        title_font.setWeight(QFont.Weight.Normal)
+        title_font.setLetterSpacing(
+            QFont.SpacingType.PercentageSpacing,
+            TITLE_LETTER_SPACING_PERCENT,
+        )
+        title_label.setFont(title_font)
+
+        return title_label
 
     def _build_queue_panel(self) -> QFrame:
         panel = QFrame(self)
@@ -230,6 +294,39 @@ class MainWindow(QMainWindow):
         layout.addStretch(1)
 
         return footer
+
+    def _toggle_history_panel(self) -> None:
+        if self._is_history_panel_visible:
+            self._is_history_panel_visible = False
+            self._sync_history_panel_visibility()
+            self.resize(
+                max(self.minimumWidth(), self.width() - HISTORY_PANEL_WIDTH),
+                self.height(),
+            )
+            return
+
+        self._is_history_panel_visible = True
+        self._sync_history_panel_visibility()
+        self.resize(self.width() + HISTORY_PANEL_WIDTH, self.height())
+
+    def _sync_history_panel_visibility(self) -> None:
+        self._history_panel.setVisible(self._is_history_panel_visible)
+        self._history_toggle_button.setText("‹" if self._is_history_panel_visible else "›")
+
+    def _reload_history_panel(self) -> None:
+        records = self._container.download_history_service.load()
+        self._history_panel.set_records(records=records)
+
+    def _handle_clear_history_clicked(self) -> None:
+        removed_count = self._container.download_history_service.clear()
+        self._recorded_history_task_ids.clear()
+        self._reload_history_panel()
+
+        if removed_count == 0:
+            self._status_label.setText("История уже пустая")
+            return
+
+        self._status_label.setText(f"История очищена. Удалено записей: {removed_count}")
 
     def _handle_add_to_queue_clicked(self) -> None:
         url = self._input_panel.get_url_text()
@@ -553,6 +650,7 @@ class MainWindow(QMainWindow):
             return
 
         self._recorded_history_task_ids.add(task.task_id)
+        self._reload_history_panel()
 
     def _drain_progress_events(self) -> None:
         while True:
