@@ -14,6 +14,7 @@ class AppPaths:
     logs_dir: Path
     settings_file: Path
     cookies_file: Path
+    history_file: Path
 
     @property
     def required_directories(self) -> tuple[Path, ...]:
@@ -34,6 +35,7 @@ def build_default_app_paths() -> AppPaths:
         logs_dir=data_dir / "logs",
         settings_file=data_dir / "settings.json",
         cookies_file=data_dir / "cookies.txt",
+        history_file=data_dir / "download_history.json",
     )
 
 

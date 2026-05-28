@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from yaloader.application.dto.app_settings import AppSettings
 from yaloader.application.ports.downloader import Downloader
+from yaloader.application.services.download_history_service import DownloadHistoryService
 from yaloader.application.services.download_queue_service import DownloadQueueService
 from yaloader.application.services.environment_check_service import EnvironmentCheckService
 from yaloader.application.services.settings_service import SettingsService
@@ -19,6 +20,7 @@ class AppContainer:
     settings_service: SettingsService
     environment_check_service: EnvironmentCheckService
     download_queue_service: DownloadQueueService
+    download_history_service: DownloadHistoryService
     downloader: Downloader
 
 
@@ -42,5 +44,6 @@ def build_app_container() -> AppContainer:
             process_runner=SystemProcessRunner(),
         ),
         download_queue_service=DownloadQueueService(),
+        download_history_service=DownloadHistoryService(history_file=paths.history_file),
         downloader=YtDlpDownloader.create_default(cookies_file=paths.cookies_file),
     )

@@ -3,9 +3,10 @@ from __future__ import annotations
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from queue import Empty, SimpleQueue
-from typing import override
+from typing import Final, override
 from uuid import UUID
 
+from loguru import logger
 from pydantic import ValidationError
 from PyQt6.QtCore import QEvent, QTimer, QTimerEvent, QUrl
 from PyQt6.QtGui import QCloseEvent, QDesktopServices, QShowEvent
@@ -22,6 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from yaloader.application.dto.cancellation import DownloadCancellationToken
+from yaloader.application.dto.download_history_record import DownloadHistoryRecord
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
@@ -44,6 +46,14 @@ WINDOW_MINIMUM_HEIGHT = 760
 DOWNLOAD_WORKERS_COUNT = 1
 DOWNLOAD_POLL_INTERVAL_MS = 250
 
+HISTORY_RECORD_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
+    {
+        DownloadStatus.COMPLETED,
+        DownloadStatus.FAILED,
+        DownloadStatus.CANCELED,
+    }
+)
+
 
 class MainWindow(QMainWindow):
     def __init__(self, container: AppContainer) -> None:
@@ -62,6 +72,7 @@ class MainWindow(QMainWindow):
         self._status_label = QLabel("Готов к работе", self)
 
         self._queued_download_task_ids: list[UUID] = []
+        self._recorded_history_task_ids: set[UUID] = set()
         self._progress_events: SimpleQueue[DownloadProgress] = SimpleQueue()
 
         self._download_executor = ThreadPoolExecutor(
@@ -430,6 +441,7 @@ class MainWindow(QMainWindow):
 
             if canceled_task is not None:
                 self._queue_table.update_task(task=canceled_task)
+                self._record_download_history(task=canceled_task, output_path=None)
 
         self._status_label.setText("Отмена загрузки... Частичные файлы будут удалены")
         self._sync_queue_controls_state()
@@ -487,6 +499,7 @@ class MainWindow(QMainWindow):
 
         if updated_task is not None:
             self._queue_table.update_task(task=updated_task)
+            self._record_download_history(task=updated_task, output_path=result.output_path)
 
         if self._queued_download_task_ids:
             self._start_next_queued_download()
@@ -511,6 +524,35 @@ class MainWindow(QMainWindow):
             return current_task
 
         return self._container.download_queue_service.apply_result(result=result)
+
+    def _record_download_history(
+        self,
+        *,
+        task: DownloadTask,
+        output_path: Path | None,
+    ) -> None:
+        if task.task_id in self._recorded_history_task_ids:
+            return
+
+        if task.status not in HISTORY_RECORD_STATUSES:
+            return
+
+        record = DownloadHistoryRecord.create_from_task(
+            task=task,
+            output_path=output_path,
+        )
+
+        try:
+            self._container.download_history_service.append(record=record)
+        except OSError as error:
+            logger.warning(
+                "Failed to save download history. task_id={} error={}",
+                task.task_id,
+                error,
+            )
+            return
+
+        self._recorded_history_task_ids.add(task.task_id)
 
     def _drain_progress_events(self) -> None:
         while True:
