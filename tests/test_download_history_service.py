@@ -59,6 +59,44 @@ def test_append_limits_records_count(tmp_path: Path) -> None:
     assert records == (third_record, second_record)
 
 
+def test_remove_by_task_id_removes_matching_record_and_keeps_others(tmp_path: Path) -> None:
+    service = DownloadHistoryService(history_file=tmp_path / "download_history.json")
+    first_record = create_history_record(url="https://www.youtube.com/watch?v=first")
+    second_record = create_history_record(url="https://www.youtube.com/watch?v=second")
+
+    service.append(record=first_record)
+    service.append(record=second_record)
+
+    removed_count = service.remove_by_task_id(task_id=first_record.task_id)
+
+    assert removed_count == 1
+    assert service.load() == (second_record,)
+
+
+def test_remove_by_task_id_removes_history_file_when_last_record_removed(tmp_path: Path) -> None:
+    history_file = tmp_path / "download_history.json"
+    service = DownloadHistoryService(history_file=history_file)
+    record = create_history_record(url="https://www.youtube.com/watch?v=first")
+    service.append(record=record)
+
+    removed_count = service.remove_by_task_id(task_id=record.task_id)
+
+    assert removed_count == 1
+    assert history_file.is_file() is False
+    assert service.load() == ()
+
+
+def test_remove_by_task_id_returns_zero_for_missing_record(tmp_path: Path) -> None:
+    service = DownloadHistoryService(history_file=tmp_path / "download_history.json")
+    record = create_history_record(url="https://www.youtube.com/watch?v=first")
+    service.append(record=record)
+
+    removed_count = service.remove_by_task_id(task_id=uuid4())
+
+    assert removed_count == 0
+    assert service.load() == (record,)
+
+
 def test_clear_removes_history_file_and_returns_removed_count(tmp_path: Path) -> None:
     history_file = tmp_path / "download_history.json"
     service = DownloadHistoryService(history_file=history_file)

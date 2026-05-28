@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
 
 from loguru import logger
 from pydantic import ValidationError
@@ -25,7 +26,9 @@ class DownloadHistoryService:
             raw_data = json.loads(self.history_file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             logger.warning(
-                "Failed to load download history. path={} error={}", self.history_file, error
+                "Failed to load download history. path={} error={}",
+                self.history_file,
+                error,
             )
             return ()
 
@@ -51,6 +54,23 @@ class DownloadHistoryService:
         records = (record, *self.load())
         limited_records = records[: self.max_records]
         self._save(records=limited_records)
+
+    def remove_by_task_id(self, *, task_id: UUID) -> int:
+        records = self.load()
+        filtered_records = tuple(record for record in records if record.task_id != task_id)
+        removed_count = len(records) - len(filtered_records)
+
+        if removed_count == 0:
+            return 0
+
+        if filtered_records:
+            self._save(records=filtered_records)
+            return removed_count
+
+        if self.history_file.is_file():
+            self.history_file.unlink()
+
+        return removed_count
 
     def clear(self) -> int:
         records_count = len(self.load())

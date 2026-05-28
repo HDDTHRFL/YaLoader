@@ -161,6 +161,10 @@ class MainWindow(QMainWindow):
             on_cancel_task=self._cancel_task_download,
             on_remove_tasks=self._remove_tasks_from_queue,
         )
+        self._history_panel.set_context_menu_callbacks(
+            on_add_to_queue=self._handle_add_history_record_to_queue,
+            on_delete_record=self._handle_delete_history_record,
+        )
         self._sync_start_queue_button_state()
 
     def _connect_signals(self) -> None:
@@ -328,6 +332,52 @@ class MainWindow(QMainWindow):
             return
 
         self._status_label.setText(f"История очищена. Удалено записей: {removed_count}")
+
+    def _handle_add_history_record_to_queue(self, record: DownloadHistoryRecord) -> None:
+        if self._active_download_future is not None:
+            self._status_label.setText("Нельзя добавить задачу из истории во время загрузки")
+            return
+
+        target_dir = record.target_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            request = DownloadRequest(
+                url=record.url,
+                target_dir=target_dir,
+                mode=record.mode,
+                output_format=record.output_format,
+                video_quality=record.video_quality,
+            )
+        except ValidationError as error:
+            first_error_message = error.errors()[0]["msg"]
+            self._status_label.setText(f"Не удалось добавить из истории: {first_error_message}")
+            return
+
+        existing_task = self._container.download_queue_service.get_task_by_url(url=request.url)
+
+        if existing_task is not None:
+            self._status_label.setText("Эта ссылка уже есть в очереди")
+            return
+
+        task = self._container.download_queue_service.add_download(request=request)
+        self._queue_table.append_task(task=task)
+        self._sync_queue_controls_state()
+        self._status_label.setText("Задача из истории добавлена в очередь загрузок")
+
+    def _handle_delete_history_record(self, record: DownloadHistoryRecord) -> None:
+        removed_count = self._container.download_history_service.remove_by_task_id(
+            task_id=record.task_id,
+        )
+
+        if removed_count == 0:
+            self._status_label.setText("Запись истории уже удалена")
+            self._reload_history_panel()
+            return
+
+        self._recorded_history_task_ids.discard(record.task_id)
+        self._reload_history_panel()
+        self._status_label.setText("Запись удалена из истории")
 
     def _handle_add_to_queue_clicked(self) -> None:
         url = self._input_panel.get_url_text()
