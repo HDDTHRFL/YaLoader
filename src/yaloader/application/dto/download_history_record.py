@@ -26,6 +26,7 @@ class DownloadHistoryRecord(BaseModel):
     status: DownloadStatus
     created_at: datetime
     finished_at: datetime
+    resolved_video_quality: VideoQuality | None = None
     output_path: Path | None = None
     error_message: str | None = None
 
@@ -42,7 +43,8 @@ class DownloadHistoryRecord(BaseModel):
             target_dir=task.target_dir,
             mode=task.mode,
             output_format=task.output_format,
-            video_quality=task.video_quality,
+            video_quality=task.requested_video_quality,
+            resolved_video_quality=task.video_quality,
             status=task.status,
             created_at=task.created_at,
             finished_at=get_current_utc_datetime(),

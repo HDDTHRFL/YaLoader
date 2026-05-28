@@ -120,6 +120,38 @@ def test_load_returns_empty_tuple_for_invalid_json(tmp_path: Path) -> None:
     assert records == ()
 
 
+def test_load_accepts_legacy_record_without_resolved_video_quality(tmp_path: Path) -> None:
+    history_file = tmp_path / "download_history.json"
+    current_time = datetime(2026, 5, 27, 12, 0, tzinfo=UTC)
+    history_file.write_text(
+        (
+            "["
+            "{"
+            '"task_id":"00000000-0000-0000-0000-000000000001",'
+            '"url":"https://www.youtube.com/watch?v=first",'
+            '"target_dir":"C:/Downloads",'
+            '"mode":"video",'
+            '"output_format":"mp4",'
+            '"video_quality":"best",'
+            '"status":"completed",'
+            f'"created_at":"{current_time.isoformat()}",'
+            f'"finished_at":"{current_time.isoformat()}",'
+            '"output_path":null,'
+            '"error_message":null'
+            "}"
+            "]"
+        ),
+        encoding="utf-8",
+    )
+    service = DownloadHistoryService(history_file=history_file)
+
+    records = service.load()
+
+    assert len(records) == 1
+    assert records[0].video_quality is VideoQuality.BEST
+    assert records[0].resolved_video_quality is None
+
+
 def create_history_record(*, url: str) -> DownloadHistoryRecord:
     current_time = datetime(2026, 5, 27, 12, 0, tzinfo=UTC)
 
@@ -130,6 +162,7 @@ def create_history_record(*, url: str) -> DownloadHistoryRecord:
         mode=DownloadMode.VIDEO,
         output_format=OutputFormat.MP4,
         video_quality=VideoQuality.BEST,
+        resolved_video_quality=VideoQuality.P1080,
         status=DownloadStatus.COMPLETED,
         created_at=current_time,
         finished_at=current_time,

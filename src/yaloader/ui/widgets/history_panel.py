@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
-from yaloader.domain.enums import DownloadStatus
+from yaloader.domain.enums import DownloadStatus, VideoQuality
 
 HISTORY_PANEL_WIDTH = 380
 
@@ -253,7 +253,7 @@ class HistoryRecordCard(QFrame):
             (
                 f"{self._record.mode.value} · "
                 f"{self._record.output_format.value} · "
-                f"{self._record.video_quality.value}"
+                f"{format_history_quality(record=self._record)}"
             ),
             self,
         )
@@ -407,6 +407,19 @@ class ClickableDirectoryLabel(QLabel):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._directory_path)))
 
         event.accept()
+
+
+def format_history_quality(*, record: DownloadHistoryRecord) -> str:
+    if record.resolved_video_quality is None:
+        return record.video_quality.value
+
+    if record.video_quality is VideoQuality.BEST:
+        return f"{record.video_quality.value} ({record.resolved_video_quality.value})"
+
+    if record.video_quality is not record.resolved_video_quality:
+        return f"{record.video_quality.value} ({record.resolved_video_quality.value})"
+
+    return record.video_quality.value
 
 
 def format_history_datetime(value: datetime) -> str:

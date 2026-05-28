@@ -19,6 +19,7 @@ def test_add_download_creates_pending_task(tmp_path: Path) -> None:
     assert task.mode == DownloadMode.VIDEO
     assert task.output_format == OutputFormat.MP4
     assert task.video_quality == VideoQuality.BEST
+    assert task.requested_video_quality == VideoQuality.BEST
     assert task.status == DownloadStatus.PENDING
     assert service.count() == 1
 

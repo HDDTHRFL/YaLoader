@@ -21,6 +21,7 @@ class DownloadTask:
     mode: DownloadMode
     output_format: OutputFormat
     video_quality: VideoQuality
+    requested_video_quality: VideoQuality
     include_playlist: bool
     status: DownloadStatus = DownloadStatus.PENDING
     created_at: datetime = field(default_factory=get_current_utc_datetime)
@@ -49,6 +50,7 @@ class DownloadTask:
             mode=mode,
             output_format=output_format,
             video_quality=video_quality,
+            requested_video_quality=video_quality,
             include_playlist=include_playlist,
         )
 

@@ -20,6 +20,7 @@ def test_apply_metadata_updates_task_title_and_quality(tmp_path: Path) -> None:
     assert updated_task is not None
     assert updated_task.title == "Resolved title"
     assert updated_task.video_quality is VideoQuality.P720
+    assert updated_task.requested_video_quality is VideoQuality.BEST
     assert service.get_task(task_id=task.task_id) == updated_task
 
 
@@ -59,6 +60,7 @@ def test_apply_metadata_does_not_change_running_task_quality(tmp_path: Path) -> 
     assert updated_task == running_task
     assert updated_task is not None
     assert updated_task.video_quality is VideoQuality.P2160
+    assert updated_task.requested_video_quality is VideoQuality.P2160
 
 
 def create_video_request(
