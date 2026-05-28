@@ -29,6 +29,10 @@ from yaloader.ui.controllers.download_controller import (
     DownloadController,
     DownloadControllerUpdate,
 )
+from yaloader.ui.controllers.history_controller import (
+    HistoryController,
+    HistoryControllerUpdate,
+)
 from yaloader.ui.controllers.media_metadata_controller import (
     MediaMetadataController,
     MediaMetadataResolutionResult,
@@ -79,6 +83,10 @@ class MainWindow(QMainWindow):
             queue_service=container.download_queue_service,
             history_service=container.download_history_service,
             downloader=container.downloader,
+        )
+        self._history_controller = HistoryController(
+            history_service=container.download_history_service,
+            queue_service=container.download_queue_service,
         )
 
         self._is_history_panel_visible = False
@@ -176,7 +184,7 @@ class MainWindow(QMainWindow):
         self._environment_panel.open_downloads_dir_button.clicked.connect(self._open_downloads_dir)
 
         self._history_toggle_button.clicked.connect(self._toggle_history_panel)
-        self._history_panel.refresh_button.clicked.connect(self._reload_history_panel)
+        self._history_panel.refresh_button.clicked.connect(self._handle_refresh_history_clicked)
         self._history_panel.clear_button.clicked.connect(self._handle_clear_history_clicked)
 
     def _build_central_widget(self) -> QWidget:
@@ -307,65 +315,47 @@ class MainWindow(QMainWindow):
         self._history_toggle_button.setText("‹" if self._is_history_panel_visible else "›")
 
     def _reload_history_panel(self) -> None:
-        records = self._container.download_history_service.load()
-        self._history_panel.set_records(records=records)
+        self._apply_history_update(update=self._history_controller.load())
+
+    def _handle_refresh_history_clicked(self) -> None:
+        self._apply_history_update(update=self._history_controller.load())
+        self._status_label.setText("История обновлена")
 
     def _handle_clear_history_clicked(self) -> None:
-        removed_count = self._container.download_history_service.clear()
-        self._download_controller.clear_recorded_history_flags()
-        self._reload_history_panel()
-
-        if removed_count == 0:
-            self._status_label.setText("История уже пустая")
-            return
-
-        self._status_label.setText(f"История очищена. Удалено записей: {removed_count}")
+        self._apply_history_update(update=self._history_controller.clear())
 
     def _handle_add_history_record_to_queue(self, record: DownloadHistoryRecord) -> None:
         if self._download_controller.is_active:
             self._status_label.setText("Нельзя добавить задачу из истории во время загрузки")
             return
 
-        target_dir = record.target_dir
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        try:
-            request = DownloadRequest(
-                url=record.url,
-                target_dir=target_dir,
-                mode=record.mode,
-                output_format=record.output_format,
-                video_quality=record.video_quality,
-            )
-        except ValidationError as error:
-            first_error_message = error.errors()[0]["msg"]
-            self._status_label.setText(f"Не удалось добавить из истории: {first_error_message}")
-            return
-
-        existing_task = self._container.download_queue_service.get_task_by_url(url=request.url)
-
-        if existing_task is not None:
-            self._status_label.setText("Эта ссылка уже есть в очереди")
-            return
-
-        task = self._container.download_queue_service.add_download(request=request)
-        self._queue_table.append_task(task=task)
-        self._start_metadata_resolution(task_id=task.task_id, request=request)
-        self._sync_queue_controls_state()
-        self._status_label.setText("Задача из истории добавлена в очередь загрузок")
-
-    def _handle_delete_history_record(self, record: DownloadHistoryRecord) -> None:
-        removed_count = self._container.download_history_service.remove_by_task_id(
-            task_id=record.task_id,
+        self._apply_history_update(
+            update=self._history_controller.add_record_to_queue(record=record)
         )
 
-        if removed_count == 0:
-            self._status_label.setText("Запись истории уже удалена")
-            self._reload_history_panel()
-            return
+    def _handle_delete_history_record(self, record: DownloadHistoryRecord) -> None:
+        self._apply_history_update(update=self._history_controller.remove_record(record=record))
 
-        self._reload_history_panel()
-        self._status_label.setText("Запись удалена из истории")
+    def _apply_history_update(self, *, update: HistoryControllerUpdate) -> None:
+        if update.records is not None:
+            self._history_panel.set_records(records=update.records)
+
+        if update.should_clear_download_history_flags:
+            self._download_controller.clear_recorded_history_flags()
+
+        if update.added_task is not None:
+            self._queue_table.append_task(task=update.added_task)
+
+        if update.added_task is not None and update.metadata_request is not None:
+            self._start_metadata_resolution(
+                task_id=update.added_task.task_id,
+                request=update.metadata_request,
+            )
+
+        if update.status_message is not None:
+            self._status_label.setText(update.status_message)
+
+        self._sync_queue_controls_state()
 
     def _start_metadata_resolution(
         self,
