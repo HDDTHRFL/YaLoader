@@ -503,6 +503,12 @@ QLabel#HistoryTimeLabel {
     font-size: 9pt;
 }
 
+QLabel#HistoryTitleLabel {
+    color: #F0F3F6;
+    font-size: 10pt;
+    font-weight: 600;
+}
+
 QLabel#HistoryUrlLabel {
     color: #C9D1D9;
     font-size: 9pt;

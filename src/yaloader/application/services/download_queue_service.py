@@ -110,10 +110,6 @@ class DownloadQueueService:
                 return None
 
             current_task = self._tasks[task_index]
-
-            if current_task.status is DownloadStatus.RUNNING:
-                return current_task
-
             updated_task = current_task.with_metadata(
                 title=title,
                 video_quality=video_quality,

@@ -6,7 +6,9 @@ from uuid import uuid4
 
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
 from yaloader.application.services.download_history_service import DownloadHistoryService
+from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, DownloadStatus, OutputFormat, VideoQuality
+from yaloader.domain.value_objects.media_url import MediaUrl
 
 
 def test_load_returns_empty_tuple_when_history_file_does_not_exist(tmp_path: Path) -> None:
@@ -120,7 +122,9 @@ def test_load_returns_empty_tuple_for_invalid_json(tmp_path: Path) -> None:
     assert records == ()
 
 
-def test_load_accepts_legacy_record_without_resolved_video_quality(tmp_path: Path) -> None:
+def test_load_accepts_legacy_record_without_title_and_resolved_video_quality(
+    tmp_path: Path,
+) -> None:
     history_file = tmp_path / "download_history.json"
     current_time = datetime(2026, 5, 27, 12, 0, tzinfo=UTC)
     history_file.write_text(
@@ -148,8 +152,30 @@ def test_load_accepts_legacy_record_without_resolved_video_quality(tmp_path: Pat
     records = service.load()
 
     assert len(records) == 1
+    assert records[0].title is None
     assert records[0].video_quality is VideoQuality.BEST
     assert records[0].resolved_video_quality is None
+
+
+def test_create_from_task_stores_title_and_resolved_quality(tmp_path: Path) -> None:
+    task = DownloadTask.create(
+        url=MediaUrl("https://www.youtube.com/watch?v=test"),
+        target_dir=tmp_path,
+        mode=DownloadMode.VIDEO,
+        output_format=OutputFormat.MP4,
+        video_quality=VideoQuality.BEST,
+        include_playlist=False,
+    )
+    task_with_metadata = task.with_metadata(
+        title="Resolved video title",
+        video_quality=VideoQuality.P1080,
+    )
+
+    record = DownloadHistoryRecord.create_from_task(task=task_with_metadata)
+
+    assert record.title == "Resolved video title"
+    assert record.video_quality is VideoQuality.BEST
+    assert record.resolved_video_quality is VideoQuality.P1080
 
 
 def create_history_record(*, url: str) -> DownloadHistoryRecord:
@@ -158,6 +184,7 @@ def create_history_record(*, url: str) -> DownloadHistoryRecord:
     return DownloadHistoryRecord(
         task_id=uuid4(),
         url=url,
+        title="Test video title",
         target_dir=Path("C:/Downloads"),
         mode=DownloadMode.VIDEO,
         output_format=OutputFormat.MP4,

@@ -38,7 +38,9 @@ def test_apply_metadata_returns_none_for_missing_task(tmp_path: Path) -> None:
     assert updated_task is None
 
 
-def test_apply_metadata_does_not_change_running_task_quality(tmp_path: Path) -> None:
+def test_apply_metadata_updates_running_task_metadata_without_touching_requested_quality(
+    tmp_path: Path,
+) -> None:
     service = DownloadQueueService()
     task = service.add_download(
         request=create_video_request(
@@ -46,7 +48,7 @@ def test_apply_metadata_does_not_change_running_task_quality(tmp_path: Path) -> 
             video_quality=VideoQuality.P2160,
         )
     )
-    running_task = service.update_status(
+    service.update_status(
         task_id=task.task_id,
         status=DownloadStatus.RUNNING,
     )
@@ -57,10 +59,12 @@ def test_apply_metadata_does_not_change_running_task_quality(tmp_path: Path) -> 
         video_quality=VideoQuality.P720,
     )
 
-    assert updated_task == running_task
     assert updated_task is not None
-    assert updated_task.video_quality is VideoQuality.P2160
+    assert updated_task.status is DownloadStatus.RUNNING
+    assert updated_task.title == "Resolved title"
+    assert updated_task.video_quality is VideoQuality.P720
     assert updated_task.requested_video_quality is VideoQuality.P2160
+    assert service.get_task(task_id=task.task_id) == updated_task
 
 
 def create_video_request(

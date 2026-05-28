@@ -247,6 +247,7 @@ class HistoryRecordCard(QFrame):
         header_layout.addStretch(1)
         header_layout.addWidget(time_label)
 
+        title_label = self._build_title_label()
         url_label = ClickableUrlLabel(url=self._record.url, parent=self)
 
         meta_label = QLabel(
@@ -270,7 +271,14 @@ class HistoryRecordCard(QFrame):
         self._install_context_menu_filter(meta_label)
         self._install_context_menu_filter(folder_label)
 
+        if title_label is not None:
+            self._install_context_menu_filter(title_label)
+
         layout.addLayout(header_layout)
+
+        if title_label is not None:
+            layout.addWidget(title_label)
+
         layout.addWidget(url_label)
         layout.addWidget(meta_label)
         layout.addWidget(folder_label)
@@ -282,6 +290,20 @@ class HistoryRecordCard(QFrame):
             error_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self._install_context_menu_filter(error_label)
             layout.addWidget(error_label)
+
+    def _build_title_label(self) -> QLabel | None:
+        title = format_history_title(record=self._record)
+
+        if title is None:
+            return None
+
+        title_label = QLabel(title, self)
+        title_label.setObjectName("HistoryTitleLabel")
+        title_label.setWordWrap(True)
+        title_label.setToolTip(title)
+        title_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        return title_label
 
     def _install_context_menu_filter(self, widget: QWidget) -> None:
         widget.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
@@ -407,6 +429,18 @@ class ClickableDirectoryLabel(QLabel):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._directory_path)))
 
         event.accept()
+
+
+def format_history_title(*, record: DownloadHistoryRecord) -> str | None:
+    if record.title is None:
+        return None
+
+    title = record.title.strip()
+
+    if not title:
+        return None
+
+    return title
 
 
 def format_history_quality(*, record: DownloadHistoryRecord) -> str:

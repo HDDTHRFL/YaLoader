@@ -19,6 +19,7 @@ class DownloadHistoryRecord(BaseModel):
 
     task_id: UUID
     url: str = Field(min_length=1)
+    title: str | None = Field(default=None, min_length=1)
     target_dir: Path
     mode: DownloadMode
     output_format: OutputFormat
@@ -40,6 +41,7 @@ class DownloadHistoryRecord(BaseModel):
         return cls(
             task_id=task.task_id,
             url=task.url.value,
+            title=task.title,
             target_dir=task.target_dir,
             mode=task.mode,
             output_format=task.output_format,
