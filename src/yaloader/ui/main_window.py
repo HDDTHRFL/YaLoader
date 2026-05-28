@@ -27,6 +27,10 @@ from yaloader.ui.controllers.download_controller import (
     DownloadController,
     DownloadControllerUpdate,
 )
+from yaloader.ui.controllers.environment_controller import (
+    EnvironmentController,
+    EnvironmentControllerUpdate,
+)
 from yaloader.ui.controllers.history_controller import (
     HistoryController,
     HistoryControllerUpdate,
@@ -93,6 +97,11 @@ class MainWindow(QMainWindow):
         self._queue_input_controller = QueueInputController(
             queue_service=container.download_queue_service,
         )
+        self._environment_controller = EnvironmentController(
+            paths=container.paths,
+            settings_service=container.settings_service,
+            environment_check_service=container.environment_check_service,
+        )
 
         self._is_history_panel_visible = False
         self._download_poll_timer = self.startTimer(DOWNLOAD_POLL_INTERVAL_MS)
@@ -103,7 +112,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self._build_central_widget())
 
         self._update_downloads_dir_label()
-        self._refresh_environment_status()
+        self._apply_environment_update(
+            update=self._environment_controller.load_status(
+                downloads_dir=self._settings.downloads_dir,
+            )
+        )
         self._reload_history_panel()
         self._sync_queue_controls_state()
         self._sync_history_panel_visibility()
@@ -185,8 +198,12 @@ class MainWindow(QMainWindow):
         self._environment_panel.refresh_button.clicked.connect(
             self._handle_refresh_environment_status_clicked
         )
-        self._environment_panel.open_cookies_dir_button.clicked.connect(self._open_cookies_dir)
-        self._environment_panel.open_downloads_dir_button.clicked.connect(self._open_downloads_dir)
+        self._environment_panel.open_cookies_dir_button.clicked.connect(
+            self._handle_open_cookies_dir_clicked
+        )
+        self._environment_panel.open_downloads_dir_button.clicked.connect(
+            self._handle_open_downloads_dir_clicked
+        )
 
         self._history_toggle_button.clicked.connect(self._toggle_history_panel)
         self._history_panel.refresh_button.clicked.connect(self._handle_refresh_history_clicked)
@@ -461,33 +478,54 @@ class MainWindow(QMainWindow):
         if not selected_dir:
             return
 
-        downloads_dir = Path(selected_dir)
-        downloads_dir.mkdir(parents=True, exist_ok=True)
-
-        self._settings = self._container.settings_service.update_downloads_dir(
-            downloads_dir=downloads_dir,
+        self._apply_environment_update(
+            update=self._environment_controller.change_downloads_dir(
+                downloads_dir=Path(selected_dir),
+            )
         )
-        self._update_downloads_dir_label()
-        self._refresh_environment_status()
-        self._status_label.setText(f"Папка загрузок изменена: {downloads_dir}")
 
     def _handle_delete_cookies_clicked(self) -> None:
-        cookies_file = self._container.paths.cookies_file
+        self._apply_environment_update(
+            update=self._environment_controller.delete_cookies(
+                downloads_dir=self._settings.downloads_dir,
+            )
+        )
 
-        if not cookies_file.is_file():
-            self._status_label.setText(f"cookies.txt не найден: {cookies_file}")
-            self._refresh_environment_status()
-            return
+    def _handle_refresh_environment_status_clicked(self) -> None:
+        self._apply_environment_update(
+            update=self._environment_controller.refresh_status(
+                downloads_dir=self._settings.downloads_dir,
+            )
+        )
 
-        try:
-            cookies_file.unlink()
-        except OSError as error:
-            self._status_label.setText(f"Не удалось удалить cookies.txt: {error}")
-            self._refresh_environment_status()
-            return
+    def _handle_open_cookies_dir_clicked(self) -> None:
+        self._apply_environment_update(update=self._environment_controller.open_cookies_dir())
 
-        self._status_label.setText(f"cookies.txt удалён безвозвратно: {cookies_file}")
-        self._refresh_environment_status()
+    def _handle_open_downloads_dir_clicked(self) -> None:
+        self._apply_environment_update(
+            update=self._environment_controller.open_downloads_dir(
+                downloads_dir=self._settings.downloads_dir,
+            )
+        )
+
+    def _apply_environment_update(self, *, update: EnvironmentControllerUpdate) -> None:
+        if update.settings is not None:
+            self._settings = update.settings
+            self._update_downloads_dir_label()
+
+        if update.environment_status is not None:
+            self._environment_panel.set_status(status=update.environment_status)
+
+        if update.should_play_refresh_feedback:
+            self._environment_panel.play_refresh_feedback()
+
+        if update.directory_to_open is not None:
+            self._open_directory(directory=update.directory_to_open)
+
+        if update.status_message is not None:
+            self._status_label.setText(update.status_message)
+
+        self._sync_queue_controls_state()
 
     def _handle_start_or_cancel_queue_clicked(self) -> None:
         if self._download_controller.is_active:
@@ -543,25 +581,7 @@ class MainWindow(QMainWindow):
 
         self._sync_queue_controls_state()
 
-    def _refresh_environment_status(self) -> None:
-        status = self._container.environment_check_service.check(
-            downloads_dir=self._settings.downloads_dir,
-        )
-        self._environment_panel.set_status(status=status)
-
-    def _handle_refresh_environment_status_clicked(self) -> None:
-        self._refresh_environment_status()
-        self._environment_panel.play_refresh_feedback()
-
-    def _open_cookies_dir(self) -> None:
-        self._container.paths.data_dir.mkdir(parents=True, exist_ok=True)
-        self._open_directory(self._container.paths.data_dir)
-
-    def _open_downloads_dir(self) -> None:
-        self._settings.downloads_dir.mkdir(parents=True, exist_ok=True)
-        self._open_directory(self._settings.downloads_dir)
-
-    def _open_directory(self, directory: Path) -> None:
+    def _open_directory(self, *, directory: Path) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
 
     def _update_downloads_dir_label(self) -> None:
