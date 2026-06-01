@@ -14,17 +14,17 @@ from PyQt6.QtWidgets import (
 )
 
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
-from yaloader.ui.widgets.context_menu_actions import (
+from yaloader.ui.widgets.common.context_menu_actions import (
     add_menu_button_action,
     create_context_menu,
 )
-from yaloader.ui.widgets.history_formatting import (
+from yaloader.ui.widgets.history.formatting import (
     STATUS_TEXT,
     format_history_datetime,
     format_history_quality,
     format_history_title,
 )
-from yaloader.ui.widgets.history_labels import ClickableDirectoryLabel, ClickableUrlLabel
+from yaloader.ui.widgets.history.labels import ClickableDirectoryLabel, ClickableUrlLabel
 
 
 class HistoryRecordCard(QFrame):

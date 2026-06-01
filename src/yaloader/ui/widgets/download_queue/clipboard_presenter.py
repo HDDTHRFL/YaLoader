@@ -6,8 +6,8 @@ from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QClipboard, QGuiApplication
 
 from yaloader.domain.entities.download_task import DownloadTask
-from yaloader.ui.widgets.download_queue_row_state import QueueTableRowState
-from yaloader.ui.widgets.download_queue_url_presenter import DownloadQueueUrlPresenter
+from yaloader.ui.widgets.download_queue.row_state import QueueTableRowState
+from yaloader.ui.widgets.download_queue.url_presenter import DownloadQueueUrlPresenter
 
 COPY_FEEDBACK_DURATION_MS = 1000
 COPY_FEEDBACK_TEXT = "Ссылка скопирована..."

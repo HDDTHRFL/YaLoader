@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from yaloader.ui.widgets.download_queue_table import DownloadQueueTable
+from yaloader.ui.widgets.download_queue.table import DownloadQueueTable
 
 
 class DownloadQueuePanel(QFrame):

@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QProgressBar, QTableWidget, QTableWidgetItem
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
-from yaloader.ui.widgets.download_queue_columns import PROGRESS_COLUMN_INDEX
+from yaloader.ui.widgets.download_queue.columns import PROGRESS_COLUMN_INDEX
 
 EMPTY_PROGRESS_TEXT = "—"
 

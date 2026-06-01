@@ -5,13 +5,13 @@ from typing import cast
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QWidget
 
-from yaloader.ui.widgets.download_queue_columns import (
+from yaloader.ui.widgets.download_queue.columns import (
     QUEUE_COLUMN_COUNT,
     QUEUE_ROW_HEIGHT,
     TABLE_RIGHT_OVERDRAW_WIDTH,
     calculate_queue_column_widths,
 )
-from yaloader.ui.widgets.download_queue_delegate import DownloadQueueItemDelegate
+from yaloader.ui.widgets.download_queue.delegate import DownloadQueueItemDelegate
 
 
 def configure_download_queue_table(*, table: QTableWidget) -> None:

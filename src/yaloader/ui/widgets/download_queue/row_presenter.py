@@ -3,7 +3,7 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem
 
 from yaloader.domain.entities.download_task import DownloadTask
-from yaloader.ui.widgets.download_queue_columns import (
+from yaloader.ui.widgets.download_queue.columns import (
     FOLDER_COLUMN_INDEX,
     FORMAT_COLUMN_INDEX,
     MODE_COLUMN_INDEX,
@@ -11,8 +11,8 @@ from yaloader.ui.widgets.download_queue_columns import (
     STATUS_COLUMN_INDEX,
     URL_COLUMN_INDEX,
 )
-from yaloader.ui.widgets.download_queue_quality_presenter import DownloadQueueQualityPresenter
-from yaloader.ui.widgets.download_queue_url_presenter import DownloadQueueUrlPresenter
+from yaloader.ui.widgets.download_queue.quality_presenter import DownloadQueueQualityPresenter
+from yaloader.ui.widgets.download_queue.url_presenter import DownloadQueueUrlPresenter
 
 
 class DownloadQueueRowPresenter:

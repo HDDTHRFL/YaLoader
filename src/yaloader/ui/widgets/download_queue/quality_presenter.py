@@ -7,8 +7,8 @@ from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem
 
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
-from yaloader.ui.widgets.download_queue_columns import QUALITY_COLUMN_INDEX
-from yaloader.ui.widgets.download_queue_row_state import QueueTableRowState
+from yaloader.ui.widgets.download_queue.columns import QUALITY_COLUMN_INDEX
+from yaloader.ui.widgets.download_queue.row_state import QueueTableRowState
 
 QUALITY_RESOLUTION_ANIMATION_INTERVAL_MS = 420
 QUALITY_RESOLUTION_TOOLTIP = "Определяем доступное качество"

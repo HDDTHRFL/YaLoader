@@ -6,15 +6,15 @@ from uuid import UUID
 from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QWidget
 
 from yaloader.domain.entities.download_task import DownloadTask
-from yaloader.ui.widgets.download_queue_columns import URL_COLUMN_INDEX
-from yaloader.ui.widgets.download_queue_delegate import (
+from yaloader.ui.widgets.download_queue.columns import URL_COLUMN_INDEX
+from yaloader.ui.widgets.download_queue.delegate import (
     URL_COPY_FEEDBACK_ROLE,
     URL_TITLE_ROLE,
     URL_TITLE_STATE_DEFAULT,
     URL_TITLE_STATE_ERROR,
     URL_TITLE_STATE_ROLE,
 )
-from yaloader.ui.widgets.download_queue_row_state import QueueTableRowState
+from yaloader.ui.widgets.download_queue.row_state import QueueTableRowState
 
 METADATA_RESOLUTION_FAILED_TEXT = "Ссылку не удалось определить..."
 

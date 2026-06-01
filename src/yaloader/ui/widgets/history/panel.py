@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
-from yaloader.ui.widgets.history_record_card import HistoryRecordCard
+from yaloader.ui.widgets.history.record_card import HistoryRecordCard
 
 HISTORY_PANEL_WIDTH = 380
 

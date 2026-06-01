@@ -48,9 +48,9 @@ from yaloader.ui.status_messages import (
 )
 from yaloader.ui.widgets.app_header import AppHeader
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
-from yaloader.ui.widgets.download_queue_panel import DownloadQueuePanel
+from yaloader.ui.widgets.download_queue.panel import DownloadQueuePanel
 from yaloader.ui.widgets.environment_panel import EnvironmentPanel
-from yaloader.ui.widgets.history_panel import HISTORY_PANEL_WIDTH, HistoryPanel
+from yaloader.ui.widgets.history.panel import HISTORY_PANEL_WIDTH, HistoryPanel
 from yaloader.ui.widgets.settings_panel import SettingsPanel
 
 WINDOW_INITIAL_WIDTH = 1180

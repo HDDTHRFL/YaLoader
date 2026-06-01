@@ -6,7 +6,7 @@ from PyQt6.QtCore import QModelIndex, QRect, QSize, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PyQt6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
-from yaloader.ui.widgets.download_queue_columns import QUEUE_ROW_HEIGHT, URL_COLUMN_INDEX
+from yaloader.ui.widgets.download_queue.columns import QUEUE_ROW_HEIGHT, URL_COLUMN_INDEX
 
 URL_TITLE_ROLE = int(Qt.ItemDataRole.UserRole)
 URL_TITLE_STATE_ROLE = URL_TITLE_ROLE + 1

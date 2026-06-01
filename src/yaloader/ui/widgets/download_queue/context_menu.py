@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QWidget
 
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
-from yaloader.ui.widgets.context_menu_actions import (
+from yaloader.ui.widgets.common.context_menu_actions import (
     add_menu_button_action,
     create_context_menu,
 )

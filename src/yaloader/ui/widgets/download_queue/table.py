@@ -16,32 +16,32 @@ from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QWidget
 
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.domain.entities.download_task import DownloadTask
-from yaloader.ui.widgets.download_queue_clipboard_presenter import (
+from yaloader.ui.widgets.download_queue.clipboard_presenter import (
     DownloadQueueClipboardPresenter,
 )
-from yaloader.ui.widgets.download_queue_columns import QUEUE_ROW_HEIGHT
-from yaloader.ui.widgets.download_queue_context_menu import (
+from yaloader.ui.widgets.download_queue.columns import QUEUE_ROW_HEIGHT
+from yaloader.ui.widgets.download_queue.context_menu import (
     DownloadQueueContextAction,
     show_download_queue_context_menu,
 )
-from yaloader.ui.widgets.download_queue_progress_presenter import (
+from yaloader.ui.widgets.download_queue.progress_presenter import (
     EMPTY_PROGRESS_TEXT,
     DownloadQueueProgressPresenter,
 )
-from yaloader.ui.widgets.download_queue_quality_presenter import DownloadQueueQualityPresenter
-from yaloader.ui.widgets.download_queue_row_presenter import DownloadQueueRowPresenter
-from yaloader.ui.widgets.download_queue_row_state import QueueTableRowState
-from yaloader.ui.widgets.download_queue_selection import (
+from yaloader.ui.widgets.download_queue.quality_presenter import DownloadQueueQualityPresenter
+from yaloader.ui.widgets.download_queue.row_presenter import DownloadQueueRowPresenter
+from yaloader.ui.widgets.download_queue.row_state import QueueTableRowState
+from yaloader.ui.widgets.download_queue.selection import (
     clear_current_cell_focus,
     get_selected_rows,
     is_row_selected,
     prepare_right_click_selection,
 )
-from yaloader.ui.widgets.download_queue_table_config import (
+from yaloader.ui.widgets.download_queue.table_config import (
     configure_download_queue_table,
     resize_download_queue_table_columns_to_viewport,
 )
-from yaloader.ui.widgets.download_queue_url_presenter import DownloadQueueUrlPresenter
+from yaloader.ui.widgets.download_queue.url_presenter import DownloadQueueUrlPresenter
 
 
 class DownloadQueueTable(QTableWidget):

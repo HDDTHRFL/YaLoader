@@ -5,7 +5,7 @@ from pathlib import Path
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
 from yaloader.domain.value_objects.media_url import MediaUrl
-from yaloader.ui.widgets.download_queue_row_state import QueueTableRowState
+from yaloader.ui.widgets.download_queue.row_state import QueueTableRowState
 
 
 def test_create_builds_default_row_state(tmp_path: Path) -> None:
