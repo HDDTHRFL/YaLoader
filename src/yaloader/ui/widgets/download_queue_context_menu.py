@@ -5,12 +5,16 @@ from dataclasses import dataclass
 from enum import StrEnum
 from uuid import UUID
 
-from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtCore import QPoint
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QMenu, QPushButton, QWidget, QWidgetAction
+from PyQt6.QtWidgets import QWidget
 
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
+from yaloader.ui.widgets.context_menu_actions import (
+    add_menu_button_action,
+    create_context_menu,
+)
 
 DOWNLOADABLE_STATUSES = frozenset(
     {
@@ -44,7 +48,7 @@ def show_download_queue_context_menu(
     if not selected_tasks:
         return None
 
-    context_menu = QMenu(parent)
+    context_menu = create_context_menu(parent=parent)
 
     copy_action = QAction(
         "Копировать ссылки" if len(selected_tasks) > 1 else "Копировать ссылку",
@@ -110,26 +114,3 @@ def show_download_queue_context_menu(
         )
 
     return None
-
-
-def add_menu_button_action(
-    *,
-    menu: QMenu,
-    text: str,
-    object_name: str,
-) -> QWidgetAction:
-    action = QWidgetAction(menu)
-    button = QPushButton(text, menu)
-    button.setObjectName(object_name)
-    button.setCursor(Qt.CursorShape.PointingHandCursor)
-
-    def handle_button_clicked(_checked: bool = False) -> None:
-        action.trigger()
-        menu.close()
-
-    button.clicked.connect(handle_button_clicked)
-
-    action.setDefaultWidget(button)
-    menu.addAction(action)
-
-    return action

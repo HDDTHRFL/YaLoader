@@ -9,14 +9,15 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMenu,
-    QPushButton,
     QVBoxLayout,
     QWidget,
-    QWidgetAction,
 )
 
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
+from yaloader.ui.widgets.context_menu_actions import (
+    add_menu_button_action,
+    create_context_menu,
+)
 from yaloader.ui.widgets.history_formatting import (
     STATUS_TEXT,
     format_history_datetime,
@@ -24,53 +25,6 @@ from yaloader.ui.widgets.history_formatting import (
     format_history_title,
 )
 from yaloader.ui.widgets.history_labels import ClickableDirectoryLabel, ClickableUrlLabel
-
-HISTORY_CONTEXT_MENU_STYLESHEET = """
-QMenu {
-    background-color: #161B22;
-    color: #F0F3F6;
-    border: 1px solid #30363D;
-    border-radius: 8px;
-    padding: 6px;
-}
-
-QMenu::item {
-    padding: 8px 24px;
-    border-radius: 6px;
-}
-
-QMenu::item:selected {
-    background-color: #1F6FEB;
-    color: #FFFFFF;
-}
-
-QPushButton#MenuDangerButton {
-    min-height: 32px;
-    padding: 0 24px;
-    background-color: transparent;
-    color: #FCA5A5;
-    border: none;
-    border-radius: 6px;
-    font-weight: 500;
-    text-align: left;
-}
-
-QPushButton#MenuDangerButton:hover {
-    background-color: #3A1518;
-    color: #FECACA;
-}
-
-QPushButton#MenuDangerButton:disabled {
-    background-color: transparent;
-    color: #5F6875;
-    border: none;
-}
-
-QPushButton#MenuDangerButton:disabled:hover {
-    background-color: transparent;
-    color: #5F6875;
-}
-"""
 
 
 class HistoryRecordCard(QFrame):
@@ -201,15 +155,13 @@ class HistoryRecordCard(QFrame):
         widget.installEventFilter(self)
 
     def _show_context_menu(self, *, global_position: QPoint) -> None:
-        context_menu = QMenu(self)
-        context_menu.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        context_menu.setStyleSheet(HISTORY_CONTEXT_MENU_STYLESHEET)
+        context_menu = create_context_menu(parent=self)
 
         add_to_queue_action = QAction("Добавить в очередь загрузок", context_menu)
         add_to_queue_action.setEnabled(self._on_add_to_queue is not None)
         context_menu.addAction(add_to_queue_action)
 
-        delete_record_action = self._add_menu_button_action(
+        delete_record_action = add_menu_button_action(
             menu=context_menu,
             text="Удалить из истории",
             object_name="MenuDangerButton",
@@ -227,26 +179,3 @@ class HistoryRecordCard(QFrame):
 
         if selected_action == delete_record_action and self._on_delete_record is not None:
             self._on_delete_record(self._record)
-
-    def _add_menu_button_action(
-        self,
-        *,
-        menu: QMenu,
-        text: str,
-        object_name: str,
-    ) -> QWidgetAction:
-        action = QWidgetAction(menu)
-        button = QPushButton(text, menu)
-        button.setObjectName(object_name)
-        button.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        def handle_button_clicked(_checked: bool = False) -> None:
-            action.trigger()
-            menu.close()
-
-        button.clicked.connect(handle_button_clicked)
-
-        action.setDefaultWidget(button)
-        menu.addAction(action)
-
-        return action
