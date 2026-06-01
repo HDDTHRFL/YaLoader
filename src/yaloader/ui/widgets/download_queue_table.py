@@ -1,71 +1,47 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import cast, override
+from typing import override
 from uuid import UUID
 
-from PyQt6.QtCore import QEvent, QItemSelectionModel, QModelIndex, QPoint, Qt, QTimer
+from PyQt6.QtCore import QEvent, QItemSelectionModel, QModelIndex, QPoint, Qt
 from PyQt6.QtGui import (
-    QClipboard,
     QContextMenuEvent,
-    QGuiApplication,
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
     QResizeEvent,
 )
-from PyQt6.QtWidgets import (
-    QAbstractItemView,
-    QHeaderView,
-    QProgressBar,
-    QTableWidget,
-    QTableWidgetItem,
-    QWidget,
-)
+from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QWidget
 
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.domain.entities.download_task import DownloadTask
-from yaloader.domain.enums import DownloadStatus
-from yaloader.ui.widgets.download_queue_columns import (
-    FOLDER_COLUMN_INDEX,
-    FORMAT_COLUMN_INDEX,
-    MODE_COLUMN_INDEX,
-    PROGRESS_COLUMN_INDEX,
-    QUALITY_COLUMN_INDEX,
-    QUEUE_COLUMN_COUNT,
-    QUEUE_ROW_HEIGHT,
-    STATUS_COLUMN_INDEX,
-    TABLE_RIGHT_OVERDRAW_WIDTH,
-    URL_COLUMN_INDEX,
-    calculate_queue_column_widths,
+from yaloader.ui.widgets.download_queue_clipboard_presenter import (
+    DownloadQueueClipboardPresenter,
 )
+from yaloader.ui.widgets.download_queue_columns import QUEUE_ROW_HEIGHT
 from yaloader.ui.widgets.download_queue_context_menu import (
     DownloadQueueContextAction,
     show_download_queue_context_menu,
 )
-from yaloader.ui.widgets.download_queue_delegate import (
-    URL_COPY_FEEDBACK_ROLE,
-    URL_TITLE_ROLE,
-    URL_TITLE_STATE_DEFAULT,
-    URL_TITLE_STATE_ERROR,
-    URL_TITLE_STATE_ROLE,
-    DownloadQueueItemDelegate,
+from yaloader.ui.widgets.download_queue_progress_presenter import (
+    EMPTY_PROGRESS_TEXT,
+    DownloadQueueProgressPresenter,
 )
+from yaloader.ui.widgets.download_queue_quality_presenter import DownloadQueueQualityPresenter
+from yaloader.ui.widgets.download_queue_row_presenter import DownloadQueueRowPresenter
 from yaloader.ui.widgets.download_queue_row_state import QueueTableRowState
-
-EMPTY_PROGRESS_TEXT = "—"
-
-QUALITY_RESOLUTION_ANIMATION_INTERVAL_MS = 420
-QUALITY_RESOLUTION_TOOLTIP = "Определяем доступное качество"
-QUALITY_RESOLUTION_TEXT_STATES = (
-    "Checking.",
-    "Checking..",
-    "Checking...",
+from yaloader.ui.widgets.download_queue_selection import (
+    clear_current_cell_focus,
+    get_selected_rows,
+    is_row_selected,
+    prepare_right_click_selection,
 )
-
-COPY_FEEDBACK_DURATION_MS = 1000
-COPY_FEEDBACK_TEXT = "Ссылка скопирована..."
-METADATA_RESOLUTION_FAILED_TEXT = "Ссылку не удалось определить..."
+from yaloader.ui.widgets.download_queue_table_config import (
+    configure_download_queue_table,
+    resize_download_queue_table_columns_to_viewport,
+)
+from yaloader.ui.widgets.download_queue_url_presenter import DownloadQueueUrlPresenter
 
 
 class DownloadQueueTable(QTableWidget):
@@ -76,18 +52,37 @@ class DownloadQueueTable(QTableWidget):
         self._row_by_task_id: dict[UUID, int] = {}
         self._row_states_by_task_id: dict[UUID, QueueTableRowState] = {}
 
-        self._quality_resolution_step_index = 0
-        self._quality_resolution_timer = QTimer(self)
-
-        self._copy_feedback_generation = 0
-
         self._on_download_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._on_cancel_task: Callable[[UUID], None] | None = None
         self._on_remove_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._suppress_next_context_menu_event = False
 
-        self._configure_table()
-        self._configure_quality_resolution_timer()
+        self._url_presenter = DownloadQueueUrlPresenter(
+            table=self,
+            row_by_task_id=self._row_by_task_id,
+            row_states_by_task_id=self._row_states_by_task_id,
+        )
+        self._quality_presenter = DownloadQueueQualityPresenter(
+            table=self,
+            row_by_task_id=self._row_by_task_id,
+            row_states_by_task_id=self._row_states_by_task_id,
+            parent=self,
+        )
+        self._progress_presenter = DownloadQueueProgressPresenter(
+            table=self,
+            row_by_task_id=self._row_by_task_id,
+        )
+        self._clipboard_presenter = DownloadQueueClipboardPresenter(
+            url_presenter=self._url_presenter,
+            row_states_by_task_id=self._row_states_by_task_id,
+        )
+        self._row_presenter = DownloadQueueRowPresenter(
+            table=self,
+            quality_presenter=self._quality_presenter,
+            url_presenter=self._url_presenter,
+        )
+
+        configure_download_queue_table(table=self)
 
     @override
     def viewportEvent(self, event: QEvent | None) -> bool:
@@ -159,8 +154,8 @@ class DownloadQueueTable(QTableWidget):
         self._row_by_task_id[task.task_id] = row_index
         self._row_states_by_task_id[task.task_id] = QueueTableRowState.create(task=task)
 
-        self._set_task_row_values(row_index=row_index, task=task)
-        self._set_progress_text(row_index=row_index, text=EMPTY_PROGRESS_TEXT)
+        self._row_presenter.set_task_row_values(row_index=row_index, task=task)
+        self._progress_presenter.set_text(row_index=row_index, text=EMPTY_PROGRESS_TEXT)
         self.resize_columns_to_viewport()
 
     def update_task(self, task: DownloadTask) -> None:
@@ -170,19 +165,20 @@ class DownloadQueueTable(QTableWidget):
         if row_index is None or row_state is None:
             return
 
-        if task.status is not DownloadStatus.PENDING:
-            row_state = row_state.with_quality_resolution_pending(is_pending=False)
+        self._quality_presenter.clear_pending_if_task_is_not_pending(task=task)
+        self._url_presenter.clear_metadata_resolution_failed_if_title_exists(task=task)
 
-        if self._normalize_task_title(task=task) is not None:
-            row_state = row_state.with_metadata_resolution_failed(is_failed=False)
+        updated_row_state = self._row_states_by_task_id.get(task.task_id)
 
-        row_state = row_state.with_task(task=task)
-        self._row_states_by_task_id[task.task_id] = row_state
+        if updated_row_state is None:
+            return
+
+        self._row_states_by_task_id[task.task_id] = updated_row_state.with_task(task=task)
 
         self.setRowHeight(row_index, QUEUE_ROW_HEIGHT)
-        self._set_task_row_values(row_index=row_index, task=task)
-        self._sync_progress_cell_with_status(row_index=row_index, task=task)
-        self._sync_quality_resolution_timer()
+        self._row_presenter.set_task_row_values(row_index=row_index, task=task)
+        self._progress_presenter.sync_with_task_status(row_index=row_index, task=task)
+        self._quality_presenter.sync_timer()
         self.resize_columns_to_viewport()
 
     def reload_tasks(self, tasks: Sequence[DownloadTask]) -> None:
@@ -192,7 +188,7 @@ class DownloadQueueTable(QTableWidget):
         self._task_ids_by_row.clear()
         self._row_by_task_id.clear()
         self._row_states_by_task_id.clear()
-        self._sync_quality_resolution_timer()
+        self._quality_presenter.sync_timer()
 
         for task in tasks:
             previous_row_state = previous_row_states.get(task.task_id)
@@ -225,142 +221,22 @@ class DownloadQueueTable(QTableWidget):
         return tuple(task_ids)
 
     def mark_quality_resolution_pending(self, *, task_id: UUID) -> None:
-        row_index = self._row_by_task_id.get(task_id)
-        row_state = self._row_states_by_task_id.get(task_id)
-
-        if row_index is None or row_state is None:
-            return
-
-        if row_state.task.status is not DownloadStatus.PENDING:
-            return
-
-        self._row_states_by_task_id[task_id] = row_state.with_quality_resolution_pending(
-            is_pending=True
-        )
-        self._set_quality_cell_text(
-            row_index=row_index,
-            text=self._build_quality_resolution_text(),
-            tooltip=QUALITY_RESOLUTION_TOOLTIP,
-        )
-        self._sync_quality_resolution_timer()
+        self._quality_presenter.mark_pending(task_id=task_id)
 
     def clear_quality_resolution_pending(self, *, task_id: UUID) -> None:
-        row_index = self._row_by_task_id.get(task_id)
-        row_state = self._row_states_by_task_id.get(task_id)
-
-        if row_index is None or row_state is None:
-            return
-
-        was_pending = row_state.is_quality_resolution_pending
-        self._row_states_by_task_id[task_id] = row_state.with_quality_resolution_pending(
-            is_pending=False
-        )
-        self._sync_quality_resolution_timer()
-
-        if not was_pending:
-            return
-
-        self._set_quality_cell_text(
-            row_index=row_index,
-            text=row_state.task.video_quality.value,
-            tooltip=row_state.task.video_quality.value,
-        )
+        self._quality_presenter.clear_pending(task_id=task_id)
 
     def mark_metadata_resolution_failed(self, *, task_id: UUID) -> None:
-        row_index = self._row_by_task_id.get(task_id)
-        row_state = self._row_states_by_task_id.get(task_id)
-
-        if row_index is None or row_state is None:
-            return
-
-        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_failed(
-            is_failed=True
-        )
-        self._set_url_secondary_text(
-            row_index=row_index,
-            text=METADATA_RESOLUTION_FAILED_TEXT,
-            state=URL_TITLE_STATE_ERROR,
-            tooltip=f"{row_state.task.url.value}\n{METADATA_RESOLUTION_FAILED_TEXT}",
-        )
+        self._url_presenter.mark_metadata_resolution_failed(task_id=task_id)
 
     def prepare_tasks_for_download(self, *, task_ids: tuple[UUID, ...]) -> None:
-        for task_id in task_ids:
-            row_index = self._row_by_task_id.get(task_id)
-
-            if row_index is None:
-                continue
-
-            progress_bar_widget = self._ensure_progress_bar(row_index=row_index)
-            progress_bar_widget.setRange(0, 100)
-            progress_bar_widget.setValue(0)
-            progress_bar_widget.setFormat("0%")
+        self._progress_presenter.prepare_tasks_for_download(task_ids=task_ids)
 
     def set_task_progress(self, progress: DownloadProgress) -> None:
-        row_index = self._row_by_task_id.get(progress.task_id)
-
-        if row_index is None:
-            return
-
-        progress_bar_widget = self._ensure_progress_bar(row_index=row_index)
-
-        if progress.percent is None:
-            progress_bar_widget.setRange(0, 0)
-            progress_bar_widget.setFormat(progress.status_text)
-            return
-
-        progress_bar_widget.setRange(0, 100)
-        progress_bar_widget.setValue(progress.progress_bar_value)
-        progress_bar_widget.setFormat(f"{progress.progress_bar_value}%")
+        self._progress_presenter.set_task_progress(progress=progress)
 
     def resize_columns_to_viewport(self) -> None:
-        if self.columnCount() == 0:
-            return
-
-        viewport = cast(QWidget, self.viewport())
-        available_width = viewport.width() + TABLE_RIGHT_OVERDRAW_WIDTH
-        column_widths = calculate_queue_column_widths(available_width=available_width)
-
-        for column_index, column_width in column_widths.items():
-            self.setColumnWidth(column_index, column_width)
-
-    def _configure_table(self) -> None:
-        self.setColumnCount(QUEUE_COLUMN_COUNT)
-        self.setHorizontalHeaderLabels(
-            [
-                "Режим",
-                "Ссылка",
-                "Качество",
-                "Формат",
-                "Статус",
-                "Прогресс",
-                "Папка",
-            ]
-        )
-        self.setItemDelegate(DownloadQueueItemDelegate(self))
-        self.setAlternatingRowColors(True)
-        self.setMouseTracking(True)
-        self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setWordWrap(False)
-
-        horizontal_header = cast(QHeaderView, self.horizontalHeader())
-        horizontal_header.setSectionsMovable(False)
-        horizontal_header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        horizontal_header.setStretchLastSection(False)
-
-        vertical_header = cast(QHeaderView, self.verticalHeader())
-        vertical_header.hide()
-        vertical_header.setDefaultSectionSize(QUEUE_ROW_HEIGHT)
-        vertical_header.setMinimumSectionSize(QUEUE_ROW_HEIGHT)
-        vertical_header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-
-        self.resize_columns_to_viewport()
-
-    def _configure_quality_resolution_timer(self) -> None:
-        self._quality_resolution_timer.setInterval(QUALITY_RESOLUTION_ANIMATION_INTERVAL_MS)
-        self._quality_resolution_timer.timeout.connect(self._advance_quality_resolution_animation)
+        resize_download_queue_table_columns_to_viewport(table=self)
 
     def _handle_viewport_mouse_press(self, *, event: QMouseEvent) -> bool:
         clicked_position = event.position().toPoint()
@@ -409,16 +285,7 @@ class DownloadQueueTable(QTableWidget):
         return True
 
     def _prepare_right_click_selection(self, *, clicked_item: QTableWidgetItem) -> None:
-        row_index = clicked_item.row()
-
-        if not self._is_row_selected(row_index=row_index):
-            self.clearSelection()
-            self.selectRow(row_index)
-
-        self.setFocus()
-
-        viewport = cast(QWidget, self.viewport())
-        viewport.update()
+        prepare_right_click_selection(table=self, clicked_item=clicked_item)
 
     def _show_context_menu(self, *, global_position: QPoint, clicked_row_index: int) -> None:
         selected_task_ids = self._get_context_task_ids(clicked_row_index=clicked_row_index)
@@ -465,18 +332,10 @@ class DownloadQueueTable(QTableWidget):
         return (clicked_task_id,)
 
     def _get_selected_rows(self) -> tuple[int, ...]:
-        selection_model = self.selectionModel()
-
-        if isinstance(selection_model, QItemSelectionModel):
-            selected_rows = sorted({index.row() for index in selection_model.selectedRows()})
-
-            if selected_rows:
-                return tuple(selected_rows)
-
-        return tuple(sorted({index.row() for index in self.selectedIndexes()}))
+        return get_selected_rows(table=self)
 
     def _is_row_selected(self, *, row_index: int) -> bool:
-        return row_index in self._get_selected_rows()
+        return is_row_selected(table=self, row_index=row_index)
 
     def _get_tasks_by_ids(self, *, task_ids: tuple[UUID, ...]) -> tuple[DownloadTask, ...]:
         tasks: list[DownloadTask] = []
@@ -510,335 +369,7 @@ class DownloadQueueTable(QTableWidget):
         self._copy_task_urls_to_clipboard(tasks=selected_tasks)
 
     def _copy_task_urls_to_clipboard(self, *, tasks: tuple[DownloadTask, ...]) -> None:
-        urls_text = "\n".join(task.url.value for task in tasks)
-        clipboard = QGuiApplication.clipboard()
-
-        if not isinstance(clipboard, QClipboard):
-            return
-
-        clipboard.setText(urls_text)
-        self._show_inline_copy_feedback(task_ids=tuple(task.task_id for task in tasks))
-
-    def _show_inline_copy_feedback(self, *, task_ids: tuple[UUID, ...]) -> None:
-        if not task_ids:
-            return
-
-        self._copy_feedback_generation += 1
-        generation = self._copy_feedback_generation
-
-        for task_id in task_ids:
-            row_state = self._row_states_by_task_id.get(task_id)
-
-            if row_state is None:
-                continue
-
-            self._row_states_by_task_id[task_id] = row_state.with_copy_feedback_generation(
-                generation=generation
-            )
-            self._set_url_copy_feedback(task_id=task_id, text=COPY_FEEDBACK_TEXT)
-
-        QTimer.singleShot(
-            COPY_FEEDBACK_DURATION_MS,
-            lambda: self._clear_inline_copy_feedback(
-                task_ids=task_ids,
-                generation=generation,
-            ),
-        )
-
-    def _clear_inline_copy_feedback(
-        self,
-        *,
-        task_ids: tuple[UUID, ...],
-        generation: int,
-    ) -> None:
-        for task_id in task_ids:
-            row_state = self._row_states_by_task_id.get(task_id)
-
-            if row_state is None or row_state.copy_feedback_generation != generation:
-                continue
-
-            self._row_states_by_task_id[task_id] = row_state.with_copy_feedback_generation(
-                generation=None
-            )
-            self._set_url_copy_feedback(task_id=task_id, text=None)
-
-    def _set_url_copy_feedback(self, *, task_id: UUID, text: str | None) -> None:
-        row_index = self._row_by_task_id.get(task_id)
-
-        if row_index is None:
-            return
-
-        table_item = self.item(row_index, URL_COLUMN_INDEX)
-
-        if table_item is None:
-            return
-
-        table_item.setData(URL_COPY_FEEDBACK_ROLE, text)
-
-        viewport = cast(QWidget, self.viewport())
-        viewport.update()
+        self._clipboard_presenter.copy_tasks_to_clipboard(tasks=tasks)
 
     def _clear_current_cell_focus(self) -> None:
-        selection_model = self.selectionModel()
-
-        if isinstance(selection_model, QItemSelectionModel):
-            selection_model.setCurrentIndex(
-                QModelIndex(),
-                QItemSelectionModel.SelectionFlag.NoUpdate,
-            )
-
-        self.setCurrentIndex(QModelIndex())
-
-        viewport = cast(QWidget, self.viewport())
-        viewport.update()
-
-    def _set_task_row_values(self, *, row_index: int, task: DownloadTask) -> None:
-        values_by_column = {
-            MODE_COLUMN_INDEX: task.mode.value,
-            URL_COLUMN_INDEX: task.url.value,
-            QUALITY_COLUMN_INDEX: self._build_quality_cell_text(task=task),
-            FORMAT_COLUMN_INDEX: task.output_format.value,
-            STATUS_COLUMN_INDEX: task.status.value,
-            FOLDER_COLUMN_INDEX: str(task.target_dir),
-        }
-
-        for column_index, value in values_by_column.items():
-            table_item = self.item(row_index, column_index)
-
-            if table_item is None:
-                table_item = QTableWidgetItem(value)
-                self.setItem(row_index, column_index, table_item)
-            else:
-                table_item.setText(value)
-
-            if column_index == URL_COLUMN_INDEX:
-                self._configure_url_item(
-                    row_index=row_index,
-                    table_item=table_item,
-                    task=task,
-                )
-                continue
-
-            if column_index == QUALITY_COLUMN_INDEX and self._is_quality_resolution_pending(
-                task_id=task.task_id
-            ):
-                table_item.setToolTip(QUALITY_RESOLUTION_TOOLTIP)
-            else:
-                table_item.setToolTip(value)
-
-    def _configure_url_item(
-        self,
-        *,
-        row_index: int,
-        table_item: QTableWidgetItem,
-        task: DownloadTask,
-    ) -> None:
-        row_state = self._row_states_by_task_id.get(task.task_id)
-
-        if row_state is not None and row_state.is_metadata_resolution_failed:
-            self._set_url_secondary_text(
-                row_index=row_index,
-                text=METADATA_RESOLUTION_FAILED_TEXT,
-                state=URL_TITLE_STATE_ERROR,
-                tooltip=f"{task.url.value}\n{METADATA_RESOLUTION_FAILED_TEXT}",
-            )
-            return
-
-        normalized_title = self._normalize_task_title(task=task)
-
-        if normalized_title is None:
-            table_item.setData(URL_TITLE_ROLE, None)
-            table_item.setData(URL_TITLE_STATE_ROLE, URL_TITLE_STATE_DEFAULT)
-            table_item.setToolTip(task.url.value)
-            return
-
-        self._set_url_secondary_text(
-            row_index=row_index,
-            text=normalized_title,
-            state=URL_TITLE_STATE_DEFAULT,
-            tooltip=f"{task.url.value}\n{normalized_title}",
-        )
-
-    def _set_url_secondary_text(
-        self,
-        *,
-        row_index: int,
-        text: str,
-        state: str,
-        tooltip: str,
-    ) -> None:
-        table_item = self.item(row_index, URL_COLUMN_INDEX)
-
-        if table_item is None:
-            return
-
-        table_item.setData(URL_TITLE_ROLE, text)
-        table_item.setData(URL_TITLE_STATE_ROLE, state)
-        table_item.setToolTip(tooltip)
-
-        viewport = cast(QWidget, self.viewport())
-        viewport.update()
-
-    def _normalize_task_title(self, *, task: DownloadTask) -> str | None:
-        if task.title is None:
-            return None
-
-        normalized_title = task.title.strip()
-
-        if not normalized_title:
-            return None
-
-        return normalized_title
-
-    def _build_quality_cell_text(self, *, task: DownloadTask) -> str:
-        if self._is_quality_resolution_pending(task_id=task.task_id):
-            return self._build_quality_resolution_text()
-
-        return task.video_quality.value
-
-    def _is_quality_resolution_pending(self, *, task_id: UUID) -> bool:
-        row_state = self._row_states_by_task_id.get(task_id)
-
-        if row_state is None:
-            return False
-
-        return row_state.is_quality_resolution_pending
-
-    def _set_quality_cell_text(
-        self,
-        *,
-        row_index: int,
-        text: str,
-        tooltip: str,
-    ) -> None:
-        table_item = self.item(row_index, QUALITY_COLUMN_INDEX)
-
-        if table_item is None:
-            table_item = QTableWidgetItem(text)
-            self.setItem(row_index, QUALITY_COLUMN_INDEX, table_item)
-        else:
-            table_item.setText(text)
-
-        table_item.setToolTip(tooltip)
-
-    def _advance_quality_resolution_animation(self) -> None:
-        pending_task_ids = self._get_quality_resolution_pending_task_ids()
-
-        if not pending_task_ids:
-            self._sync_quality_resolution_timer()
-            return
-
-        self._quality_resolution_step_index = (self._quality_resolution_step_index + 1) % len(
-            QUALITY_RESOLUTION_TEXT_STATES
-        )
-        text = self._build_quality_resolution_text()
-
-        for task_id in pending_task_ids:
-            row_index = self._row_by_task_id.get(task_id)
-
-            if row_index is None:
-                self._clear_stale_quality_resolution_state(task_id=task_id)
-                continue
-
-            self._set_quality_cell_text(
-                row_index=row_index,
-                text=text,
-                tooltip=QUALITY_RESOLUTION_TOOLTIP,
-            )
-
-        self._sync_quality_resolution_timer()
-
-    def _build_quality_resolution_text(self) -> str:
-        return QUALITY_RESOLUTION_TEXT_STATES[self._quality_resolution_step_index]
-
-    def _get_quality_resolution_pending_task_ids(self) -> tuple[UUID, ...]:
-        return tuple(
-            row_state.task.task_id
-            for row_state in self._row_states_by_task_id.values()
-            if row_state.is_quality_resolution_pending
-        )
-
-    def _clear_stale_quality_resolution_state(self, *, task_id: UUID) -> None:
-        row_state = self._row_states_by_task_id.get(task_id)
-
-        if row_state is None:
-            return
-
-        self._row_states_by_task_id[task_id] = row_state.with_quality_resolution_pending(
-            is_pending=False
-        )
-
-    def _sync_quality_resolution_timer(self) -> None:
-        if self._get_quality_resolution_pending_task_ids():
-            if not self._quality_resolution_timer.isActive():
-                self._quality_resolution_timer.start()
-            return
-
-        if self._quality_resolution_timer.isActive():
-            self._quality_resolution_timer.stop()
-
-    def _sync_progress_cell_with_status(self, *, row_index: int, task: DownloadTask) -> None:
-        if task.status is DownloadStatus.COMPLETED:
-            progress_bar_widget = self._ensure_progress_bar(row_index=row_index)
-            progress_bar_widget.setRange(0, 100)
-            progress_bar_widget.setValue(100)
-            progress_bar_widget.setFormat("100%")
-            return
-
-        if task.status is DownloadStatus.RUNNING:
-            progress_bar_widget = self._ensure_progress_bar(row_index=row_index)
-            progress_bar_widget.setRange(0, 100)
-            progress_bar_widget.setValue(0)
-            progress_bar_widget.setFormat("0%")
-            return
-
-        if task.status is DownloadStatus.FAILED:
-            self._set_progress_text(row_index=row_index, text="Ошибка")
-            return
-
-        if task.status is DownloadStatus.CANCELED:
-            self._set_progress_text(row_index=row_index, text=EMPTY_PROGRESS_TEXT)
-            return
-
-        self._set_progress_text(row_index=row_index, text=EMPTY_PROGRESS_TEXT)
-
-    def _ensure_progress_bar(self, *, row_index: int) -> QProgressBar:
-        progress_bar_widget = self.cellWidget(row_index, PROGRESS_COLUMN_INDEX)
-
-        if isinstance(progress_bar_widget, QProgressBar):
-            return progress_bar_widget
-
-        self._remove_progress_cell_widget(row_index=row_index)
-
-        progress_bar = QProgressBar(self)
-        progress_bar.setRange(0, 100)
-        progress_bar.setValue(0)
-        progress_bar.setTextVisible(True)
-        progress_bar.setFormat("0%")
-        progress_bar.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-
-        self.setCellWidget(row_index, PROGRESS_COLUMN_INDEX, progress_bar)
-
-        return progress_bar
-
-    def _set_progress_text(self, *, row_index: int, text: str) -> None:
-        self._remove_progress_cell_widget(row_index=row_index)
-
-        table_item = self.item(row_index, PROGRESS_COLUMN_INDEX)
-
-        if table_item is None:
-            table_item = QTableWidgetItem(text)
-            self.setItem(row_index, PROGRESS_COLUMN_INDEX, table_item)
-        else:
-            table_item.setText(text)
-
-        table_item.setToolTip(text)
-
-    def _remove_progress_cell_widget(self, *, row_index: int) -> None:
-        progress_cell_widget = self.cellWidget(row_index, PROGRESS_COLUMN_INDEX)
-
-        if progress_cell_widget is None:
-            return
-
-        self.removeCellWidget(row_index, PROGRESS_COLUMN_INDEX)
-        progress_cell_widget.deleteLater()
+        clear_current_cell_focus(table=self)
