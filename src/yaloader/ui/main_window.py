@@ -47,6 +47,7 @@ from yaloader.ui.status_messages import (
     is_primary_download_status_message,
 )
 from yaloader.ui.widgets.app_header import AppHeader
+from yaloader.ui.widgets.common.confirmation_dialogs import confirm_dangerous_action
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
 from yaloader.ui.widgets.download_queue.panel import DownloadQueuePanel
 from yaloader.ui.widgets.environment_panel import EnvironmentPanel
@@ -59,6 +60,25 @@ WINDOW_MINIMUM_WIDTH = 1040
 WINDOW_MINIMUM_HEIGHT = 760
 
 DOWNLOAD_POLL_INTERVAL_MS = 250
+
+CLEAR_QUEUE_CONFIRMATION_TITLE = "Очистить очередь?"
+CLEAR_QUEUE_CONFIRMATION_TEXT = "Очередь загрузок будет полностью очищена."
+CLEAR_QUEUE_CONFIRMATION_DETAILS = (
+    "Все задачи из списка будут удалены. Уже скачанные файлы на диске не удаляются."
+)
+CLEAR_QUEUE_CONFIRMATION_BUTTON = "Очистить очередь"
+
+DELETE_COOKIES_CONFIRMATION_TITLE = "Удалить cookies.txt?"
+DELETE_COOKIES_CONFIRMATION_TEXT = "Файл cookies.txt будет удалён безвозвратно."
+DELETE_COOKIES_CONFIRMATION_DETAILS = "При необходимости cookies.txt придётся создать заново."
+DELETE_COOKIES_CONFIRMATION_BUTTON = "Удалить cookies.txt"
+
+CLEAR_HISTORY_CONFIRMATION_TITLE = "Очистить историю?"
+CLEAR_HISTORY_CONFIRMATION_TEXT = "История загрузок будет полностью очищена."
+CLEAR_HISTORY_CONFIRMATION_DETAILS = (
+    "Записи истории будут удалены из YaLoader. Скачанные файлы на диске не удаляются."
+)
+CLEAR_HISTORY_CONFIRMATION_BUTTON = "Очистить историю"
 
 
 class MainWindow(QMainWindow):
@@ -268,6 +288,9 @@ class MainWindow(QMainWindow):
         self._show_transient_status_message("История обновлена")
 
     def _handle_clear_history_clicked(self) -> None:
+        if self._history_panel.has_records() and not self._confirm_clear_history():
+            return
+
         self._apply_history_update(update=self._history_controller.clear())
 
     def _handle_add_history_record_to_queue(self, record: DownloadHistoryRecord) -> None:
@@ -412,6 +435,9 @@ class MainWindow(QMainWindow):
         )
 
     def _handle_delete_cookies_clicked(self) -> None:
+        if self._container.paths.cookies_file.is_file() and not self._confirm_delete_cookies():
+            return
+
         self._apply_environment_update(
             update=self._environment_controller.delete_cookies(
                 downloads_dir=self._settings.downloads_dir,
@@ -472,6 +498,9 @@ class MainWindow(QMainWindow):
         self._remove_tasks_from_queue(task_ids=selected_task_ids)
 
     def _handle_clear_queue_clicked(self) -> None:
+        if self._queue_table.has_tasks() and not self._confirm_clear_queue():
+            return
+
         self._apply_download_update(update=self._download_controller.clear_queue())
 
     def _start_tasks_download(self, task_ids: tuple[UUID, ...]) -> None:
@@ -533,6 +562,33 @@ class MainWindow(QMainWindow):
         self._footer_status_presenter.show_transient(
             message=message,
             fallback_status_message=fallback_status_message,
+        )
+
+    def _confirm_clear_queue(self) -> bool:
+        return confirm_dangerous_action(
+            parent=self,
+            title=CLEAR_QUEUE_CONFIRMATION_TITLE,
+            text=CLEAR_QUEUE_CONFIRMATION_TEXT,
+            informative_text=CLEAR_QUEUE_CONFIRMATION_DETAILS,
+            confirm_button_text=CLEAR_QUEUE_CONFIRMATION_BUTTON,
+        )
+
+    def _confirm_delete_cookies(self) -> bool:
+        return confirm_dangerous_action(
+            parent=self,
+            title=DELETE_COOKIES_CONFIRMATION_TITLE,
+            text=DELETE_COOKIES_CONFIRMATION_TEXT,
+            informative_text=DELETE_COOKIES_CONFIRMATION_DETAILS,
+            confirm_button_text=DELETE_COOKIES_CONFIRMATION_BUTTON,
+        )
+
+    def _confirm_clear_history(self) -> bool:
+        return confirm_dangerous_action(
+            parent=self,
+            title=CLEAR_HISTORY_CONFIRMATION_TITLE,
+            text=CLEAR_HISTORY_CONFIRMATION_TEXT,
+            informative_text=CLEAR_HISTORY_CONFIRMATION_DETAILS,
+            confirm_button_text=CLEAR_HISTORY_CONFIRMATION_BUTTON,
         )
 
     def _open_directory(self, *, directory: Path) -> None:

@@ -30,6 +30,7 @@ class HistoryPanel(QFrame):
         self._records_layout = QVBoxLayout(self._records_container)
         self._scroll_area = QScrollArea(self)
 
+        self._records_count = 0
         self._on_add_to_queue: Callable[[DownloadHistoryRecord], None] | None = None
         self._on_delete_record: Callable[[DownloadHistoryRecord], None] | None = None
 
@@ -47,6 +48,7 @@ class HistoryPanel(QFrame):
 
     def set_records(self, records: Sequence[DownloadHistoryRecord]) -> None:
         self._clear_records_layout()
+        self._records_count = len(records)
 
         if not records:
             empty_label = QLabel("История пока пустая", self._records_container)
@@ -67,6 +69,9 @@ class HistoryPanel(QFrame):
             )
 
         self._records_layout.addStretch(1)
+
+    def has_records(self) -> bool:
+        return self._records_count > 0
 
     def _configure_widgets(self) -> None:
         self.setObjectName("HistoryPanel")
