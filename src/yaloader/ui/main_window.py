@@ -4,12 +4,11 @@ from pathlib import Path
 from typing import override
 from uuid import UUID
 
-from PyQt6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, Qt, QTimer, QTimerEvent, QUrl
+from PyQt6.QtCore import QEvent, Qt, QTimer, QTimerEvent, QUrl
 from PyQt6.QtGui import QCloseEvent, QDesktopServices, QFont, QShowEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
-    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -44,11 +43,9 @@ from yaloader.ui.controllers.queue_input_controller import (
     QueueInputController,
     QueueInputControllerUpdate,
 )
+from yaloader.ui.footer_status_presenter import FooterStatusPresenter
 from yaloader.ui.status_messages import (
     DEFAULT_STATUS_MESSAGE,
-    TRANSIENT_STATUS_MESSAGE_BLINK_DURATION_MS,
-    TRANSIENT_STATUS_MESSAGE_DURATION_MS,
-    TRANSIENT_STATUS_MESSAGE_MIN_OPACITY,
     is_primary_download_status_message,
 )
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
@@ -89,14 +86,9 @@ class MainWindow(QMainWindow):
         self._remove_from_queue_button = QPushButton("Удалить выбранное", self)
         self._clear_queue_button = QPushButton("Очистить очередь", self)
         self._status_label = QLabel(DEFAULT_STATUS_MESSAGE, self)
-
-        self._default_status_message = DEFAULT_STATUS_MESSAGE
-        self._status_reset_timer = QTimer(self)
-        self._status_opacity_effect = QGraphicsOpacityEffect(self._status_label)
-        self._status_blink_animation = QPropertyAnimation(
-            self._status_opacity_effect,
-            b"opacity",
-            self,
+        self._footer_status_presenter = FooterStatusPresenter(
+            label=self._status_label,
+            parent=self,
         )
 
         self._metadata_controller = MediaMetadataController(
@@ -125,8 +117,6 @@ class MainWindow(QMainWindow):
 
         self._configure_window()
         self._configure_widgets()
-        self._configure_status_message_timer()
-        self._configure_status_message_animation()
         self._connect_signals()
         self.setCentralWidget(self._build_central_widget())
 
@@ -158,8 +148,7 @@ class MainWindow(QMainWindow):
 
     @override
     def closeEvent(self, event: QCloseEvent | None) -> None:
-        self._status_reset_timer.stop()
-        self._status_blink_animation.stop()
+        self._footer_status_presenter.shutdown()
         self.killTimer(self._download_poll_timer)
         self._download_controller.shutdown()
         self._metadata_controller.shutdown()
@@ -201,25 +190,6 @@ class MainWindow(QMainWindow):
             on_delete_record=self._handle_delete_history_record,
         )
         self._sync_start_queue_button_state()
-
-    def _configure_status_message_timer(self) -> None:
-        self._status_reset_timer.setSingleShot(True)
-        self._status_reset_timer.setInterval(TRANSIENT_STATUS_MESSAGE_DURATION_MS)
-        self._status_reset_timer.timeout.connect(self._restore_default_status_message)
-
-    def _configure_status_message_animation(self) -> None:
-        self._status_opacity_effect.setOpacity(1.0)
-        self._status_label.setGraphicsEffect(self._status_opacity_effect)
-
-        self._status_blink_animation.setDuration(TRANSIENT_STATUS_MESSAGE_BLINK_DURATION_MS)
-        self._status_blink_animation.setStartValue(1.0)
-        self._status_blink_animation.setKeyValueAt(
-            0.5,
-            TRANSIENT_STATUS_MESSAGE_MIN_OPACITY,
-        )
-        self._status_blink_animation.setEndValue(1.0)
-        self._status_blink_animation.setLoopCount(-1)
-        self._status_blink_animation.setEasingCurve(QEasingCurve.Type.InOutSine)
 
     def _connect_signals(self) -> None:
         self._input_panel.add_to_queue_button.clicked.connect(self._handle_add_to_queue_clicked)
@@ -638,10 +608,7 @@ class MainWindow(QMainWindow):
         )
 
     def _show_primary_status_message(self, message: str) -> None:
-        self._status_reset_timer.stop()
-        self._stop_status_blink_animation()
-        self._default_status_message = message
-        self._status_label.setText(message)
+        self._footer_status_presenter.show_primary(message=message)
 
     def _show_transient_status_message(
         self,
@@ -649,25 +616,10 @@ class MainWindow(QMainWindow):
         *,
         fallback_status_message: str | None = None,
     ) -> None:
-        if fallback_status_message is not None:
-            self._default_status_message = fallback_status_message
-
-        self._status_label.setText(message)
-        self._start_status_blink_animation()
-        self._status_reset_timer.start()
-
-    def _restore_default_status_message(self) -> None:
-        self._stop_status_blink_animation()
-        self._status_label.setText(self._default_status_message)
-
-    def _start_status_blink_animation(self) -> None:
-        self._status_blink_animation.stop()
-        self._status_opacity_effect.setOpacity(1.0)
-        self._status_blink_animation.start()
-
-    def _stop_status_blink_animation(self) -> None:
-        self._status_blink_animation.stop()
-        self._status_opacity_effect.setOpacity(1.0)
+        self._footer_status_presenter.show_transient(
+            message=message,
+            fallback_status_message=fallback_status_message,
+        )
 
     def _open_directory(self, *, directory: Path) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
