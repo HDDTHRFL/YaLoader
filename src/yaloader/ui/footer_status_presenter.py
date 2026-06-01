@@ -8,6 +8,7 @@ from yaloader.ui.status_messages import (
     TRANSIENT_STATUS_MESSAGE_BLINK_DURATION_MS,
     TRANSIENT_STATUS_MESSAGE_DURATION_MS,
     TRANSIENT_STATUS_MESSAGE_MIN_OPACITY,
+    TRANSIENT_STATUS_MESSAGE_RESTORE_OPACITY_THRESHOLD,
 )
 
 
@@ -15,6 +16,8 @@ class FooterStatusPresenter:
     def __init__(self, *, label: QLabel, parent: QObject) -> None:
         self._label = label
         self._default_status_message = DEFAULT_STATUS_MESSAGE
+        self._is_default_restore_pending = False
+
         self._reset_timer = QTimer(parent)
         self._opacity_effect = QGraphicsOpacityEffect(label)
         self._blink_animation = QPropertyAnimation(
@@ -28,6 +31,7 @@ class FooterStatusPresenter:
 
     def show_primary(self, *, message: str) -> None:
         self._reset_timer.stop()
+        self._is_default_restore_pending = False
         self._stop_blink_animation()
 
         self._default_status_message = message
@@ -42,18 +46,20 @@ class FooterStatusPresenter:
         if fallback_status_message is not None:
             self._default_status_message = fallback_status_message
 
+        self._is_default_restore_pending = False
         self._label.setText(message)
         self._start_blink_animation()
         self._reset_timer.start()
 
     def shutdown(self) -> None:
         self._reset_timer.stop()
+        self._is_default_restore_pending = False
         self._stop_blink_animation()
 
     def _configure_timer(self) -> None:
         self._reset_timer.setSingleShot(True)
         self._reset_timer.setInterval(TRANSIENT_STATUS_MESSAGE_DURATION_MS)
-        self._reset_timer.timeout.connect(self._restore_default_status_message)
+        self._reset_timer.timeout.connect(self._request_default_status_message_restore)
 
     def _configure_animation(self) -> None:
         self._opacity_effect.setOpacity(1.0)
@@ -68,8 +74,31 @@ class FooterStatusPresenter:
         self._blink_animation.setEndValue(1.0)
         self._blink_animation.setLoopCount(-1)
         self._blink_animation.setEasingCurve(QEasingCurve.Type.InOutSine)
+        self._blink_animation.valueChanged.connect(self._handle_blink_opacity_changed)
+
+    def _request_default_status_message_restore(self) -> None:
+        self._is_default_restore_pending = True
+        self._restore_default_status_message_if_opacity_is_low(
+            opacity=self._opacity_effect.opacity(),
+        )
+
+    def _handle_blink_opacity_changed(self, value: object) -> None:
+        if not self._is_default_restore_pending:
+            return
+
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return
+
+        self._restore_default_status_message_if_opacity_is_low(opacity=float(value))
+
+    def _restore_default_status_message_if_opacity_is_low(self, *, opacity: float) -> None:
+        if opacity > TRANSIENT_STATUS_MESSAGE_RESTORE_OPACITY_THRESHOLD:
+            return
+
+        self._restore_default_status_message()
 
     def _restore_default_status_message(self) -> None:
+        self._is_default_restore_pending = False
         self._stop_blink_animation()
         self._label.setText(self._default_status_message)
 
