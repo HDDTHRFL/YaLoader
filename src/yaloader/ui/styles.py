@@ -195,16 +195,21 @@ QPushButton:pressed {
 }
 
 QPushButton#DangerButton {
-    background-color: #B42318;
-    color: #FFFFFF;
+    background-color: #2A1518;
+    color: #FECACA;
+    border: 1px solid #553333;
 }
 
 QPushButton#DangerButton:hover {
-    background-color: #D92D20;
+    background-color: #3A1518;
+    color: #FFFFFF;
+    border-color: #D92D20;
 }
 
 QPushButton#DangerButton:pressed {
-    background-color: #912018;
+    background-color: #4A1116;
+    color: #FFFFFF;
+    border-color: #F97066;
 }
 
 QPushButton#SecondaryButton {
@@ -410,6 +415,70 @@ QHeaderView::section {
 QTableCornerButton::section {
     background-color: #161B22;
     border: none;
+}
+
+QScrollBar:vertical {
+    width: 10px;
+    background-color: transparent;
+    margin: 2px 2px 2px 2px;
+}
+
+QScrollBar::handle:vertical {
+    min-height: 28px;
+    background-color: #30363D;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #3D444D;
+}
+
+QScrollBar::handle:vertical:pressed {
+    background-color: #4B5563;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+    background-color: transparent;
+    border: none;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background-color: transparent;
+}
+
+QScrollBar:horizontal {
+    height: 10px;
+    background-color: transparent;
+    margin: 2px 2px 2px 2px;
+}
+
+QScrollBar::handle:horizontal {
+    min-width: 28px;
+    background-color: #30363D;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: #3D444D;
+}
+
+QScrollBar::handle:horizontal:pressed {
+    background-color: #4B5563;
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0;
+    background-color: transparent;
+    border: none;
+}
+
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background-color: transparent;
 }
 
 QMenu {

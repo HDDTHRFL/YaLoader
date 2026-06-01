@@ -19,6 +19,7 @@ class DownloadProgress(BaseModel):
     status_text: str = Field(min_length=1)
     downloaded_bytes: int | None = None
     total_bytes: int | None = None
+    speed_bytes_per_second: int | None = None
 
     @classmethod
     def started(cls, *, task_id: UUID) -> DownloadProgress:

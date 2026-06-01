@@ -88,3 +88,22 @@ def test_download_request_rejects_video_format_for_audio_mode(tmp_path: Path) ->
             mode=DownloadMode.AUDIO,
             output_format=OutputFormat.MP4,
         )
+
+
+def test_download_request_accepts_download_speed_limit(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        download_speed_limit_bytes_per_second=1_048_576,
+    )
+
+    assert request.download_speed_limit_bytes_per_second == 1_048_576
+
+
+def test_download_request_rejects_negative_download_speed_limit(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        DownloadRequest(
+            url="https://www.youtube.com/watch?v=test",
+            target_dir=tmp_path,
+            download_speed_limit_bytes_per_second=-1,
+        )

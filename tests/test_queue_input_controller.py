@@ -120,3 +120,21 @@ def test_add_from_input_rejects_duplicate_url(tmp_path: Path) -> None:
     assert second_update.should_clear_url_input is False
     assert second_update.should_focus_url_input is True
     assert queue_service.count() == 1
+
+
+def test_add_from_input_passes_download_speed_limit_to_task(tmp_path: Path) -> None:
+    queue_service = DownloadQueueService()
+    controller = QueueInputController(queue_service=queue_service)
+
+    update = controller.add_from_input(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        output_format=OutputFormat.MP4,
+        video_quality=VideoQuality.BEST,
+        download_speed_limit_bytes_per_second=1_048_576,
+    )
+
+    assert update.added_task is not None
+    assert update.added_task.download_speed_limit_bytes_per_second == 1_048_576
+    assert update.metadata_request is not None
+    assert update.metadata_request.download_speed_limit_bytes_per_second == 1_048_576

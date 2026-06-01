@@ -60,3 +60,32 @@ def test_load_returns_default_settings_when_file_is_invalid(tmp_path: Path) -> N
     settings = service.load()
 
     assert settings.downloads_dir == default_downloads_dir
+
+
+def test_update_download_speed_limit_saves_settings(tmp_path: Path) -> None:
+    settings_file = tmp_path / "settings.json"
+    service = SettingsService(
+        settings_file=settings_file,
+        default_downloads_dir=tmp_path / "downloads",
+    )
+
+    settings = service.update_download_speed_limit(bytes_per_second=1_048_576)
+
+    assert settings.download_speed_limit_bytes_per_second == 1_048_576
+    assert service.load().download_speed_limit_bytes_per_second == 1_048_576
+
+
+def test_update_downloads_dir_preserves_download_speed_limit(tmp_path: Path) -> None:
+    settings_file = tmp_path / "settings.json"
+    first_downloads_dir = tmp_path / "downloads"
+    second_downloads_dir = tmp_path / "selected-downloads"
+    service = SettingsService(
+        settings_file=settings_file,
+        default_downloads_dir=first_downloads_dir,
+    )
+
+    service.update_download_speed_limit(bytes_per_second=1_048_576)
+    settings = service.update_downloads_dir(downloads_dir=second_downloads_dir)
+
+    assert settings.downloads_dir == second_downloads_dir
+    assert settings.download_speed_limit_bytes_per_second == 1_048_576

@@ -193,6 +193,7 @@ class YtDlpDownloader:
             output_format=task.output_format,
             video_quality=task.video_quality,
             include_playlist=task.include_playlist,
+            download_speed_limit_bytes_per_second=(task.download_speed_limit_bytes_per_second),
         )
 
     def _build_progress_hook(
@@ -261,6 +262,7 @@ def build_downloading_progress(
 ) -> DownloadProgress:
     downloaded_bytes = get_int_value(progress_info.get("downloaded_bytes"))
     total_bytes = get_total_bytes(progress_info=progress_info)
+    speed_bytes_per_second = get_positive_int_value(progress_info.get("speed"))
     percent = calculate_percent(
         downloaded_bytes=downloaded_bytes,
         total_bytes=total_bytes,
@@ -273,6 +275,7 @@ def build_downloading_progress(
         status_text=status_text,
         downloaded_bytes=downloaded_bytes,
         total_bytes=total_bytes,
+        speed_bytes_per_second=speed_bytes_per_second,
     )
 
 
@@ -283,6 +286,15 @@ def get_total_bytes(progress_info: YtDlpProgressInfo) -> int | None:
         return total_bytes
 
     return get_int_value(progress_info.get("total_bytes_estimate"))
+
+
+def get_positive_int_value(value: object) -> int | None:
+    normalized_value = get_int_value(value)
+
+    if normalized_value is None or normalized_value <= 0:
+        return None
+
+    return normalized_value
 
 
 def get_int_value(value: object) -> int | None:

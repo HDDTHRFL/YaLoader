@@ -10,6 +10,7 @@ from yaloader.application.dto.environment_status import EnvironmentStatus
 from yaloader.application.services.environment_check_service import EnvironmentCheckService
 from yaloader.application.services.settings_service import SettingsService
 from yaloader.config.paths import AppPaths
+from yaloader.domain.download_speed_limit import format_download_speed_limit_label
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +66,28 @@ class EnvironmentController:
             status_message=f"Папка загрузок изменена: {settings.downloads_dir}",
             settings=settings,
             environment_status=self._check_environment(downloads_dir=settings.downloads_dir),
+        )
+
+    def change_download_speed_limit(
+        self,
+        *,
+        bytes_per_second: int | None,
+    ) -> EnvironmentControllerUpdate:
+        try:
+            settings = self._settings_service.update_download_speed_limit(
+                bytes_per_second=bytes_per_second,
+            )
+        except (ValueError, ValidationError) as error:
+            return EnvironmentControllerUpdate(
+                status_message=f"Не удалось изменить ограничение скорости: {error}",
+            )
+
+        return EnvironmentControllerUpdate(
+            status_message=(
+                "Ограничение скорости: "
+                f"{format_download_speed_limit_label(bytes_per_second=bytes_per_second)}"
+            ),
+            settings=settings,
         )
 
     def delete_cookies(self, *, downloads_dir: Path) -> EnvironmentControllerUpdate:

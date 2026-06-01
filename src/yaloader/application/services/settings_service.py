@@ -30,6 +30,9 @@ class SettingsService:
             json.dumps(
                 {
                     "downloads_dir": str(settings.downloads_dir),
+                    "download_speed_limit_bytes_per_second": (
+                        settings.download_speed_limit_bytes_per_second
+                    ),
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -39,9 +42,35 @@ class SettingsService:
         )
 
     def update_downloads_dir(self, downloads_dir: Path) -> AppSettings:
-        settings = AppSettings(downloads_dir=downloads_dir)
+        current_settings = self.load()
+        settings = current_settings.model_copy(
+            update={
+                "downloads_dir": downloads_dir,
+            }
+        )
         self.save(settings=settings)
+
         return settings
 
+    def update_download_speed_limit(
+        self,
+        *,
+        bytes_per_second: int | None,
+    ) -> AppSettings:
+        current_settings = self.load()
+        settings = current_settings.model_copy(
+            update={
+                "download_speed_limit_bytes_per_second": bytes_per_second,
+            }
+        )
+        validated_settings = AppSettings.model_validate(settings.model_dump())
+
+        self.save(settings=validated_settings)
+
+        return validated_settings
+
     def _build_default_settings(self) -> AppSettings:
-        return AppSettings(downloads_dir=self.default_downloads_dir)
+        return AppSettings(
+            downloads_dir=self.default_downloads_dir,
+            download_speed_limit_bytes_per_second=None,
+        )

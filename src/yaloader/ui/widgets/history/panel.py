@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from typing import cast
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -9,6 +10,8 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QScrollBar,
+    QScroller,
     QVBoxLayout,
     QWidget,
 )
@@ -17,6 +20,7 @@ from yaloader.application.dto.download_history_record import DownloadHistoryReco
 from yaloader.ui.widgets.history.record_card import HistoryRecordCard
 
 HISTORY_PANEL_WIDTH = 380
+SCROLL_SINGLE_STEP = 12
 
 
 class HistoryPanel(QFrame):
@@ -86,7 +90,17 @@ class HistoryPanel(QFrame):
         self._scroll_area.setObjectName("HistoryScrollArea")
         self._scroll_area.setWidgetResizable(True)
         self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._scroll_area.setWidget(self._records_container)
+
+        vertical_scroll_bar = cast(QScrollBar, self._scroll_area.verticalScrollBar())
+        vertical_scroll_bar.setSingleStep(SCROLL_SINGLE_STEP)
+
+        QScroller.grabGesture(
+            self._scroll_area.viewport(),
+            QScroller.ScrollerGestureType.LeftMouseButtonGesture,
+        )
 
         self._records_layout.setContentsMargins(0, 0, 0, 0)
         self._records_layout.setSpacing(10)

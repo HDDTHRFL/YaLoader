@@ -78,6 +78,9 @@ class HistoryController:
                 mode=record.mode,
                 output_format=record.output_format,
                 video_quality=record.video_quality,
+                download_speed_limit_bytes_per_second=(
+                    record.download_speed_limit_bytes_per_second
+                ),
             )
         except ValidationError as error:
             first_error_message = error.errors()[0]["msg"]

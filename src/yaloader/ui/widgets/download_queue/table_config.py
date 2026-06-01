@@ -3,7 +3,14 @@ from __future__ import annotations
 from typing import cast
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget, QWidget
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QHeaderView,
+    QScrollBar,
+    QScroller,
+    QTableWidget,
+    QWidget,
+)
 
 from yaloader.ui.widgets.download_queue.columns import (
     QUEUE_COLUMN_COUNT,
@@ -12,6 +19,8 @@ from yaloader.ui.widgets.download_queue.columns import (
     calculate_queue_column_widths,
 )
 from yaloader.ui.widgets.download_queue.delegate import DownloadQueueItemDelegate
+
+SCROLL_SINGLE_STEP = 12
 
 
 def configure_download_queue_table(*, table: QTableWidget) -> None:
@@ -22,8 +31,7 @@ def configure_download_queue_table(*, table: QTableWidget) -> None:
             "Ссылка",
             "Качество",
             "Формат",
-            "Статус",
-            "Прогресс",
+            "Состояние",
             "Папка",
         ]
     )
@@ -38,9 +46,21 @@ def configure_download_queue_table(*, table: QTableWidget) -> None:
     table.setAcceptDrops(True)
     table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     table.setWordWrap(False)
+    table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+    table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+
+    vertical_scroll_bar = cast(QScrollBar, table.verticalScrollBar())
+    horizontal_scroll_bar = cast(QScrollBar, table.horizontalScrollBar())
+    vertical_scroll_bar.setSingleStep(SCROLL_SINGLE_STEP)
+    horizontal_scroll_bar.setSingleStep(SCROLL_SINGLE_STEP)
 
     viewport = cast(QWidget, table.viewport())
     viewport.setAcceptDrops(True)
+
+    QScroller.grabGesture(
+        viewport,
+        QScroller.ScrollerGestureType.LeftMouseButtonGesture,
+    )
 
     horizontal_header = cast(QHeaderView, table.horizontalHeader())
     horizontal_header.setSectionsMovable(False)

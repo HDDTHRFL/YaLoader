@@ -30,6 +30,7 @@ class DownloadHistoryRecord(BaseModel):
     resolved_video_quality: VideoQuality | None = None
     output_path: Path | None = None
     error_message: str | None = None
+    download_speed_limit_bytes_per_second: int | None = None
 
     @classmethod
     def create_from_task(
@@ -52,4 +53,5 @@ class DownloadHistoryRecord(BaseModel):
             finished_at=get_current_utc_datetime(),
             output_path=output_path,
             error_message=task.error_message,
+            download_speed_limit_bytes_per_second=task.download_speed_limit_bytes_per_second,
         )

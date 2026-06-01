@@ -38,6 +38,7 @@ class DownloadQueueService:
             output_format=request.output_format,
             video_quality=request.video_quality,
             include_playlist=request.include_playlist,
+            download_speed_limit_bytes_per_second=request.download_speed_limit_bytes_per_second,
         )
 
         with self._lock:
@@ -117,6 +118,26 @@ class DownloadQueueService:
             self._tasks[task_index] = updated_task
 
             return updated_task
+
+    def update_download_speed_limit_for_downloadable_tasks(
+        self,
+        *,
+        bytes_per_second: int | None,
+    ) -> tuple[DownloadTask, ...]:
+        with self._lock:
+            updated_tasks: list[DownloadTask] = []
+
+            for task_index, task in enumerate(self._tasks):
+                if not is_downloadable(task):
+                    continue
+
+                updated_task = task.with_download_speed_limit(
+                    download_speed_limit_bytes_per_second=bytes_per_second,
+                )
+                self._tasks[task_index] = updated_task
+                updated_tasks.append(updated_task)
+
+            return tuple(updated_tasks)
 
     def apply_result(self, result: DownloadResult) -> DownloadTask | None:
         return self.update_status(

@@ -8,7 +8,7 @@ from yaloader.ui.widgets.download_queue.columns import (
     FORMAT_COLUMN_INDEX,
     MODE_COLUMN_INDEX,
     QUALITY_COLUMN_INDEX,
-    STATUS_COLUMN_INDEX,
+    STATUS_PROGRESS_COLUMN_INDEX,
     URL_COLUMN_INDEX,
 )
 from yaloader.ui.widgets.download_queue.quality_presenter import DownloadQueueQualityPresenter
@@ -33,7 +33,7 @@ class DownloadQueueRowPresenter:
             URL_COLUMN_INDEX: task.url.value,
             QUALITY_COLUMN_INDEX: self._quality_presenter.build_cell_text(task=task),
             FORMAT_COLUMN_INDEX: task.output_format.value,
-            STATUS_COLUMN_INDEX: task.status.value,
+            STATUS_PROGRESS_COLUMN_INDEX: task.status.value,
             FOLDER_COLUMN_INDEX: str(task.target_dir),
         }
 

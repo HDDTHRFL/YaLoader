@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.config.app_info import APP_DISPLAY_NAME
+from yaloader.domain.download_speed_limit import format_download_speed_limit_label
 from yaloader.domain.enums import DownloadStatus, VideoQuality
 from yaloader.services.app_container import AppContainer
 from yaloader.ui.controllers.download_controller import (
@@ -136,7 +137,7 @@ class MainWindow(QMainWindow):
         self._connect_signals()
         self.setCentralWidget(self._build_central_widget())
 
-        self._update_downloads_dir_label()
+        self._update_settings_panel()
         self._apply_environment_update(
             update=self._environment_controller.load_status(
                 downloads_dir=self._settings.downloads_dir,
@@ -210,6 +211,9 @@ class MainWindow(QMainWindow):
 
         self._settings_panel.choose_downloads_dir_button.clicked.connect(
             self._handle_choose_downloads_dir_clicked
+        )
+        self._settings_panel.download_speed_limit_combo_box.currentIndexChanged.connect(
+            self._handle_download_speed_limit_changed
         )
 
         self._environment_panel.delete_cookies_button.clicked.connect(
@@ -397,6 +401,9 @@ class MainWindow(QMainWindow):
                 target_dir=self._settings.downloads_dir,
                 output_format=self._input_panel.get_selected_output_format(),
                 video_quality=self._input_panel.get_selected_video_quality(),
+                download_speed_limit_bytes_per_second=(
+                    self._settings.download_speed_limit_bytes_per_second
+                ),
             )
         )
 
@@ -411,6 +418,9 @@ class MainWindow(QMainWindow):
                 target_dir=self._settings.downloads_dir,
                 output_format=self._input_panel.get_selected_output_format(),
                 video_quality=self._input_panel.get_selected_video_quality(),
+                download_speed_limit_bytes_per_second=(
+                    self._settings.download_speed_limit_bytes_per_second
+                ),
             ),
             should_apply_input_feedback=False,
         )
@@ -457,6 +467,33 @@ class MainWindow(QMainWindow):
             )
         )
 
+    def _handle_download_speed_limit_changed(self, _index: int) -> None:
+        selected_speed_limit = (
+            self._settings_panel.get_selected_download_speed_limit_bytes_per_second()
+        )
+
+        environment_update = self._environment_controller.change_download_speed_limit(
+            bytes_per_second=selected_speed_limit,
+        )
+        self._apply_environment_update(update=environment_update)
+
+        if environment_update.settings is None:
+            return
+
+        queue_service = self._container.download_queue_service
+        updated_tasks = queue_service.update_download_speed_limit_for_downloadable_tasks(
+            bytes_per_second=selected_speed_limit,
+        )
+
+        if not updated_tasks:
+            return
+
+        self._queue_table.reload_tasks(queue_service.list_tasks())
+        self._show_transient_status_message(
+            "Лимит скорости обновлён для задач в очереди: "
+            f"{format_download_speed_limit_label(bytes_per_second=selected_speed_limit)}"
+        )
+
     def _handle_delete_cookies_clicked(self) -> None:
         if self._container.paths.cookies_file.is_file() and not self._confirm_delete_cookies():
             return
@@ -487,7 +524,7 @@ class MainWindow(QMainWindow):
     def _apply_environment_update(self, *, update: EnvironmentControllerUpdate) -> None:
         if update.settings is not None:
             self._settings = update.settings
-            self._update_downloads_dir_label()
+            self._update_settings_panel()
 
         if update.environment_status is not None:
             self._environment_panel.set_status(status=update.environment_status)
@@ -617,8 +654,11 @@ class MainWindow(QMainWindow):
     def _open_directory(self, *, directory: Path) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
 
-    def _update_downloads_dir_label(self) -> None:
+    def _update_settings_panel(self) -> None:
         self._settings_panel.set_downloads_dir(downloads_dir=self._settings.downloads_dir)
+        self._settings_panel.set_download_speed_limit(
+            bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
+        )
 
     def _sync_queue_controls_state(self) -> None:
         has_tasks = self._queue_table.has_tasks()
@@ -630,6 +670,7 @@ class MainWindow(QMainWindow):
 
         self._input_panel.add_to_queue_button.setEnabled(not has_active_download)
         self._settings_panel.choose_downloads_dir_button.setEnabled(not has_active_download)
+        self._settings_panel.download_speed_limit_combo_box.setEnabled(not has_active_download)
         self._environment_panel.delete_cookies_button.setEnabled(not has_active_download)
         self._environment_panel.refresh_button.setEnabled(not has_active_download)
         self._environment_panel.open_cookies_dir_button.setEnabled(not has_active_download)

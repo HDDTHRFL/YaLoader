@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from yaloader.domain.download_speed_limit import validate_download_speed_limit_bytes_per_second
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
 from yaloader.domain.format_rules import is_output_format_allowed
 from yaloader.domain.source_policy import validate_supported_media_url
@@ -24,6 +25,7 @@ class DownloadRequest(BaseModel):
     output_format: OutputFormat = OutputFormat.MP4
     video_quality: VideoQuality = VideoQuality.BEST
     include_playlist: bool = False
+    download_speed_limit_bytes_per_second: int | None = None
 
     @field_validator("url")
     @classmethod
@@ -37,6 +39,21 @@ class DownloadRequest(BaseModel):
         if not value.is_absolute():
             msg = "Target directory must be an absolute path."
             raise ValueError(msg)
+
+        return value
+
+    @field_validator("download_speed_limit_bytes_per_second", mode="before")
+    @classmethod
+    def validate_download_speed_limit(cls, value: Any) -> Any:
+        if value is None:
+            return None
+
+        if isinstance(value, bool):
+            message = "Download speed limit must be an integer number of bytes per second."
+            raise ValueError(message)
+
+        if isinstance(value, int):
+            return validate_download_speed_limit_bytes_per_second(bytes_per_second=value)
 
         return value
 

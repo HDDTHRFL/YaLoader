@@ -131,3 +131,19 @@ def test_build_skips_cookiefile_when_cookies_file_is_missing(tmp_path: Path) -> 
     options = builder.build(request=request)
 
     assert "cookiefile" not in options
+
+
+def test_build_options_adds_download_speed_limit(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        mode=DownloadMode.VIDEO,
+        output_format=OutputFormat.MP4,
+        video_quality=VideoQuality.BEST,
+        download_speed_limit_bytes_per_second=1_048_576,
+    )
+    builder = YtDlpOptionsBuilder()
+
+    options = builder.build(request=request)
+
+    assert options["ratelimit"] == 1_048_576

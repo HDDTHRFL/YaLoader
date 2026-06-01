@@ -36,6 +36,9 @@ class YtDlpOptionsBuilder:
             "remote_components": REMOTE_COMPONENTS,
         }
 
+        if request.download_speed_limit_bytes_per_second is not None:
+            options["ratelimit"] = request.download_speed_limit_bytes_per_second
+
         if request.mode is DownloadMode.VIDEO:
             options["merge_output_format"] = request.output_format.value
 

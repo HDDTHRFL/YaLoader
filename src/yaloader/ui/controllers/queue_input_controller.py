@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.services.download_queue_service import DownloadQueueService
+from yaloader.domain.download_speed_limit import format_download_speed_limit_label
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
 from yaloader.domain.format_rules import get_download_mode_for_output_format
@@ -32,6 +33,7 @@ class QueueInputController:
         target_dir: Path,
         output_format: OutputFormat,
         video_quality: VideoQuality,
+        download_speed_limit_bytes_per_second: int | None = None,
     ) -> QueueInputControllerUpdate:
         normalized_url = url.strip()
 
@@ -48,6 +50,7 @@ class QueueInputController:
                 mode=get_download_mode_for_output_format(output_format=output_format),
                 output_format=output_format,
                 video_quality=video_quality,
+                download_speed_limit_bytes_per_second=download_speed_limit_bytes_per_second,
             )
         except ValidationError as error:
             first_error_message = error.errors()[0]["msg"]
@@ -76,6 +79,29 @@ class QueueInputController:
 
     def _build_success_message(self, *, request: DownloadRequest) -> str:
         if request.mode is DownloadMode.VIDEO:
-            return "Добавлено в очередь. Определяем доступное качество..."
+            return append_download_speed_limit_status_suffix(
+                message="Добавлено в очередь. Определяем доступное качество...",
+                download_speed_limit_bytes_per_second=(
+                    request.download_speed_limit_bytes_per_second
+                ),
+            )
 
-        return f"Добавлено в очередь: {self._queue_service.count()}"
+        return append_download_speed_limit_status_suffix(
+            message=f"Добавлено в очередь: {self._queue_service.count()}",
+            download_speed_limit_bytes_per_second=request.download_speed_limit_bytes_per_second,
+        )
+
+
+def append_download_speed_limit_status_suffix(
+    *,
+    message: str,
+    download_speed_limit_bytes_per_second: int | None,
+) -> str:
+    if download_speed_limit_bytes_per_second is None:
+        return message
+
+    speed_limit_label = format_download_speed_limit_label(
+        bytes_per_second=download_speed_limit_bytes_per_second,
+    )
+
+    return f"{message} Лимит скорости: {speed_limit_label}"

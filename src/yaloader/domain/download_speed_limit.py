@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Final
+
+BYTES_PER_KIB: Final = 1024
+BYTES_PER_MIB: Final = BYTES_PER_KIB * BYTES_PER_KIB
+
+DOWNLOAD_SPEED_LIMIT_PRESETS_BYTES: Final[tuple[int | None, ...]] = (
+    None,
+    512 * BYTES_PER_KIB,
+    1 * BYTES_PER_MIB,
+    2 * BYTES_PER_MIB,
+    5 * BYTES_PER_MIB,
+    10 * BYTES_PER_MIB,
+    20 * BYTES_PER_MIB,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadSpeedLimit:
+    bytes_per_second: int | None = None
+
+    def __post_init__(self) -> None:
+        validate_download_speed_limit_bytes_per_second(
+            bytes_per_second=self.bytes_per_second,
+        )
+
+
+def validate_download_speed_limit_bytes_per_second(
+    *,
+    bytes_per_second: int | None,
+) -> int | None:
+    if bytes_per_second is None:
+        return None
+
+    if isinstance(bytes_per_second, bool):
+        message = "Download speed limit must be an integer number of bytes per second."
+        raise ValueError(message)
+
+    if bytes_per_second <= 0:
+        message = "Download speed limit must be greater than zero."
+        raise ValueError(message)
+
+    return bytes_per_second
+
+
+def is_known_download_speed_limit_preset(*, bytes_per_second: int | None) -> bool:
+    return bytes_per_second in DOWNLOAD_SPEED_LIMIT_PRESETS_BYTES
+
+
+def format_download_speed_limit_label(*, bytes_per_second: int | None) -> str:
+    if bytes_per_second is None:
+        return "Без ограничения"
+
+    return format_bytes_per_second(bytes_per_second=bytes_per_second)
+
+
+def format_bytes_per_second(*, bytes_per_second: int) -> str:
+    if bytes_per_second >= BYTES_PER_MIB:
+        value = bytes_per_second / BYTES_PER_MIB
+        return f"{format_decimal_number(value=value)} MB/s"
+
+    value = bytes_per_second / BYTES_PER_KIB
+    return f"{format_decimal_number(value=value)} KB/s"
+
+
+def format_decimal_number(*, value: float) -> str:
+    if value.is_integer():
+        return str(int(value))
+
+    return f"{value:.1f}"
