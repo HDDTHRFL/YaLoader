@@ -1,21 +1,28 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import override
+from typing import cast, override
 from uuid import UUID
 
 from PyQt6.QtCore import QEvent, QItemSelectionModel, QModelIndex, QPoint, Qt
 from PyQt6.QtGui import (
     QContextMenuEvent,
+    QDragEnterEvent,
+    QDragLeaveEvent,
+    QDragMoveEvent,
+    QDropEvent,
     QKeyEvent,
     QKeySequence,
     QMouseEvent,
     QResizeEvent,
 )
-from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QWidget
+from PyQt6.QtWidgets import QLabel, QTableWidget, QTableWidgetItem, QWidget
 
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.domain.entities.download_task import DownloadTask
+from yaloader.ui.widgets.common.url_drop_line_edit import (
+    extract_first_supported_media_url_from_drop_event,
+)
 from yaloader.ui.widgets.download_queue.clipboard_presenter import (
     DownloadQueueClipboardPresenter,
 )
@@ -24,6 +31,7 @@ from yaloader.ui.widgets.download_queue.context_menu import (
     DownloadQueueContextAction,
     show_download_queue_context_menu,
 )
+from yaloader.ui.widgets.download_queue.drop_highlight import QueueDropHighlightOverlay
 from yaloader.ui.widgets.download_queue.progress_presenter import (
     EMPTY_PROGRESS_TEXT,
     DownloadQueueProgressPresenter,
@@ -43,6 +51,9 @@ from yaloader.ui.widgets.download_queue.table_config import (
 )
 from yaloader.ui.widgets.download_queue.url_presenter import DownloadQueueUrlPresenter
 
+QUEUE_EMPTY_HINT_TEXT = "Вставьте ссылку в поле «Ссылка» или перетащите её сюда ⬇️"
+QUEUE_EMPTY_HINT_MARGIN = 36
+
 
 class DownloadQueueTable(QTableWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -55,7 +66,11 @@ class DownloadQueueTable(QTableWidget):
         self._on_download_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._on_cancel_task: Callable[[UUID], None] | None = None
         self._on_remove_tasks: Callable[[tuple[UUID, ...]], None] | None = None
+        self._on_url_dropped: Callable[[str], None] | None = None
         self._suppress_next_context_menu_event = False
+
+        self._empty_hint_label = self._build_empty_hint_label()
+        self._drop_highlight_overlay = self._build_drop_highlight_overlay()
 
         self._url_presenter = DownloadQueueUrlPresenter(
             table=self,
@@ -83,11 +98,25 @@ class DownloadQueueTable(QTableWidget):
         )
 
         configure_download_queue_table(table=self)
+        self._sync_empty_hint_visibility()
+        self._sync_drop_highlight_geometry()
 
     @override
     def viewportEvent(self, event: QEvent | None) -> bool:
         if event is None:
             return super().viewportEvent(event)
+
+        if event.type() == QEvent.Type.DragEnter and isinstance(event, QDragEnterEvent):
+            return self._handle_viewport_drag_enter(event=event)
+
+        if event.type() == QEvent.Type.DragMove and isinstance(event, QDragMoveEvent):
+            return self._handle_viewport_drag_move(event=event)
+
+        if event.type() == QEvent.Type.DragLeave and isinstance(event, QDragLeaveEvent):
+            return self._handle_viewport_drag_leave(event=event)
+
+        if event.type() == QEvent.Type.Drop and isinstance(event, QDropEvent):
+            return self._handle_viewport_drop(event=event)
 
         if (
             event.type() == QEvent.Type.MouseButtonPress
@@ -107,9 +136,37 @@ class DownloadQueueTable(QTableWidget):
         return super().viewportEvent(event)
 
     @override
+    def dragEnterEvent(self, event: QDragEnterEvent | None) -> None:
+        if self._accept_supported_url_drag_event(event=event):
+            return
+
+        super().dragEnterEvent(event)
+
+    @override
+    def dragMoveEvent(self, event: QDragMoveEvent | None) -> None:
+        if self._accept_supported_url_drag_event(event=event):
+            return
+
+        super().dragMoveEvent(event)
+
+    @override
+    def dragLeaveEvent(self, event: QDragLeaveEvent | None) -> None:
+        self._set_drop_highlight_active(is_active=False)
+        super().dragLeaveEvent(event)
+
+    @override
+    def dropEvent(self, event: QDropEvent | None) -> None:
+        if self._handle_supported_url_drop_event(event=event):
+            return
+
+        super().dropEvent(event)
+
+    @override
     def resizeEvent(self, event: QResizeEvent | None) -> None:
         super().resizeEvent(event)
         self.resize_columns_to_viewport()
+        self._position_empty_hint_label()
+        self._sync_drop_highlight_geometry()
 
     @override
     def keyPressEvent(self, event: QKeyEvent | None) -> None:
@@ -145,6 +202,9 @@ class DownloadQueueTable(QTableWidget):
         self._on_cancel_task = on_cancel_task
         self._on_remove_tasks = on_remove_tasks
 
+    def set_url_drop_callback(self, *, on_url_dropped: Callable[[str], None]) -> None:
+        self._on_url_dropped = on_url_dropped
+
     def append_task(self, task: DownloadTask) -> None:
         row_index = self.rowCount()
         self.insertRow(row_index)
@@ -157,6 +217,7 @@ class DownloadQueueTable(QTableWidget):
         self._row_presenter.set_task_row_values(row_index=row_index, task=task)
         self._progress_presenter.set_text(row_index=row_index, text=EMPTY_PROGRESS_TEXT)
         self.resize_columns_to_viewport()
+        self._sync_empty_hint_visibility()
 
     def update_task(self, task: DownloadTask) -> None:
         row_index = self._row_by_task_id.get(task.task_id)
@@ -180,6 +241,7 @@ class DownloadQueueTable(QTableWidget):
         self._progress_presenter.sync_with_task_status(row_index=row_index, task=task)
         self._quality_presenter.sync_timer()
         self.resize_columns_to_viewport()
+        self._sync_empty_hint_visibility()
 
     def reload_tasks(self, tasks: Sequence[DownloadTask]) -> None:
         previous_row_states = self._row_states_by_task_id.copy()
@@ -204,6 +266,7 @@ class DownloadQueueTable(QTableWidget):
                 self.mark_metadata_resolution_failed(task_id=task.task_id)
 
         self.resize_columns_to_viewport()
+        self._sync_empty_hint_visibility()
 
     def has_tasks(self) -> bool:
         return self.rowCount() > 0
@@ -237,6 +300,103 @@ class DownloadQueueTable(QTableWidget):
 
     def resize_columns_to_viewport(self) -> None:
         resize_download_queue_table_columns_to_viewport(table=self)
+
+    def _handle_viewport_drag_enter(self, *, event: QDragEnterEvent) -> bool:
+        if self._accept_supported_url_drag_event(event=event):
+            return True
+
+        return super().viewportEvent(event)
+
+    def _handle_viewport_drag_move(self, *, event: QDragMoveEvent) -> bool:
+        if self._accept_supported_url_drag_event(event=event):
+            return True
+
+        return super().viewportEvent(event)
+
+    def _handle_viewport_drag_leave(self, *, event: QDragLeaveEvent) -> bool:
+        self._set_drop_highlight_active(is_active=False)
+        event.accept()
+        return True
+
+    def _handle_viewport_drop(self, *, event: QDropEvent) -> bool:
+        self._set_drop_highlight_active(is_active=False)
+
+        if self._handle_supported_url_drop_event(event=event):
+            return True
+
+        return super().viewportEvent(event)
+
+    def _accept_supported_url_drag_event(
+        self,
+        *,
+        event: QDragEnterEvent | QDragMoveEvent | None,
+    ) -> bool:
+        if event is None or self._on_url_dropped is None:
+            self._set_drop_highlight_active(is_active=False)
+            return False
+
+        if extract_first_supported_media_url_from_drop_event(event=event) is None:
+            self._set_drop_highlight_active(is_active=False)
+            return False
+
+        self._set_drop_highlight_active(is_active=True)
+        event.acceptProposedAction()
+        return True
+
+    def _handle_supported_url_drop_event(self, *, event: QDropEvent | None) -> bool:
+        self._set_drop_highlight_active(is_active=False)
+
+        if event is None or self._on_url_dropped is None:
+            return False
+
+        dropped_url = extract_first_supported_media_url_from_drop_event(event=event)
+
+        if dropped_url is None:
+            return False
+
+        self._on_url_dropped(dropped_url)
+        event.acceptProposedAction()
+        return True
+
+    def _build_empty_hint_label(self) -> QLabel:
+        viewport = cast(QWidget, self.viewport())
+        label = QLabel(QUEUE_EMPTY_HINT_TEXT, viewport)
+        label.setObjectName("QueueEmptyHintLabel")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(True)
+        label.setAcceptDrops(False)
+        label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        label.hide()
+
+        return label
+
+    def _build_drop_highlight_overlay(self) -> QueueDropHighlightOverlay:
+        viewport = cast(QWidget, self.viewport())
+        return QueueDropHighlightOverlay(parent=viewport)
+
+    def _sync_empty_hint_visibility(self) -> None:
+        self._position_empty_hint_label()
+        self._empty_hint_label.setVisible(not self.has_tasks())
+
+        if not self.has_tasks():
+            self._empty_hint_label.raise_()
+
+    def _position_empty_hint_label(self) -> None:
+        viewport = cast(QWidget, self.viewport())
+        label_rect = viewport.rect().adjusted(
+            QUEUE_EMPTY_HINT_MARGIN,
+            QUEUE_EMPTY_HINT_MARGIN,
+            -QUEUE_EMPTY_HINT_MARGIN,
+            -QUEUE_EMPTY_HINT_MARGIN,
+        )
+        self._empty_hint_label.setGeometry(label_rect)
+
+    def _set_drop_highlight_active(self, *, is_active: bool) -> None:
+        self._sync_drop_highlight_geometry()
+        self._drop_highlight_overlay.set_active(is_active=is_active)
+
+    def _sync_drop_highlight_geometry(self) -> None:
+        self._drop_highlight_overlay.sync_geometry()
 
     def _handle_viewport_mouse_press(self, *, event: QMouseEvent) -> bool:
         clicked_position = event.position().toPoint()

@@ -192,6 +192,9 @@ class MainWindow(QMainWindow):
             on_cancel_task=self._cancel_task_download,
             on_remove_tasks=self._remove_tasks_from_queue,
         )
+        self._queue_table.set_url_drop_callback(
+            on_url_dropped=self._handle_queue_url_dropped,
+        )
         self._history_panel.set_context_menu_callbacks(
             on_add_to_queue=self._handle_add_history_record_to_queue,
             on_delete_record=self._handle_delete_history_record,
@@ -397,7 +400,27 @@ class MainWindow(QMainWindow):
             )
         )
 
-    def _apply_queue_input_update(self, *, update: QueueInputControllerUpdate) -> None:
+    def _handle_queue_url_dropped(self, url: str) -> None:
+        if self._download_controller.is_active:
+            self._show_transient_status_message("Нельзя добавить задачу во время загрузки")
+            return
+
+        self._apply_queue_input_update(
+            update=self._queue_input_controller.add_from_input(
+                url=url,
+                target_dir=self._settings.downloads_dir,
+                output_format=self._input_panel.get_selected_output_format(),
+                video_quality=self._input_panel.get_selected_video_quality(),
+            ),
+            should_apply_input_feedback=False,
+        )
+
+    def _apply_queue_input_update(
+        self,
+        *,
+        update: QueueInputControllerUpdate,
+        should_apply_input_feedback: bool = True,
+    ) -> None:
         if update.added_task is not None:
             self._queue_table.append_task(task=update.added_task)
 
@@ -407,7 +430,7 @@ class MainWindow(QMainWindow):
                 request=update.metadata_request,
             )
 
-        if update.should_clear_url_input:
+        if should_apply_input_feedback and update.should_clear_url_input:
             self._input_panel.clear_url()
 
         if update.status_message is not None:
@@ -415,7 +438,7 @@ class MainWindow(QMainWindow):
 
         self._sync_queue_controls_state()
 
-        if update.should_focus_url_input:
+        if should_apply_input_feedback and update.should_focus_url_input:
             self._focus_url_input_later()
 
     def _handle_choose_downloads_dir_clicked(self) -> None:

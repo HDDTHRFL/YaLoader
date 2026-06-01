@@ -1,26 +1,30 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import cast, override
 
+from PyQt6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent
 from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from yaloader.domain.enums import OutputFormat, VideoQuality
+from yaloader.ui.widgets.common.url_drop_line_edit import (
+    UrlDropLineEdit,
+    extract_first_supported_media_url_from_drop_event,
+)
 
 
 class DownloadInputPanel(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.url_input = QLineEdit(self)
+        self.url_input = UrlDropLineEdit(self)
         self.quality_combo_box = QComboBox(self)
         self.format_combo_box = QComboBox(self)
         self.add_to_queue_button = QPushButton("Добавить в очередь", self)
@@ -45,10 +49,50 @@ class DownloadInputPanel(QFrame):
     def get_selected_output_format(self) -> OutputFormat:
         return cast(OutputFormat, self.format_combo_box.currentData())
 
+    @override
+    def dragEnterEvent(self, event: QDragEnterEvent | None) -> None:
+        if self._accept_supported_url_drag_event(event=event):
+            return
+
+        super().dragEnterEvent(event)
+
+    @override
+    def dragMoveEvent(self, event: QDragMoveEvent | None) -> None:
+        if self._accept_supported_url_drag_event(event=event):
+            return
+
+        super().dragMoveEvent(event)
+
+    @override
+    def dragLeaveEvent(self, event: QDragLeaveEvent | None) -> None:
+        self.url_input.set_drop_highlight_active(is_active=False)
+        super().dragLeaveEvent(event)
+
+    @override
+    def dropEvent(self, event: QDropEvent | None) -> None:
+        self.url_input.set_drop_highlight_active(is_active=False)
+
+        if event is None:
+            return
+
+        dropped_url = extract_first_supported_media_url_from_drop_event(event=event)
+
+        if dropped_url is None:
+            super().dropEvent(event)
+            return
+
+        self.url_input.setText(dropped_url)
+        self.url_input.setFocus()
+        self.url_input.setCursorPosition(len(dropped_url))
+
+        event.acceptProposedAction()
+
     def _configure_widgets(self) -> None:
         self.setObjectName("PanelFrame")
+        self.setAcceptDrops(True)
 
-        self.url_input.setPlaceholderText("Вставьте ссылку на YouTube, Shorts или плейлист")
+        self.url_input.setPlaceholderText("Вставьте ссылку YouTube на видео, Shorts или плейлист")
+        self.url_input.setToolTip("Можно вставить ссылку вручную или перетащить её мышью")
         self.url_input.setClearButtonEnabled(True)
 
         for quality in VideoQuality:
@@ -77,3 +121,20 @@ class DownloadInputPanel(QFrame):
 
         layout.addWidget(url_label)
         layout.addLayout(controls_layout)
+
+    def _accept_supported_url_drag_event(
+        self,
+        *,
+        event: QDragEnterEvent | QDragMoveEvent | None,
+    ) -> bool:
+        if event is None:
+            self.url_input.set_drop_highlight_active(is_active=False)
+            return False
+
+        if extract_first_supported_media_url_from_drop_event(event=event) is None:
+            self.url_input.set_drop_highlight_active(is_active=False)
+            return False
+
+        self.url_input.set_drop_highlight_active(is_active=True)
+        event.acceptProposedAction()
+        return True

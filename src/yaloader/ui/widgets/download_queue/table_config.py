@@ -33,8 +33,14 @@ def configure_download_queue_table(*, table: QTableWidget) -> None:
     table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
     table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
     table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+    table.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
+    table.setDropIndicatorShown(False)
+    table.setAcceptDrops(True)
     table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     table.setWordWrap(False)
+
+    viewport = cast(QWidget, table.viewport())
+    viewport.setAcceptDrops(True)
 
     horizontal_header = cast(QHeaderView, table.horizontalHeader())
     horizontal_header.setSectionsMovable(False)

@@ -55,6 +55,13 @@ QLabel#StatusLabel {
     color: #9AA4B2;
 }
 
+QLabel#QueueEmptyHintLabel {
+    color: #6E7681;
+    background-color: transparent;
+    font-size: 11pt;
+    font-weight: 500;
+}
+
 QFrame#StatusChipFrame {
     border-radius: 10px;
     background-color: #0D1117;
@@ -164,6 +171,11 @@ QPushButton {
     border: none;
     border-radius: 10px;
     font-weight: 600;
+    outline: 0;
+}
+
+QPushButton:focus {
+    outline: 0;
 }
 
 QPushButton#PrimaryButton,
