@@ -4,11 +4,12 @@ from pathlib import Path
 from typing import override
 from uuid import UUID
 
-from PyQt6.QtCore import QEvent, Qt, QTimer, QTimerEvent, QUrl
+from PyQt6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, Qt, QTimer, QTimerEvent, QUrl
 from PyQt6.QtGui import QCloseEvent, QDesktopServices, QFont, QShowEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -42,6 +43,13 @@ from yaloader.ui.controllers.media_metadata_controller import (
 from yaloader.ui.controllers.queue_input_controller import (
     QueueInputController,
     QueueInputControllerUpdate,
+)
+from yaloader.ui.status_messages import (
+    DEFAULT_STATUS_MESSAGE,
+    TRANSIENT_STATUS_MESSAGE_BLINK_DURATION_MS,
+    TRANSIENT_STATUS_MESSAGE_DURATION_MS,
+    TRANSIENT_STATUS_MESSAGE_MIN_OPACITY,
+    is_primary_download_status_message,
 )
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
 from yaloader.ui.widgets.download_queue_table import DownloadQueueTable
@@ -80,7 +88,16 @@ class MainWindow(QMainWindow):
         self._start_queue_button = QPushButton("Скачать очередь", self)
         self._remove_from_queue_button = QPushButton("Удалить выбранное", self)
         self._clear_queue_button = QPushButton("Очистить очередь", self)
-        self._status_label = QLabel("Готов к работе", self)
+        self._status_label = QLabel(DEFAULT_STATUS_MESSAGE, self)
+
+        self._default_status_message = DEFAULT_STATUS_MESSAGE
+        self._status_reset_timer = QTimer(self)
+        self._status_opacity_effect = QGraphicsOpacityEffect(self._status_label)
+        self._status_blink_animation = QPropertyAnimation(
+            self._status_opacity_effect,
+            b"opacity",
+            self,
+        )
 
         self._metadata_controller = MediaMetadataController(
             service=container.media_metadata_service,
@@ -108,6 +125,8 @@ class MainWindow(QMainWindow):
 
         self._configure_window()
         self._configure_widgets()
+        self._configure_status_message_timer()
+        self._configure_status_message_animation()
         self._connect_signals()
         self.setCentralWidget(self._build_central_widget())
 
@@ -139,6 +158,8 @@ class MainWindow(QMainWindow):
 
     @override
     def closeEvent(self, event: QCloseEvent | None) -> None:
+        self._status_reset_timer.stop()
+        self._status_blink_animation.stop()
         self.killTimer(self._download_poll_timer)
         self._download_controller.shutdown()
         self._metadata_controller.shutdown()
@@ -180,6 +201,25 @@ class MainWindow(QMainWindow):
             on_delete_record=self._handle_delete_history_record,
         )
         self._sync_start_queue_button_state()
+
+    def _configure_status_message_timer(self) -> None:
+        self._status_reset_timer.setSingleShot(True)
+        self._status_reset_timer.setInterval(TRANSIENT_STATUS_MESSAGE_DURATION_MS)
+        self._status_reset_timer.timeout.connect(self._restore_default_status_message)
+
+    def _configure_status_message_animation(self) -> None:
+        self._status_opacity_effect.setOpacity(1.0)
+        self._status_label.setGraphicsEffect(self._status_opacity_effect)
+
+        self._status_blink_animation.setDuration(TRANSIENT_STATUS_MESSAGE_BLINK_DURATION_MS)
+        self._status_blink_animation.setStartValue(1.0)
+        self._status_blink_animation.setKeyValueAt(
+            0.5,
+            TRANSIENT_STATUS_MESSAGE_MIN_OPACITY,
+        )
+        self._status_blink_animation.setEndValue(1.0)
+        self._status_blink_animation.setLoopCount(-1)
+        self._status_blink_animation.setEasingCurve(QEasingCurve.Type.InOutSine)
 
     def _connect_signals(self) -> None:
         self._input_panel.add_to_queue_button.clicked.connect(self._handle_add_to_queue_clicked)
@@ -341,14 +381,16 @@ class MainWindow(QMainWindow):
 
     def _handle_refresh_history_clicked(self) -> None:
         self._apply_history_update(update=self._history_controller.load())
-        self._status_label.setText("История обновлена")
+        self._show_transient_status_message("История обновлена")
 
     def _handle_clear_history_clicked(self) -> None:
         self._apply_history_update(update=self._history_controller.clear())
 
     def _handle_add_history_record_to_queue(self, record: DownloadHistoryRecord) -> None:
         if self._download_controller.is_active:
-            self._status_label.setText("Нельзя добавить задачу из истории во время загрузки")
+            self._show_transient_status_message(
+                "Нельзя добавить задачу из истории во время загрузки"
+            )
             return
 
         self._apply_history_update(
@@ -375,7 +417,7 @@ class MainWindow(QMainWindow):
             )
 
         if update.status_message is not None:
-            self._status_label.setText(update.status_message)
+            self._show_transient_status_message(update.status_message)
 
         self._sync_queue_controls_state()
 
@@ -402,7 +444,7 @@ class MainWindow(QMainWindow):
 
         if result.metadata is None:
             self._queue_table.mark_metadata_resolution_failed(task_id=result.task_id)
-            self._status_label.setText(
+            self._show_transient_status_message(
                 "Не удалось определить качество. yt-dlp выберет доступный вариант при скачивании"
             )
             return
@@ -422,19 +464,19 @@ class MainWindow(QMainWindow):
         self._queue_table.update_task(task=updated_task)
 
         if result.metadata.requested_video_quality is VideoQuality.BEST:
-            self._status_label.setText(
+            self._show_transient_status_message(
                 f"Качество определено: {result.metadata.resolved_video_quality.value}"
             )
             return
 
         if result.metadata.resolved_video_quality is not result.metadata.requested_video_quality:
-            self._status_label.setText(
+            self._show_transient_status_message(
                 "Выбранное качество недоступно. "
                 f"Будет использовано: {result.metadata.resolved_video_quality.value}"
             )
             return
 
-        self._status_label.setText(
+        self._show_transient_status_message(
             f"Качество подтверждено: {result.metadata.resolved_video_quality.value}"
         )
 
@@ -462,7 +504,7 @@ class MainWindow(QMainWindow):
             self._input_panel.clear_url()
 
         if update.status_message is not None:
-            self._status_label.setText(update.status_message)
+            self._show_transient_status_message(update.status_message)
 
         self._sync_queue_controls_state()
 
@@ -524,7 +566,7 @@ class MainWindow(QMainWindow):
             self._open_directory(directory=update.directory_to_open)
 
         if update.status_message is not None:
-            self._status_label.setText(update.status_message)
+            self._show_transient_status_message(update.status_message)
 
         self._sync_queue_controls_state()
 
@@ -539,7 +581,7 @@ class MainWindow(QMainWindow):
         selected_task_ids = self._queue_table.get_selected_task_ids()
 
         if not selected_task_ids:
-            self._status_label.setText("Выберите задачи в очереди")
+            self._show_transient_status_message("Выберите задачи в очереди")
             self._sync_queue_controls_state()
             return
 
@@ -578,9 +620,54 @@ class MainWindow(QMainWindow):
             self._reload_history_panel()
 
         if update.status_message is not None:
-            self._status_label.setText(update.status_message)
+            self._apply_download_status_message(message=update.status_message)
 
         self._sync_queue_controls_state()
+
+    def _apply_download_status_message(self, *, message: str) -> None:
+        if is_primary_download_status_message(message=message):
+            self._show_primary_status_message(message)
+            return
+
+        fallback_status_message = (
+            None if self._download_controller.is_active else DEFAULT_STATUS_MESSAGE
+        )
+        self._show_transient_status_message(
+            message,
+            fallback_status_message=fallback_status_message,
+        )
+
+    def _show_primary_status_message(self, message: str) -> None:
+        self._status_reset_timer.stop()
+        self._stop_status_blink_animation()
+        self._default_status_message = message
+        self._status_label.setText(message)
+
+    def _show_transient_status_message(
+        self,
+        message: str,
+        *,
+        fallback_status_message: str | None = None,
+    ) -> None:
+        if fallback_status_message is not None:
+            self._default_status_message = fallback_status_message
+
+        self._status_label.setText(message)
+        self._start_status_blink_animation()
+        self._status_reset_timer.start()
+
+    def _restore_default_status_message(self) -> None:
+        self._stop_status_blink_animation()
+        self._status_label.setText(self._default_status_message)
+
+    def _start_status_blink_animation(self) -> None:
+        self._status_blink_animation.stop()
+        self._status_opacity_effect.setOpacity(1.0)
+        self._status_blink_animation.start()
+
+    def _stop_status_blink_animation(self) -> None:
+        self._status_blink_animation.stop()
+        self._status_opacity_effect.setOpacity(1.0)
 
     def _open_directory(self, *, directory: Path) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
