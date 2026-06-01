@@ -4,15 +4,13 @@ from pathlib import Path
 from typing import override
 from uuid import UUID
 
-from PyQt6.QtCore import QEvent, Qt, QTimer, QTimerEvent, QUrl
-from PyQt6.QtGui import QCloseEvent, QDesktopServices, QFont, QShowEvent
+from PyQt6.QtCore import QEvent, QTimer, QTimerEvent, QUrl
+from PyQt6.QtGui import QCloseEvent, QDesktopServices, QShowEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QPushButton,
     QStyle,
     QVBoxLayout,
     QWidget,
@@ -48,8 +46,9 @@ from yaloader.ui.status_messages import (
     DEFAULT_STATUS_MESSAGE,
     is_primary_download_status_message,
 )
+from yaloader.ui.widgets.app_header import AppHeader
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
-from yaloader.ui.widgets.download_queue_table import DownloadQueueTable
+from yaloader.ui.widgets.download_queue_panel import DownloadQueuePanel
 from yaloader.ui.widgets.environment_panel import EnvironmentPanel
 from yaloader.ui.widgets.history_panel import HISTORY_PANEL_WIDTH, HistoryPanel
 from yaloader.ui.widgets.settings_panel import SettingsPanel
@@ -61,12 +60,6 @@ WINDOW_MINIMUM_HEIGHT = 760
 
 DOWNLOAD_POLL_INTERVAL_MS = 250
 
-HISTORY_TOGGLE_BUTTON_SIZE = 36
-
-TITLE_FONT_FAMILY = "Death Stars"
-TITLE_FONT_POINT_SIZE = 40
-TITLE_LETTER_SPACING_PERCENT = 112.0
-
 
 class MainWindow(QMainWindow):
     def __init__(self, container: AppContainer) -> None:
@@ -75,16 +68,19 @@ class MainWindow(QMainWindow):
         self._container = container
         self._settings = container.settings
 
+        self._header = AppHeader(self)
         self._input_panel = DownloadInputPanel(self)
         self._settings_panel = SettingsPanel(self)
         self._environment_panel = EnvironmentPanel(self)
-        self._queue_table = DownloadQueueTable(self)
+        self._queue_panel = DownloadQueuePanel(self)
         self._history_panel = HistoryPanel(self)
-        self._history_toggle_button = QPushButton("›", self)
 
-        self._start_queue_button = QPushButton("Скачать очередь", self)
-        self._remove_from_queue_button = QPushButton("Удалить выбранное", self)
-        self._clear_queue_button = QPushButton("Очистить очередь", self)
+        self._queue_table = self._queue_panel.queue_table
+        self._start_queue_button = self._queue_panel.start_queue_button
+        self._remove_from_queue_button = self._queue_panel.remove_from_queue_button
+        self._clear_queue_button = self._queue_panel.clear_queue_button
+        self._history_toggle_button = self._header.history_toggle_button
+
         self._status_label = QLabel(DEFAULT_STATUS_MESSAGE, self)
         self._footer_status_presenter = FooterStatusPresenter(
             label=self._status_label,
@@ -170,15 +166,6 @@ class MainWindow(QMainWindow):
 
     def _configure_widgets(self) -> None:
         self._status_label.setObjectName("StatusLabel")
-        self._start_queue_button.setObjectName("PrimaryButton")
-        self._remove_from_queue_button.setObjectName("SecondaryButton")
-        self._clear_queue_button.setObjectName("SecondaryButton")
-        self._history_toggle_button.setObjectName("DrawerToggleButton")
-        self._history_toggle_button.setFixedSize(
-            HISTORY_TOGGLE_BUTTON_SIZE,
-            HISTORY_TOGGLE_BUTTON_SIZE,
-        )
-        self._history_toggle_button.setToolTip("Показать или скрыть историю загрузок")
 
         self._queue_table.set_context_menu_callbacks(
             on_download_tasks=self._start_tasks_download,
@@ -236,87 +223,14 @@ class MainWindow(QMainWindow):
         root_layout.setContentsMargins(28, 10, 28, 24)
         root_layout.setSpacing(18)
 
-        root_layout.addWidget(self._build_header())
+        root_layout.addWidget(self._header)
         root_layout.addWidget(self._input_panel)
-        root_layout.addWidget(self._build_queue_panel(), stretch=1)
+        root_layout.addWidget(self._queue_panel, stretch=1)
         root_layout.addWidget(self._settings_panel)
         root_layout.addWidget(self._environment_panel)
         root_layout.addWidget(self._build_footer())
 
         return main_content_widget
-
-    def _build_header(self) -> QWidget:
-        header = QWidget(self)
-        root_layout = QVBoxLayout(header)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(4)
-
-        title_row_layout = QHBoxLayout()
-        title_row_layout.setContentsMargins(0, 0, 0, 0)
-        title_row_layout.setSpacing(12)
-
-        title_label = self._build_title_label(parent=header)
-
-        title_row_layout.addWidget(
-            title_label,
-            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-        )
-        title_row_layout.addStretch(1)
-        title_row_layout.addWidget(
-            self._history_toggle_button,
-            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-        )
-
-        subtitle_label = QLabel(
-            "Загрузка видео и аудио в максимальном доступном качестве",
-            header,
-        )
-        subtitle_label.setObjectName("SubtitleLabel")
-
-        root_layout.addLayout(title_row_layout)
-        root_layout.addWidget(subtitle_label)
-
-        return header
-
-    def _build_title_label(self, *, parent: QWidget) -> QLabel:
-        title_label = QLabel(APP_DISPLAY_NAME, parent)
-        title_label.setObjectName("TitleLabel")
-
-        title_font = QFont(TITLE_FONT_FAMILY)
-        title_font.setPointSize(TITLE_FONT_POINT_SIZE)
-        title_font.setWeight(QFont.Weight.Normal)
-        title_font.setLetterSpacing(
-            QFont.SpacingType.PercentageSpacing,
-            TITLE_LETTER_SPACING_PERCENT,
-        )
-        title_label.setFont(title_font)
-
-        return title_label
-
-    def _build_queue_panel(self) -> QFrame:
-        panel = QFrame(self)
-        panel.setObjectName("PanelFrame")
-
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
-
-        title_label = QLabel("Очередь загрузок", panel)
-        title_label.setObjectName("SectionTitleLabel")
-
-        actions_layout = QHBoxLayout()
-        actions_layout.setContentsMargins(0, 0, 0, 0)
-        actions_layout.setSpacing(12)
-        actions_layout.addWidget(self._remove_from_queue_button)
-        actions_layout.addWidget(self._clear_queue_button)
-        actions_layout.addStretch(1)
-        actions_layout.addWidget(self._start_queue_button)
-
-        layout.addWidget(title_label)
-        layout.addWidget(self._queue_table, stretch=1)
-        layout.addLayout(actions_layout)
-
-        return panel
 
     def _build_footer(self) -> QWidget:
         footer = QWidget(self)
@@ -344,7 +258,7 @@ class MainWindow(QMainWindow):
 
     def _sync_history_panel_visibility(self) -> None:
         self._history_panel.setVisible(self._is_history_panel_visible)
-        self._history_toggle_button.setText("‹" if self._is_history_panel_visible else "›")
+        self._header.set_history_visible(is_visible=self._is_history_panel_visible)
 
     def _reload_history_panel(self) -> None:
         self._apply_history_update(update=self._history_controller.load())
