@@ -439,7 +439,8 @@ class DownloadQueueTable(QTableWidget):
         return is_row_selected(table=self, row_index=row_index)
 
     def _build_empty_hint_label(self) -> QLabel:
-        label = QLabel(QUEUE_EMPTY_HINT_TEXT, self)
+        viewport = cast(QWidget, self.viewport())
+        label = QLabel(QUEUE_EMPTY_HINT_TEXT, viewport)
         label.setObjectName("QueueEmptyHintLabel")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)

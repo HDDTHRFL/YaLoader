@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import cast, override
 
-from PyQt6.QtCore import QEvent, QObject, QSignalBlocker, Qt
+from PyQt6.QtCore import QEvent, QObject, QSignalBlocker, Qt, QTimer
 from PyQt6.QtWidgets import QAbstractScrollArea, QScrollBar, QWidget
 
 OVERLAY_SCROLL_BAR_WIDTH = 8
-OVERLAY_SCROLL_BAR_RIGHT_MARGIN = 3
+OVERLAY_SCROLL_BAR_RIGHT_MARGIN = -1
 OVERLAY_SCROLL_BAR_VERTICAL_MARGIN = 6
 OVERLAY_SCROLL_SINGLE_STEP = 12
 
@@ -17,9 +17,10 @@ class OverlayVerticalScrollBarController(QObject):
 
         self._scroll_area = scroll_area
         self._native_scroll_bar = cast(QScrollBar, scroll_area.verticalScrollBar())
+        self._viewport = cast(QWidget, scroll_area.viewport())
         self._overlay_scroll_bar = QScrollBar(
             Qt.Orientation.Vertical,
-            cast(QWidget, scroll_area.viewport()),
+            self._viewport,
         )
 
         self._configure_scroll_bars()
@@ -31,6 +32,7 @@ class OverlayVerticalScrollBarController(QObject):
         self._sync_range()
         self._sync_value_from_native()
         self._sync_geometry()
+        self._sync_visibility()
 
     @override
     def eventFilter(self, watched: QObject | None, event: QEvent | None) -> bool:
@@ -45,14 +47,27 @@ class OverlayVerticalScrollBarController(QObject):
         }:
             self.sync()
 
+        if event.type() in {
+            QEvent.Type.Enter,
+            QEvent.Type.MouseMove,
+            QEvent.Type.Wheel,
+        }:
+            self._sync_visibility()
+
+        if event.type() == QEvent.Type.Leave:
+            self._schedule_visibility_sync()
+
         return super().eventFilter(watched, event)
 
     def _configure_scroll_bars(self) -> None:
         self._scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._scroll_area.setMouseTracking(True)
+        self._viewport.setMouseTracking(True)
 
         self._native_scroll_bar.setSingleStep(OVERLAY_SCROLL_SINGLE_STEP)
         self._overlay_scroll_bar.setObjectName("OverlayScrollBar")
         self._overlay_scroll_bar.setSingleStep(OVERLAY_SCROLL_SINGLE_STEP)
+        self._overlay_scroll_bar.setMouseTracking(True)
         self._overlay_scroll_bar.hide()
 
     def _connect_signals(self) -> None:
@@ -61,16 +76,18 @@ class OverlayVerticalScrollBarController(QObject):
         self._overlay_scroll_bar.valueChanged.connect(self._handle_overlay_value_changed)
 
     def _install_event_filters(self) -> None:
-        viewport = cast(QWidget, self._scroll_area.viewport())
-        viewport.installEventFilter(self)
+        self._viewport.installEventFilter(self)
         self._scroll_area.installEventFilter(self)
+        self._overlay_scroll_bar.installEventFilter(self)
 
     def _handle_native_range_changed(self, _minimum: int, _maximum: int) -> None:
         self._sync_range()
         self._sync_geometry()
+        self._sync_visibility()
 
     def _handle_native_value_changed(self, _value: int) -> None:
         self._sync_value_from_native()
+        self._sync_visibility()
 
     def _handle_overlay_value_changed(self, value: int) -> None:
         if self._native_scroll_bar.value() == value:
@@ -88,13 +105,6 @@ class OverlayVerticalScrollBarController(QObject):
         self._overlay_scroll_bar.setSingleStep(self._native_scroll_bar.singleStep())
         del blocker
 
-        self._overlay_scroll_bar.setVisible(
-            self._native_scroll_bar.maximum() > self._native_scroll_bar.minimum()
-        )
-
-        if self._overlay_scroll_bar.isVisible():
-            self._overlay_scroll_bar.raise_()
-
     def _sync_value_from_native(self) -> None:
         if self._overlay_scroll_bar.value() == self._native_scroll_bar.value():
             return
@@ -104,8 +114,7 @@ class OverlayVerticalScrollBarController(QObject):
         del blocker
 
     def _sync_geometry(self) -> None:
-        viewport = cast(QWidget, self._scroll_area.viewport())
-        viewport_rect = viewport.rect()
+        viewport_rect = self._viewport.rect()
         height = max(0, viewport_rect.height() - OVERLAY_SCROLL_BAR_VERTICAL_MARGIN * 2)
         x_position = (
             viewport_rect.right() - OVERLAY_SCROLL_BAR_WIDTH - OVERLAY_SCROLL_BAR_RIGHT_MARGIN + 1
@@ -120,3 +129,23 @@ class OverlayVerticalScrollBarController(QObject):
 
         if self._overlay_scroll_bar.isVisible():
             self._overlay_scroll_bar.raise_()
+
+    def _schedule_visibility_sync(self) -> None:
+        QTimer.singleShot(0, self._sync_visibility)
+
+    def _sync_visibility(self) -> None:
+        should_show = self._has_scrollable_range() and self._is_pointer_inside_scroll_area()
+        self._overlay_scroll_bar.setVisible(should_show)
+
+        if should_show:
+            self._overlay_scroll_bar.raise_()
+
+    def _has_scrollable_range(self) -> bool:
+        return self._native_scroll_bar.maximum() > self._native_scroll_bar.minimum()
+
+    def _is_pointer_inside_scroll_area(self) -> bool:
+        return (
+            self._scroll_area.underMouse()
+            or self._viewport.underMouse()
+            or self._overlay_scroll_bar.underMouse()
+        )

@@ -85,13 +85,6 @@ class SpeedSettingsDialog(QDialog):
         title_label = QLabel("Ограничение скорости", self)
         title_label.setObjectName("SectionTitleLabel")
 
-        description_label = QLabel(
-            "0 означает отсутствие ограничения. Значения 1-100 задаются в MB/s.",
-            self,
-        )
-        description_label.setObjectName("MutedLabel")
-        description_label.setWordWrap(True)
-
         value_layout = QHBoxLayout()
         value_layout.setContentsMargins(0, 0, 0, 0)
         value_layout.setSpacing(12)
@@ -104,7 +97,6 @@ class SpeedSettingsDialog(QDialog):
         actions_layout.addWidget(self._close_button)
 
         root_layout.addWidget(title_label)
-        root_layout.addWidget(description_label)
         root_layout.addWidget(self._slider)
         root_layout.addLayout(value_layout)
         root_layout.addLayout(actions_layout)

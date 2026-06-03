@@ -17,6 +17,12 @@ QFrame#PanelFrame {
     border-radius: 14px;
 }
 
+QFrame#SpeedLimitIndicatorPanel {
+    background-color: #101820;
+    border: 1px solid #1F6F4A;
+    border-radius: 12px;
+}
+
 QLabel#TitleLabel {
     font-family: "Death Stars", "Segoe UI Black", "Arial Black";
     font-size: 40pt;
@@ -49,6 +55,12 @@ QLabel#FieldLabel {
 
 QLabel#MutedLabel {
     color: #8B949E;
+}
+
+QLabel#SpeedLimitLabel {
+    color: #A7F3D0;
+    font-size: 9pt;
+    font-weight: 600;
 }
 
 QLabel#StatusLabel {
@@ -271,6 +283,33 @@ QPushButton#TinyGhostButton:pressed {
     color: #FFFFFF;
 }
 
+QPushButton#IconButton {
+    min-width: 34px;
+    max-width: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0;
+    background-color: transparent;
+    color: #8B949E;
+    border: 1px solid #30363D;
+    border-radius: 10px;
+    font-family: "Segoe UI Symbol", "Segoe UI Emoji", "Segoe UI";
+    font-size: 14pt;
+    font-weight: 500;
+}
+
+QPushButton#IconButton:hover {
+    background-color: #1B2028;
+    color: #FFFFFF;
+    border-color: #3D444D;
+}
+
+QPushButton#IconButton:pressed {
+    background-color: #0D1117;
+    color: #C9D1D9;
+    border-color: #2F81F7;
+}
+
 QPushButton#TinyDangerButton {
     min-height: 24px;
     padding: 0 10px;
@@ -478,6 +517,39 @@ QScrollBar::sub-line:horizontal {
 
 QScrollBar::add-page:horizontal,
 QScrollBar::sub-page:horizontal {
+    background-color: transparent;
+}
+
+QScrollBar#OverlayScrollBar:vertical {
+    width: 8px;
+    background-color: transparent;
+    margin: 0;
+    border: none;
+}
+
+QScrollBar#OverlayScrollBar::handle:vertical {
+    min-height: 32px;
+    background-color: rgba(139, 148, 158, 145);
+    border-radius: 4px;
+}
+
+QScrollBar#OverlayScrollBar::handle:vertical:hover {
+    background-color: rgba(201, 209, 217, 185);
+}
+
+QScrollBar#OverlayScrollBar::handle:vertical:pressed {
+    background-color: rgba(240, 246, 252, 210);
+}
+
+QScrollBar#OverlayScrollBar::add-line:vertical,
+QScrollBar#OverlayScrollBar::sub-line:vertical {
+    height: 0;
+    background-color: transparent;
+    border: none;
+}
+
+QScrollBar#OverlayScrollBar::add-page:vertical,
+QScrollBar#OverlayScrollBar::sub-page:vertical {
     background-color: transparent;
 }
 

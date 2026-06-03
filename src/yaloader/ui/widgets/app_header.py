@@ -7,10 +7,13 @@ from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidg
 from yaloader.config.app_info import APP_DISPLAY_NAME
 
 HISTORY_TOGGLE_BUTTON_SIZE = 36
+SETTINGS_BUTTON_SIZE = 34
 
 TITLE_FONT_FAMILY = "Death Stars"
 TITLE_FONT_POINT_SIZE = 40
 TITLE_LETTER_SPACING_PERCENT = 112.0
+
+SUBTITLE_TEXT = "Загрузка видео и аудио в максимальном доступном качестве"
 
 
 class AppHeader(QWidget):
@@ -18,6 +21,7 @@ class AppHeader(QWidget):
         super().__init__(parent)
 
         self.history_toggle_button = QPushButton("›", self)
+        self.settings_button = QPushButton("🛠", self)
 
         self._configure_widgets()
         self._build_layout()
@@ -33,6 +37,14 @@ class AppHeader(QWidget):
         )
         self.history_toggle_button.setToolTip("Показать или скрыть историю загрузок")
 
+        self.settings_button.setObjectName("IconButton")
+        self.settings_button.setFixedSize(
+            SETTINGS_BUTTON_SIZE,
+            SETTINGS_BUTTON_SIZE,
+        )
+        self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.settings_button.setToolTip("Настройки загрузки")
+
     def _build_layout(self) -> None:
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -42,11 +54,12 @@ class AppHeader(QWidget):
         title_row_layout.setContentsMargins(0, 0, 0, 0)
         title_row_layout.setSpacing(12)
 
+        subtitle_row_layout = QHBoxLayout()
+        subtitle_row_layout.setContentsMargins(0, 0, 0, 0)
+        subtitle_row_layout.setSpacing(12)
+
         title_label = self._build_title_label()
-        subtitle_label = QLabel(
-            "Загрузка видео и аудио в максимальном доступном качестве",
-            self,
-        )
+        subtitle_label = QLabel(SUBTITLE_TEXT, self)
         subtitle_label.setObjectName("SubtitleLabel")
 
         title_row_layout.addWidget(
@@ -59,8 +72,18 @@ class AppHeader(QWidget):
             alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
 
+        subtitle_row_layout.addWidget(
+            subtitle_label,
+            stretch=1,
+            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        )
+        subtitle_row_layout.addWidget(
+            self.settings_button,
+            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
+
         root_layout.addLayout(title_row_layout)
-        root_layout.addWidget(subtitle_label)
+        root_layout.addLayout(subtitle_row_layout)
 
     def _build_title_label(self) -> QLabel:
         title_label = QLabel(APP_DISPLAY_NAME, self)

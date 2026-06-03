@@ -54,11 +54,11 @@ from yaloader.ui.widgets.download_queue.panel import DownloadQueuePanel
 from yaloader.ui.widgets.environment_panel import EnvironmentPanel
 from yaloader.ui.widgets.history.panel import HISTORY_PANEL_WIDTH, HistoryPanel
 from yaloader.ui.widgets.settings_panel import SettingsPanel
+from yaloader.ui.widgets.speed_limit_indicator import SpeedLimitIndicatorPanel
 from yaloader.ui.widgets.speed_settings_dialog import (
     SpeedSettingsDialog,
     normalize_download_speed_limit_signal_value,
 )
-from yaloader.ui.widgets.speed_settings_panel import SpeedSettingsPanel
 
 WINDOW_INITIAL_WIDTH = 1180
 WINDOW_INITIAL_HEIGHT = 920
@@ -95,7 +95,7 @@ class MainWindow(QMainWindow):
         self._settings = container.settings
 
         self._header = AppHeader(self)
-        self._speed_settings_panel = SpeedSettingsPanel(self)
+        self._speed_limit_indicator = SpeedLimitIndicatorPanel(self)
         self._speed_settings_dialog = SpeedSettingsDialog(self)
         self._input_panel = DownloadInputPanel(self)
         self._settings_panel = SettingsPanel(self)
@@ -220,9 +220,7 @@ class MainWindow(QMainWindow):
             self._handle_choose_downloads_dir_clicked
         )
 
-        self._speed_settings_panel.settings_button.clicked.connect(
-            self._handle_speed_settings_button_clicked
-        )
+        self._header.settings_button.clicked.connect(self._handle_speed_settings_button_clicked)
         self._speed_settings_dialog.download_speed_limit_changed.connect(
             self._handle_download_speed_limit_signal_changed
         )
@@ -262,10 +260,10 @@ class MainWindow(QMainWindow):
         root_layout.setSpacing(18)
 
         root_layout.addWidget(self._header)
-        root_layout.addWidget(self._speed_settings_panel)
         root_layout.addWidget(self._input_panel)
         root_layout.addWidget(self._queue_panel, stretch=1)
         root_layout.addWidget(self._settings_panel)
+        root_layout.addWidget(self._speed_limit_indicator)
         root_layout.addWidget(self._environment_panel)
         root_layout.addWidget(self._build_footer())
 
@@ -686,7 +684,7 @@ class MainWindow(QMainWindow):
 
     def _update_settings_panel(self) -> None:
         self._settings_panel.set_downloads_dir(downloads_dir=self._settings.downloads_dir)
-        self._speed_settings_panel.set_download_speed_limit(
+        self._speed_limit_indicator.set_download_speed_limit(
             bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
         )
         self._speed_settings_dialog.set_download_speed_limit(
