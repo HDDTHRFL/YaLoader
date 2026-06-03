@@ -19,9 +19,22 @@ DOWNLOADABLE_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
     }
 )
 
+SPEED_LIMIT_MUTABLE_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
+    {
+        DownloadStatus.PENDING,
+        DownloadStatus.RUNNING,
+        DownloadStatus.FAILED,
+        DownloadStatus.CANCELED,
+    }
+)
+
 
 def is_downloadable(task: DownloadTask) -> bool:
     return task.status in DOWNLOADABLE_STATUSES
+
+
+def can_update_download_speed_limit(task: DownloadTask) -> bool:
+    return task.status in SPEED_LIMIT_MUTABLE_STATUSES
 
 
 class DownloadQueueService:
@@ -119,7 +132,7 @@ class DownloadQueueService:
 
             return updated_task
 
-    def update_download_speed_limit_for_downloadable_tasks(
+    def update_download_speed_limit_for_mutable_tasks(
         self,
         *,
         bytes_per_second: int | None,
@@ -128,7 +141,7 @@ class DownloadQueueService:
             updated_tasks: list[DownloadTask] = []
 
             for task_index, task in enumerate(self._tasks):
-                if not is_downloadable(task):
+                if not can_update_download_speed_limit(task):
                     continue
 
                 updated_task = task.with_download_speed_limit(
@@ -138,6 +151,15 @@ class DownloadQueueService:
                 updated_tasks.append(updated_task)
 
             return tuple(updated_tasks)
+
+    def update_download_speed_limit_for_downloadable_tasks(
+        self,
+        *,
+        bytes_per_second: int | None,
+    ) -> tuple[DownloadTask, ...]:
+        return self.update_download_speed_limit_for_mutable_tasks(
+            bytes_per_second=bytes_per_second,
+        )
 
     def apply_result(self, result: DownloadResult) -> DownloadTask | None:
         return self.update_status(

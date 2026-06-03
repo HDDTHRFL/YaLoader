@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import importlib
 import re
+import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
 from typing import Protocol, Self, cast
@@ -26,6 +27,8 @@ YTDLP_STATUS_FINISHED = "finished"
 YTDLP_STATUS_ERROR = "error"
 
 PERCENT_MULTIPLIER = 100.0
+THROTTLE_SLEEP_STEP_SECONDS = 0.1
+MAX_SINGLE_THROTTLE_SLEEP_SECONDS = 1.0
 
 YtDlpProgressInfo = Mapping[str, object]
 YtDlpProgressHook = Callable[[YtDlpProgressInfo], None]
@@ -37,6 +40,10 @@ class DownloadCancelledError(RuntimeError):
 
 class YtDlpBackend(Protocol):
     def download(self, urls: Sequence[str], options: YtDlpOptions) -> None: ...
+
+
+class DownloadSpeedLimitProvider(Protocol):
+    def get_download_speed_limit_bytes_per_second(self) -> int | None: ...
 
 
 class YoutubeDLRuntime(Protocol):
@@ -77,18 +84,136 @@ class YtDlpPythonBackend:
         logger.debug("yt-dlp backend finished successfully.")
 
 
+@dataclass(slots=True)
+class DynamicDownloadSpeedThrottler:
+    speed_limit_provider: DownloadSpeedLimitProvider | None
+    _window_started_at: float = field(default_factory=time.monotonic)
+    _window_downloaded_bytes: int | None = None
+    _current_limit_bytes_per_second: int | None = None
+
+    def throttle(
+        self,
+        *,
+        downloaded_bytes: int | None,
+        cancellation_token: CancellationToken | None,
+    ) -> None:
+        self._raise_if_cancel_requested(cancellation_token=cancellation_token)
+
+        speed_limit = self._get_speed_limit()
+
+        if speed_limit is None or downloaded_bytes is None:
+            self._reset_window(downloaded_bytes=downloaded_bytes, speed_limit=speed_limit)
+            return
+
+        if self._should_reset_window(
+            downloaded_bytes=downloaded_bytes,
+            speed_limit=speed_limit,
+        ):
+            self._reset_window(downloaded_bytes=downloaded_bytes, speed_limit=speed_limit)
+            return
+
+        if self._window_downloaded_bytes is None:
+            self._reset_window(downloaded_bytes=downloaded_bytes, speed_limit=speed_limit)
+            return
+
+        transferred_bytes = downloaded_bytes - self._window_downloaded_bytes
+
+        if transferred_bytes <= 0:
+            return
+
+        expected_elapsed_seconds = transferred_bytes / speed_limit
+        actual_elapsed_seconds = time.monotonic() - self._window_started_at
+        sleep_seconds = expected_elapsed_seconds - actual_elapsed_seconds
+
+        if sleep_seconds <= 0:
+            return
+
+        self._sleep_interruptibly(
+            seconds=min(sleep_seconds, MAX_SINGLE_THROTTLE_SLEEP_SECONDS),
+            cancellation_token=cancellation_token,
+            speed_limit=speed_limit,
+        )
+
+    def _should_reset_window(
+        self,
+        *,
+        downloaded_bytes: int,
+        speed_limit: int,
+    ) -> bool:
+        if self._current_limit_bytes_per_second != speed_limit:
+            return True
+
+        if self._window_downloaded_bytes is None:
+            return True
+
+        return downloaded_bytes < self._window_downloaded_bytes
+
+    def _reset_window(
+        self,
+        *,
+        downloaded_bytes: int | None,
+        speed_limit: int | None,
+    ) -> None:
+        self._window_started_at = time.monotonic()
+        self._window_downloaded_bytes = downloaded_bytes
+        self._current_limit_bytes_per_second = speed_limit
+
+    def _sleep_interruptibly(
+        self,
+        *,
+        seconds: float,
+        cancellation_token: CancellationToken | None,
+        speed_limit: int,
+    ) -> None:
+        deadline = time.monotonic() + seconds
+
+        while True:
+            self._raise_if_cancel_requested(cancellation_token=cancellation_token)
+
+            if self._get_speed_limit() != speed_limit:
+                self._reset_window(
+                    downloaded_bytes=self._window_downloaded_bytes,
+                    speed_limit=self._get_speed_limit(),
+                )
+                return
+
+            remaining_seconds = deadline - time.monotonic()
+
+            if remaining_seconds <= 0:
+                return
+
+            time.sleep(min(remaining_seconds, THROTTLE_SLEEP_STEP_SECONDS))
+
+    def _get_speed_limit(self) -> int | None:
+        if self.speed_limit_provider is None:
+            return None
+
+        return self.speed_limit_provider.get_download_speed_limit_bytes_per_second()
+
+    def _raise_if_cancel_requested(self, *, cancellation_token: CancellationToken | None) -> None:
+        if cancellation_token is not None and cancellation_token.is_cancel_requested:
+            raise DownloadCancelledError
+
+
 @dataclass(frozen=True, slots=True)
 class YtDlpDownloader:
     options_builder: YtDlpOptionsBuilder
     backend: YtDlpBackend
     cookies_file: Path | None = None
+    speed_limit_provider: DownloadSpeedLimitProvider | None = None
 
     @classmethod
-    def create_default(cls, *, cookies_file: Path | None = None) -> YtDlpDownloader:
+    def create_default(
+        cls,
+        *,
+        cookies_file: Path | None = None,
+        speed_limit_provider: DownloadSpeedLimitProvider | None = None,
+    ) -> YtDlpDownloader:
         return cls(
             options_builder=YtDlpOptionsBuilder(cookies_file=cookies_file),
             backend=YtDlpPythonBackend.create_default(),
             cookies_file=cookies_file,
+            speed_limit_provider=speed_limit_provider,
         )
 
     def download(
@@ -203,10 +328,19 @@ class YtDlpDownloader:
         progress_callback: ProgressCallback,
         cancellation_token: CancellationToken | None,
     ) -> YtDlpProgressHook:
+        throttler = DynamicDownloadSpeedThrottler(
+            speed_limit_provider=self.speed_limit_provider,
+        )
+
         def hook(progress_info: YtDlpProgressInfo) -> None:
             if cancellation_token is not None and cancellation_token.is_cancel_requested:
                 raise DownloadCancelledError
 
+            downloaded_bytes = get_int_value(progress_info.get("downloaded_bytes"))
+            throttler.throttle(
+                downloaded_bytes=downloaded_bytes,
+                cancellation_token=cancellation_token,
+            )
             progress = build_download_progress(
                 task_id=task_id,
                 progress_info=progress_info,

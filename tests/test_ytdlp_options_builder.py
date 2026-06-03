@@ -133,7 +133,7 @@ def test_build_skips_cookiefile_when_cookies_file_is_missing(tmp_path: Path) -> 
     assert "cookiefile" not in options
 
 
-def test_build_options_adds_download_speed_limit(tmp_path: Path) -> None:
+def test_build_options_does_not_add_static_download_speed_limit(tmp_path: Path) -> None:
     request = DownloadRequest(
         url="https://www.youtube.com/watch?v=test",
         target_dir=tmp_path,
@@ -146,4 +146,4 @@ def test_build_options_adds_download_speed_limit(tmp_path: Path) -> None:
 
     options = builder.build(request=request)
 
-    assert options["ratelimit"] == 1_048_576
+    assert "ratelimit" not in options

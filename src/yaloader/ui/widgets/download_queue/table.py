@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from typing import cast, override
 from uuid import UUID
 
-from PyQt6.QtCore import QEvent, QItemSelectionModel, QModelIndex, QPoint, Qt
+from PyQt6.QtCore import QEvent, QItemSelectionModel, QModelIndex, Qt
 from PyQt6.QtGui import (
     QContextMenuEvent,
     QDragEnterEvent,
@@ -16,10 +16,11 @@ from PyQt6.QtGui import (
     QMouseEvent,
     QResizeEvent,
 )
-from PyQt6.QtWidgets import QLabel, QTableWidget, QTableWidgetItem, QWidget
+from PyQt6.QtWidgets import QLabel, QTableWidget, QWidget
 
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.domain.entities.download_task import DownloadTask
+from yaloader.ui.widgets.common.overlay_scrollbar import OverlayVerticalScrollBarController
 from yaloader.ui.widgets.common.url_drop_line_edit import (
     extract_first_supported_media_url_from_drop_event,
 )
@@ -29,6 +30,7 @@ from yaloader.ui.widgets.download_queue.clipboard_presenter import (
 from yaloader.ui.widgets.download_queue.columns import QUEUE_ROW_HEIGHT
 from yaloader.ui.widgets.download_queue.context_menu import (
     DownloadQueueContextAction,
+    DownloadQueueContextMenuResult,
     show_download_queue_context_menu,
 )
 from yaloader.ui.widgets.download_queue.drop_highlight import QueueDropHighlightOverlay
@@ -71,6 +73,7 @@ class DownloadQueueTable(QTableWidget):
 
         self._empty_hint_label = self._build_empty_hint_label()
         self._drop_highlight_overlay = self._build_drop_highlight_overlay()
+        self._overlay_scroll_bar_controller: OverlayVerticalScrollBarController | None = None
 
         self._url_presenter = DownloadQueueUrlPresenter(
             table=self,
@@ -98,8 +101,12 @@ class DownloadQueueTable(QTableWidget):
         )
 
         configure_download_queue_table(table=self)
+        self._overlay_scroll_bar_controller = OverlayVerticalScrollBarController(
+            scroll_area=self,
+        )
         self._sync_empty_hint_visibility()
         self._sync_drop_highlight_geometry()
+        self._sync_overlay_scroll_bar()
 
     @override
     def viewportEvent(self, event: QEvent | None) -> bool:
@@ -167,6 +174,7 @@ class DownloadQueueTable(QTableWidget):
         self.resize_columns_to_viewport()
         self._position_empty_hint_label()
         self._sync_drop_highlight_geometry()
+        self._sync_overlay_scroll_bar()
 
     @override
     def keyPressEvent(self, event: QKeyEvent | None) -> None:
@@ -319,19 +327,38 @@ class DownloadQueueTable(QTableWidget):
         return True
 
     def _handle_viewport_drop(self, *, event: QDropEvent) -> bool:
-        self._set_drop_highlight_active(is_active=False)
-
         if self._handle_supported_url_drop_event(event=event):
             return True
 
         return super().viewportEvent(event)
+
+    def _handle_supported_url_drop_event(
+        self,
+        *,
+        event: QDropEvent | None,
+    ) -> bool:
+        self._set_drop_highlight_active(is_active=False)
+
+        if event is None:
+            return False
+
+        dropped_url = extract_first_supported_media_url_from_drop_event(event=event)
+
+        if dropped_url is None:
+            return False
+
+        if self._on_url_dropped is not None:
+            self._on_url_dropped(dropped_url)
+
+        event.acceptProposedAction()
+        return True
 
     def _accept_supported_url_drag_event(
         self,
         *,
         event: QDragEnterEvent | QDragMoveEvent | None,
     ) -> bool:
-        if event is None or self._on_url_dropped is None:
+        if event is None:
             self._set_drop_highlight_active(is_active=False)
             return False
 
@@ -343,42 +370,91 @@ class DownloadQueueTable(QTableWidget):
         event.acceptProposedAction()
         return True
 
-    def _handle_supported_url_drop_event(self, *, event: QDropEvent | None) -> bool:
-        self._set_drop_highlight_active(is_active=False)
+    def _handle_viewport_context_menu(self, *, event: QContextMenuEvent) -> bool:
+        clicked_item = self.itemAt(event.pos())
 
-        if event is None or self._on_url_dropped is None:
-            return False
+        if clicked_item is None:
+            self._clear_current_cell_focus()
+            event.accept()
+            return True
 
-        dropped_url = extract_first_supported_media_url_from_drop_event(event=event)
+        prepare_right_click_selection(
+            table=self,
+            clicked_item=clicked_item,
+        )
+        result = show_download_queue_context_menu(
+            parent=self,
+            global_position=event.globalPos(),
+            selected_tasks=self._get_selected_tasks(),
+            selected_task_ids=self.get_selected_task_ids(),
+        )
 
-        if dropped_url is None:
-            return False
+        if result is None:
+            event.accept()
+            return True
 
-        self._on_url_dropped(dropped_url)
-        event.acceptProposedAction()
+        self._handle_context_menu_result(result=result)
+        event.accept()
         return True
 
+    def _handle_context_menu_result(self, *, result: DownloadQueueContextMenuResult) -> None:
+        action = result.action
+        task_ids = result.task_ids
+
+        if action is DownloadQueueContextAction.COPY:
+            self._copy_task_urls_to_clipboard(
+                tasks=self._get_tasks_by_ids(task_ids=task_ids),
+            )
+            return
+
+        if action is DownloadQueueContextAction.DOWNLOAD:
+            self._download_tasks(task_ids=task_ids)
+            return
+
+        if action is DownloadQueueContextAction.CANCEL and len(task_ids) == 1:
+            self._cancel_task(task_id=task_ids[0])
+            return
+
+        if action is DownloadQueueContextAction.REMOVE:
+            self._remove_tasks(task_ids=task_ids)
+
+    def _get_selected_tasks(self) -> tuple[DownloadTask, ...]:
+        return self._get_tasks_by_ids(task_ids=self.get_selected_task_ids())
+
+    def _get_tasks_by_ids(self, *, task_ids: tuple[UUID, ...]) -> tuple[DownloadTask, ...]:
+        tasks: list[DownloadTask] = []
+
+        for task_id in task_ids:
+            row_state = self._row_states_by_task_id.get(task_id)
+
+            if row_state is not None:
+                tasks.append(row_state.task)
+
+        return tuple(tasks)
+
+    def _get_selected_rows(self) -> tuple[int, ...]:
+        return get_selected_rows(table=self)
+
+    def _is_row_selected(self, *, row_index: int) -> bool:
+        return is_row_selected(table=self, row_index=row_index)
+
     def _build_empty_hint_label(self) -> QLabel:
-        viewport = cast(QWidget, self.viewport())
-        label = QLabel(QUEUE_EMPTY_HINT_TEXT, viewport)
+        label = QLabel(QUEUE_EMPTY_HINT_TEXT, self)
         label.setObjectName("QueueEmptyHintLabel")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setWordWrap(True)
-        label.setAcceptDrops(False)
         label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         label.hide()
 
         return label
 
     def _build_drop_highlight_overlay(self) -> QueueDropHighlightOverlay:
-        viewport = cast(QWidget, self.viewport())
-        return QueueDropHighlightOverlay(parent=viewport)
+        return QueueDropHighlightOverlay(parent=cast(QWidget, self.viewport()))
 
     def _sync_empty_hint_visibility(self) -> None:
+        self._empty_hint_label.setVisible(self.rowCount() == 0)
         self._position_empty_hint_label()
-        self._empty_hint_label.setVisible(not self.has_tasks())
 
-        if not self.has_tasks():
+        if self._empty_hint_label.isVisible():
             self._empty_hint_label.raise_()
 
     def _position_empty_hint_label(self) -> None:
@@ -398,6 +474,10 @@ class DownloadQueueTable(QTableWidget):
     def _sync_drop_highlight_geometry(self) -> None:
         self._drop_highlight_overlay.sync_geometry()
 
+    def _sync_overlay_scroll_bar(self) -> None:
+        if self._overlay_scroll_bar_controller is not None:
+            self._overlay_scroll_bar_controller.sync()
+
     def _handle_viewport_mouse_press(self, *, event: QMouseEvent) -> bool:
         clicked_position = event.position().toPoint()
         clicked_item = self.itemAt(clicked_position)
@@ -416,97 +496,23 @@ class DownloadQueueTable(QTableWidget):
             event.accept()
             return True
 
-        self._prepare_right_click_selection(clicked_item=clicked_item)
-
+        prepare_right_click_selection(
+            table=self,
+            clicked_item=clicked_item,
+        )
         self._suppress_next_context_menu_event = True
-        self._show_context_menu(
-            global_position=event.globalPosition().toPoint(),
-            clicked_row_index=clicked_item.row(),
-        )
-
-        event.accept()
-        return True
-
-    def _handle_viewport_context_menu(self, *, event: QContextMenuEvent) -> bool:
-        table_item = self.itemAt(event.pos())
-
-        if table_item is None:
-            self._clear_current_cell_focus()
-            event.accept()
-            return True
-
-        self._prepare_right_click_selection(clicked_item=table_item)
-        self._show_context_menu(
-            global_position=event.globalPos(),
-            clicked_row_index=table_item.row(),
-        )
-
-        event.accept()
-        return True
-
-    def _prepare_right_click_selection(self, *, clicked_item: QTableWidgetItem) -> None:
-        prepare_right_click_selection(table=self, clicked_item=clicked_item)
-
-    def _show_context_menu(self, *, global_position: QPoint, clicked_row_index: int) -> None:
-        selected_task_ids = self._get_context_task_ids(clicked_row_index=clicked_row_index)
-        selected_tasks = self._get_tasks_by_ids(task_ids=selected_task_ids)
-
-        menu_result = show_download_queue_context_menu(
+        result = show_download_queue_context_menu(
             parent=self,
-            global_position=global_position,
-            selected_tasks=selected_tasks,
-            selected_task_ids=selected_task_ids,
+            global_position=event.globalPosition().toPoint(),
+            selected_tasks=self._get_selected_tasks(),
+            selected_task_ids=self.get_selected_task_ids(),
         )
 
-        if menu_result is None:
-            return
+        if result is not None:
+            self._handle_context_menu_result(result=result)
 
-        if menu_result.action is DownloadQueueContextAction.COPY:
-            self._copy_task_urls_to_clipboard(
-                tasks=self._get_tasks_by_ids(task_ids=menu_result.task_ids)
-            )
-            return
-
-        if menu_result.action is DownloadQueueContextAction.CANCEL:
-            self._cancel_task(menu_result.task_ids[0])
-            return
-
-        if menu_result.action is DownloadQueueContextAction.DOWNLOAD:
-            self._download_tasks(menu_result.task_ids)
-            return
-
-        if menu_result.action is DownloadQueueContextAction.REMOVE:
-            self._remove_tasks(menu_result.task_ids)
-
-    def _get_context_task_ids(self, *, clicked_row_index: int) -> tuple[UUID, ...]:
-        selected_task_ids = self.get_selected_task_ids()
-
-        if selected_task_ids and self._is_row_selected(row_index=clicked_row_index):
-            return selected_task_ids
-
-        clicked_task_id = self._task_ids_by_row.get(clicked_row_index)
-
-        if clicked_task_id is None:
-            return ()
-
-        return (clicked_task_id,)
-
-    def _get_selected_rows(self) -> tuple[int, ...]:
-        return get_selected_rows(table=self)
-
-    def _is_row_selected(self, *, row_index: int) -> bool:
-        return is_row_selected(table=self, row_index=row_index)
-
-    def _get_tasks_by_ids(self, *, task_ids: tuple[UUID, ...]) -> tuple[DownloadTask, ...]:
-        tasks: list[DownloadTask] = []
-
-        for task_id in task_ids:
-            row_state = self._row_states_by_task_id.get(task_id)
-
-            if row_state is not None:
-                tasks.append(row_state.task)
-
-        return tuple(tasks)
+        event.accept()
+        return True
 
     def _download_tasks(self, task_ids: tuple[UUID, ...]) -> None:
         if self._on_download_tasks is not None:

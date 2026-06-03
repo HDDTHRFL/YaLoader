@@ -54,6 +54,11 @@ from yaloader.ui.widgets.download_queue.panel import DownloadQueuePanel
 from yaloader.ui.widgets.environment_panel import EnvironmentPanel
 from yaloader.ui.widgets.history.panel import HISTORY_PANEL_WIDTH, HistoryPanel
 from yaloader.ui.widgets.settings_panel import SettingsPanel
+from yaloader.ui.widgets.speed_settings_dialog import (
+    SpeedSettingsDialog,
+    normalize_download_speed_limit_signal_value,
+)
+from yaloader.ui.widgets.speed_settings_panel import SpeedSettingsPanel
 
 WINDOW_INITIAL_WIDTH = 1180
 WINDOW_INITIAL_HEIGHT = 920
@@ -90,6 +95,8 @@ class MainWindow(QMainWindow):
         self._settings = container.settings
 
         self._header = AppHeader(self)
+        self._speed_settings_panel = SpeedSettingsPanel(self)
+        self._speed_settings_dialog = SpeedSettingsDialog(self)
         self._input_panel = DownloadInputPanel(self)
         self._settings_panel = SettingsPanel(self)
         self._environment_panel = EnvironmentPanel(self)
@@ -212,8 +219,12 @@ class MainWindow(QMainWindow):
         self._settings_panel.choose_downloads_dir_button.clicked.connect(
             self._handle_choose_downloads_dir_clicked
         )
-        self._settings_panel.download_speed_limit_combo_box.currentIndexChanged.connect(
-            self._handle_download_speed_limit_changed
+
+        self._speed_settings_panel.settings_button.clicked.connect(
+            self._handle_speed_settings_button_clicked
+        )
+        self._speed_settings_dialog.download_speed_limit_changed.connect(
+            self._handle_download_speed_limit_signal_changed
         )
 
         self._environment_panel.delete_cookies_button.clicked.connect(
@@ -251,6 +262,7 @@ class MainWindow(QMainWindow):
         root_layout.setSpacing(18)
 
         root_layout.addWidget(self._header)
+        root_layout.addWidget(self._speed_settings_panel)
         root_layout.addWidget(self._input_panel)
         root_layout.addWidget(self._queue_panel, stretch=1)
         root_layout.addWidget(self._settings_panel)
@@ -467,31 +479,49 @@ class MainWindow(QMainWindow):
             )
         )
 
-    def _handle_download_speed_limit_changed(self, _index: int) -> None:
-        selected_speed_limit = (
-            self._settings_panel.get_selected_download_speed_limit_bytes_per_second()
+    def _handle_speed_settings_button_clicked(self) -> None:
+        self._speed_settings_dialog.set_download_speed_limit(
+            bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
         )
+        self._speed_settings_dialog.show()
+        self._speed_settings_dialog.raise_()
+        self._speed_settings_dialog.activateWindow()
 
+    def _handle_download_speed_limit_signal_changed(self, value: object) -> None:
+        try:
+            selected_speed_limit = normalize_download_speed_limit_signal_value(value)
+        except ValueError as error:
+            self._show_transient_status_message(
+                f"Некорректное ограничение скорости: {error}",
+            )
+            return
+
+        self._apply_download_speed_limit_change(bytes_per_second=selected_speed_limit)
+
+    def _apply_download_speed_limit_change(self, *, bytes_per_second: int | None) -> None:
         environment_update = self._environment_controller.change_download_speed_limit(
-            bytes_per_second=selected_speed_limit,
+            bytes_per_second=bytes_per_second,
         )
         self._apply_environment_update(update=environment_update)
 
         if environment_update.settings is None:
             return
 
-        queue_service = self._container.download_queue_service
-        updated_tasks = queue_service.update_download_speed_limit_for_downloadable_tasks(
-            bytes_per_second=selected_speed_limit,
+        self._container.download_speed_limit_state.set_download_speed_limit_bytes_per_second(
+            bytes_per_second=bytes_per_second,
         )
 
-        if not updated_tasks:
-            return
+        queue_service = self._container.download_queue_service
+        updated_tasks = queue_service.update_download_speed_limit_for_mutable_tasks(
+            bytes_per_second=bytes_per_second,
+        )
 
-        self._queue_table.reload_tasks(queue_service.list_tasks())
+        if updated_tasks:
+            self._queue_table.reload_tasks(queue_service.list_tasks())
+
         self._show_transient_status_message(
-            "Лимит скорости обновлён для задач в очереди: "
-            f"{format_download_speed_limit_label(bytes_per_second=selected_speed_limit)}"
+            "Лимит скорости обновлён: "
+            f"{format_download_speed_limit_label(bytes_per_second=bytes_per_second)}"
         )
 
     def _handle_delete_cookies_clicked(self) -> None:
@@ -656,7 +686,10 @@ class MainWindow(QMainWindow):
 
     def _update_settings_panel(self) -> None:
         self._settings_panel.set_downloads_dir(downloads_dir=self._settings.downloads_dir)
-        self._settings_panel.set_download_speed_limit(
+        self._speed_settings_panel.set_download_speed_limit(
+            bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
+        )
+        self._speed_settings_dialog.set_download_speed_limit(
             bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
         )
 
@@ -670,7 +703,6 @@ class MainWindow(QMainWindow):
 
         self._input_panel.add_to_queue_button.setEnabled(not has_active_download)
         self._settings_panel.choose_downloads_dir_button.setEnabled(not has_active_download)
-        self._settings_panel.download_speed_limit_combo_box.setEnabled(not has_active_download)
         self._environment_panel.delete_cookies_button.setEnabled(not has_active_download)
         self._environment_panel.refresh_button.setEnabled(not has_active_download)
         self._environment_panel.open_cookies_dir_button.setEnabled(not has_active_download)
