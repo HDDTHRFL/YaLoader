@@ -433,12 +433,6 @@ class MainWindow(QMainWindow):
         self._apply_history_update(update=self._history_controller.clear())
 
     def _handle_add_history_record_to_queue(self, record: DownloadHistoryRecord) -> None:
-        if self._download_controller.is_active:
-            self._show_transient_status_message(
-                "Нельзя добавить задачу из истории во время загрузки"
-            )
-            return
-
         self._apply_history_update(
             update=self._history_controller.add_record_to_queue(record=record)
         )
@@ -544,10 +538,6 @@ class MainWindow(QMainWindow):
         )
 
     def _handle_queue_url_dropped(self, url: str) -> None:
-        if self._download_controller.is_active:
-            self._show_transient_status_message("Нельзя добавить задачу во время загрузки")
-            return
-
         self._apply_queue_input_update(
             update=self._queue_input_controller.add_from_input(
                 url=url,
@@ -1020,7 +1010,7 @@ class MainWindow(QMainWindow):
         has_active_download = self._download_controller.is_active
 
         self._input_panel.set_add_to_queue_available(
-            is_available=not has_active_download,
+            is_available=True,
         )
         self._settings_panel.choose_downloads_dir_button.setEnabled(not has_active_download)
         self._environment_panel.delete_cookies_button.setEnabled(not has_active_download)

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from typing import cast, override
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEvent, QObject, Qt, QTimer
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
+    QScrollBar,
     QScroller,
     QVBoxLayout,
     QWidget,
@@ -41,6 +43,31 @@ class HistoryPanel(QFrame):
         self._configure_widgets()
         self._build_layout()
 
+    @override
+    def eventFilter(self, watched: QObject | None, event: QEvent | None) -> bool:
+        if (
+            event is not None
+            and watched
+            in {
+                self._scroll_area,
+                self._viewport(),
+                self._records_container,
+            }
+            and event.type()
+            in {
+                QEvent.Type.Resize,
+                QEvent.Type.Show,
+                QEvent.Type.LayoutRequest,
+                QEvent.Type.MouseMove,
+                QEvent.Type.Wheel,
+            }
+        ):
+            self._sync_records_container_width()
+            self._lock_horizontal_scroll_position()
+            QTimer.singleShot(0, self._lock_horizontal_scroll_position)
+
+        return super().eventFilter(watched, event)
+
     def set_context_menu_callbacks(
         self,
         *,
@@ -62,6 +89,7 @@ class HistoryPanel(QFrame):
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self._records_layout.addWidget(empty_label)
             self._records_layout.addStretch(1)
+            self._sync_records_container_later()
             return
 
         for record in records:
@@ -71,11 +99,12 @@ class HistoryPanel(QFrame):
                     on_add_to_queue=self._on_add_to_queue,
                     on_delete_record=self._on_delete_record,
                     on_copy_url=self._on_copy_url,
-                    parent=self,
+                    parent=self._records_container,
                 )
             )
 
         self._records_layout.addStretch(1)
+        self._sync_records_container_later()
 
     def has_records(self) -> bool:
         return self._records_count > 0
@@ -105,12 +134,21 @@ class HistoryPanel(QFrame):
         self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll_area.setWidget(self._records_container)
 
+        horizontal_scroll_bar = self._horizontal_scroll_bar()
+        horizontal_scroll_bar.setEnabled(False)
+        horizontal_scroll_bar.rangeChanged.connect(self._handle_horizontal_scroll_range_changed)
+        horizontal_scroll_bar.valueChanged.connect(self._handle_horizontal_scroll_value_changed)
+
+        self._scroll_area.installEventFilter(self)
+        self._viewport().installEventFilter(self)
+        self._records_container.installEventFilter(self)
+
         self._overlay_scroll_bar_controller = OverlayVerticalScrollBarController(
             scroll_area=self._scroll_area,
         )
 
         QScroller.grabGesture(
-            self._scroll_area.viewport(),
+            self._viewport(),
             QScroller.ScrollerGestureType.LeftMouseButtonGesture,
         )
 
@@ -136,6 +174,41 @@ class HistoryPanel(QFrame):
 
         root_layout.addLayout(header_layout)
         root_layout.addWidget(self._scroll_area, stretch=1)
+
+    def _sync_records_container_later(self) -> None:
+        self._sync_records_container_width()
+        self._lock_horizontal_scroll_position()
+        QTimer.singleShot(0, self._sync_records_container_width)
+        QTimer.singleShot(0, self._lock_horizontal_scroll_position)
+
+    def _sync_records_container_width(self) -> None:
+        viewport_width = self._viewport().width()
+
+        if viewport_width <= 0:
+            return
+
+        self._records_container.setMinimumWidth(viewport_width)
+        self._records_container.setMaximumWidth(viewport_width)
+
+    def _handle_horizontal_scroll_range_changed(self, _minimum: int, _maximum: int) -> None:
+        self._lock_horizontal_scroll_position()
+
+    def _handle_horizontal_scroll_value_changed(self, _value: int) -> None:
+        self._lock_horizontal_scroll_position()
+
+    def _lock_horizontal_scroll_position(self) -> None:
+        horizontal_scroll_bar = self._horizontal_scroll_bar()
+
+        if horizontal_scroll_bar.value() == 0:
+            return
+
+        horizontal_scroll_bar.setValue(0)
+
+    def _viewport(self) -> QWidget:
+        return cast(QWidget, self._scroll_area.viewport())
+
+    def _horizontal_scroll_bar(self) -> QScrollBar:
+        return cast(QScrollBar, self._scroll_area.horizontalScrollBar())
 
     def _clear_records_layout(self) -> None:
         while self._records_layout.count() > 0:

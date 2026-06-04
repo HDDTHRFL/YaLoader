@@ -44,6 +44,7 @@ def show_download_queue_context_menu(
     global_position: QPoint,
     selected_tasks: Sequence[DownloadTask],
     selected_task_ids: tuple[UUID, ...],
+    prepared_task_ids: tuple[UUID, ...] = (),
 ) -> DownloadQueueContextMenuResult | None:
     if not selected_tasks:
         return None
@@ -55,8 +56,14 @@ def show_download_queue_context_menu(
         text="Копировать ссылки" if len(selected_tasks) > 1 else "Копировать ссылку",
     )
 
-    downloadable_task_ids = collect_downloadable_task_ids(selected_tasks=selected_tasks)
-    running_task_ids = collect_running_task_ids(selected_tasks=selected_tasks)
+    downloadable_task_ids = collect_downloadable_task_ids(
+        selected_tasks=selected_tasks,
+        prepared_task_ids=prepared_task_ids,
+    )
+    cancelable_task_ids = collect_cancelable_task_ids(
+        selected_tasks=selected_tasks,
+        prepared_task_ids=prepared_task_ids,
+    )
 
     download_action: QWidgetAction | None = None
     cancel_action: QWidgetAction | None = None
@@ -68,14 +75,17 @@ def show_download_queue_context_menu(
             text="Скачать файлы" if len(downloadable_task_ids) > 1 else "Скачать файл",
         )
 
-    if running_task_ids:
+    if cancelable_task_ids:
         cancel_action = add_menu_button_action(
             menu=context_menu,
-            text="Отменить загрузки" if len(running_task_ids) > 1 else "Отменить загрузку",
+            text="Отменить загрузки" if len(cancelable_task_ids) > 1 else "Отменить загрузку",
             object_name="MenuDangerButton",
         )
 
-    if can_show_remove_action(selected_tasks=selected_tasks):
+    if can_show_remove_action(
+        selected_tasks=selected_tasks,
+        prepared_task_ids=prepared_task_ids,
+    ):
         remove_action = add_menu_button_action(
             menu=context_menu,
             text="Удалить выбранные" if len(selected_task_ids) > 1 else "Удалить из очереди",
@@ -102,7 +112,7 @@ def show_download_queue_context_menu(
     if cancel_action is not None and selected_action == cancel_action:
         return DownloadQueueContextMenuResult(
             action=DownloadQueueContextAction.CANCEL,
-            task_ids=running_task_ids,
+            task_ids=cancelable_task_ids,
         )
 
     if remove_action is not None and selected_action == remove_action:
@@ -114,13 +124,41 @@ def show_download_queue_context_menu(
     return None
 
 
-def collect_downloadable_task_ids(*, selected_tasks: Sequence[DownloadTask]) -> tuple[UUID, ...]:
-    return tuple(task.task_id for task in selected_tasks if task.status in DOWNLOADABLE_STATUSES)
+def collect_downloadable_task_ids(
+    *,
+    selected_tasks: Sequence[DownloadTask],
+    prepared_task_ids: tuple[UUID, ...],
+) -> tuple[UUID, ...]:
+    prepared_task_id_set = set(prepared_task_ids)
+
+    return tuple(
+        task.task_id
+        for task in selected_tasks
+        if task.status in DOWNLOADABLE_STATUSES and task.task_id not in prepared_task_id_set
+    )
 
 
-def collect_running_task_ids(*, selected_tasks: Sequence[DownloadTask]) -> tuple[UUID, ...]:
-    return tuple(task.task_id for task in selected_tasks if task.status is DownloadStatus.RUNNING)
+def collect_cancelable_task_ids(
+    *,
+    selected_tasks: Sequence[DownloadTask],
+    prepared_task_ids: tuple[UUID, ...],
+) -> tuple[UUID, ...]:
+    prepared_task_id_set = set(prepared_task_ids)
+
+    return tuple(
+        task.task_id
+        for task in selected_tasks
+        if task.status is DownloadStatus.RUNNING
+        or (task.status is DownloadStatus.PENDING and task.task_id in prepared_task_id_set)
+    )
 
 
-def can_show_remove_action(*, selected_tasks: Sequence[DownloadTask]) -> bool:
-    return not any(task.status is DownloadStatus.RUNNING for task in selected_tasks)
+def can_show_remove_action(
+    *,
+    selected_tasks: Sequence[DownloadTask],
+    prepared_task_ids: tuple[UUID, ...],
+) -> bool:
+    return not collect_cancelable_task_ids(
+        selected_tasks=selected_tasks,
+        prepared_task_ids=prepared_task_ids,
+    )

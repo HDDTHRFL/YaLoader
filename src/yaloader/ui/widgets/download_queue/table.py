@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import QLabel, QScrollBar, QTableWidget, QWidget
 
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.domain.entities.download_task import DownloadTask
+from yaloader.domain.enums import DownloadStatus
 from yaloader.ui.widgets.common.overlay_scrollbar import OverlayVerticalScrollBarController
 from yaloader.ui.widgets.common.url_drop_line_edit import (
     extract_first_supported_media_url_from_drop_event,
@@ -286,7 +287,10 @@ class DownloadQueueTable(QTableWidget):
         if updated_row_state is None:
             return
 
-        self._row_states_by_task_id[task.task_id] = updated_row_state.with_task(task=task)
+        self._row_states_by_task_id[task.task_id] = self._build_updated_row_state_for_task(
+            row_state=updated_row_state,
+            task=task,
+        )
 
         self.setRowHeight(row_index, QUEUE_ROW_HEIGHT)
         self._row_presenter.set_task_row_values(row_index=row_index, task=task)
@@ -294,6 +298,26 @@ class DownloadQueueTable(QTableWidget):
         self._quality_presenter.sync_timer()
         self.resize_columns_to_viewport()
         self._sync_empty_hint_visibility()
+
+    def _build_updated_row_state_for_task(
+        self,
+        *,
+        row_state: QueueTableRowState,
+        task: DownloadTask,
+    ) -> QueueTableRowState:
+        updated_row_state = row_state.with_task(task=task)
+
+        if task.status is DownloadStatus.RUNNING:
+            return updated_row_state.with_download_prepared(is_prepared=True)
+
+        if task.status in {
+            DownloadStatus.COMPLETED,
+            DownloadStatus.FAILED,
+            DownloadStatus.CANCELED,
+        }:
+            return updated_row_state.with_download_prepared(is_prepared=False)
+
+        return updated_row_state
 
     def reload_tasks(self, tasks: Sequence[DownloadTask]) -> None:
         previous_row_states = self._row_states_by_task_id.copy()
@@ -316,6 +340,12 @@ class DownloadQueueTable(QTableWidget):
 
             if previous_row_state.is_metadata_resolution_failed:
                 self.mark_metadata_resolution_failed(task_id=task.task_id)
+
+            if previous_row_state.is_download_prepared:
+                self._mark_tasks_prepared_for_download(task_ids=(task.task_id,))
+                self._progress_presenter.prepare_tasks_for_download(
+                    task_ids=(task.task_id,),
+                )
 
         self.resize_columns_to_viewport()
         self._sync_empty_hint_visibility()
@@ -345,7 +375,19 @@ class DownloadQueueTable(QTableWidget):
         self._url_presenter.mark_metadata_resolution_failed(task_id=task_id)
 
     def prepare_tasks_for_download(self, *, task_ids: tuple[UUID, ...]) -> None:
+        self._mark_tasks_prepared_for_download(task_ids=task_ids)
         self._progress_presenter.prepare_tasks_for_download(task_ids=task_ids)
+
+    def _mark_tasks_prepared_for_download(self, *, task_ids: tuple[UUID, ...]) -> None:
+        for task_id in task_ids:
+            row_state = self._row_states_by_task_id.get(task_id)
+
+            if row_state is None:
+                continue
+
+            self._row_states_by_task_id[task_id] = row_state.with_download_prepared(
+                is_prepared=True,
+            )
 
     def set_task_progress(self, progress: DownloadProgress) -> None:
         self._url_presenter.set_progress(progress=progress)
@@ -427,11 +469,13 @@ class DownloadQueueTable(QTableWidget):
             table=self,
             clicked_item=clicked_item,
         )
+        selected_task_ids = self.get_selected_task_ids()
         result = show_download_queue_context_menu(
             parent=self,
             global_position=event.globalPos(),
-            selected_tasks=self._get_selected_tasks(),
-            selected_task_ids=self.get_selected_task_ids(),
+            selected_tasks=self._get_tasks_by_ids(task_ids=selected_task_ids),
+            selected_task_ids=selected_task_ids,
+            prepared_task_ids=self._get_prepared_task_ids(task_ids=selected_task_ids),
         )
 
         if result is None:
@@ -465,6 +509,22 @@ class DownloadQueueTable(QTableWidget):
 
     def _get_selected_tasks(self) -> tuple[DownloadTask, ...]:
         return self._get_tasks_by_ids(task_ids=self.get_selected_task_ids())
+
+    def _get_prepared_task_ids(self, *, task_ids: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        prepared_task_ids: list[UUID] = []
+
+        for task_id in task_ids:
+            row_state = self._row_states_by_task_id.get(task_id)
+
+            if row_state is None:
+                continue
+
+            if row_state.is_download_prepared or self._progress_presenter.has_progress_bar(
+                task_id=task_id,
+            ):
+                prepared_task_ids.append(task_id)
+
+        return tuple(prepared_task_ids)
 
     def _get_tasks_by_ids(self, *, task_ids: tuple[UUID, ...]) -> tuple[DownloadTask, ...]:
         tasks: list[DownloadTask] = []
@@ -561,11 +621,13 @@ class DownloadQueueTable(QTableWidget):
             clicked_item=clicked_item,
         )
         self._suppress_next_context_menu_event = True
+        selected_task_ids = self.get_selected_task_ids()
         result = show_download_queue_context_menu(
             parent=self,
             global_position=event.globalPosition().toPoint(),
-            selected_tasks=self._get_selected_tasks(),
-            selected_task_ids=self.get_selected_task_ids(),
+            selected_tasks=self._get_tasks_by_ids(task_ids=selected_task_ids),
+            selected_task_ids=selected_task_ids,
+            prepared_task_ids=self._get_prepared_task_ids(task_ids=selected_task_ids),
         )
 
         if result is not None:

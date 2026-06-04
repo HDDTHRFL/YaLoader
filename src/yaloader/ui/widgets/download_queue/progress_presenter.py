@@ -45,6 +45,17 @@ class DownloadQueueProgressPresenter:
             progress_bar.setValue(0)
             progress_bar.setFormat("0%")
 
+    def has_progress_bar(self, *, task_id: UUID) -> bool:
+        row_index = self._row_by_task_id.get(task_id)
+
+        if row_index is None:
+            return False
+
+        return isinstance(
+            self._table.cellWidget(row_index, STATUS_PROGRESS_COLUMN_INDEX),
+            QProgressBar,
+        )
+
     def set_task_progress(self, progress: DownloadProgress) -> None:
         row_index = self._row_by_task_id.get(progress.task_id)
 

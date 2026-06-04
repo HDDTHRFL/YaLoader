@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -73,6 +74,8 @@ class HistoryRecordCard(QFrame):
         self.setProperty("state", self._record.status.value)
         self.setToolTip(self._record.url)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
     def _build_layout(self) -> None:
         layout = QVBoxLayout(self)
@@ -113,6 +116,10 @@ class HistoryRecordCard(QFrame):
             parent=self,
         )
 
+        self._configure_compressible_label(url_label)
+        self._configure_compressible_label(meta_label)
+        self._configure_compressible_label(folder_label)
+
         self._install_context_menu_filter(status_label)
         self._install_context_menu_filter(time_label)
         self._install_context_menu_filter(url_label)
@@ -120,6 +127,7 @@ class HistoryRecordCard(QFrame):
         self._install_context_menu_filter(folder_label)
 
         if title_label is not None:
+            self._configure_compressible_label(title_label)
             self._install_context_menu_filter(title_label)
 
         layout.addLayout(header_layout)
@@ -136,6 +144,7 @@ class HistoryRecordCard(QFrame):
             error_label.setObjectName("HistoryErrorLabel")
             error_label.setWordWrap(True)
             error_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            self._configure_compressible_label(error_label)
             self._install_context_menu_filter(error_label)
             layout.addWidget(error_label)
 
@@ -152,6 +161,10 @@ class HistoryRecordCard(QFrame):
         title_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         return title_label
+
+    def _configure_compressible_label(self, label: QLabel) -> None:
+        label.setMinimumWidth(0)
+        label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
     def _install_context_menu_filter(self, widget: QWidget) -> None:
         widget.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
