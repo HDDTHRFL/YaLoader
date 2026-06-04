@@ -11,6 +11,7 @@ from yaloader.domain.download_speed_limit import format_download_speed_limit_lab
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
 from yaloader.domain.format_rules import get_download_mode_for_output_format
+from yaloader.domain.source_playlist_policy import should_include_playlist_for_url
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +44,8 @@ class QueueInputController:
                 should_focus_url_input=True,
             )
 
+        include_playlist = should_include_playlist_for_url(url=normalized_url)
+
         try:
             request = DownloadRequest(
                 url=normalized_url,
@@ -50,6 +53,7 @@ class QueueInputController:
                 mode=get_download_mode_for_output_format(output_format=output_format),
                 output_format=output_format,
                 video_quality=video_quality,
+                include_playlist=include_playlist,
                 download_speed_limit_bytes_per_second=download_speed_limit_bytes_per_second,
             )
         except ValidationError as error:
@@ -78,6 +82,14 @@ class QueueInputController:
         )
 
     def _build_success_message(self, *, request: DownloadRequest) -> str:
+        if request.include_playlist:
+            return append_download_speed_limit_status_suffix(
+                message="Плейлист добавлен в очередь загрузок",
+                download_speed_limit_bytes_per_second=(
+                    request.download_speed_limit_bytes_per_second
+                ),
+            )
+
         if request.mode is DownloadMode.VIDEO:
             return append_download_speed_limit_status_suffix(
                 message="Добавлено в очередь. Определяем доступное качество...",

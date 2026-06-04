@@ -47,29 +47,42 @@ class YtDlpMetadataExtractor:
         options = self._build_options(request=request)
 
         logger.debug(
-            "Media metadata extraction started. url={} cookies_enabled={}",
+            "Media metadata extraction started. url={} playlist={} cookies_enabled={}",
             request.url,
+            request.include_playlist,
             "cookiefile" in options,
         )
 
         with self.youtube_dl_factory(options) as downloader:
             raw_info = downloader.extract_info(request.url, download=False)
 
-        media_info = select_primary_media_info(raw_info=raw_info)
+        media_info = select_metadata_info(
+            raw_info=raw_info,
+            include_playlist=request.include_playlist,
+        )
         title = extract_title(media_info=media_info)
-        available_video_heights = extract_available_video_heights(media_info=media_info)
+        available_video_heights = (
+            ()
+            if request.include_playlist
+            else extract_available_video_heights(media_info=media_info)
+        )
+        playlist_count = (
+            extract_playlist_count(media_info=media_info) if request.include_playlist else None
+        )
 
         logger.debug(
-            "Media metadata extracted. url={} title={} heights={}",
+            "Media metadata extracted. url={} title={} heights={} playlist_count={}",
             request.url,
             title,
             available_video_heights,
+            playlist_count,
         )
 
         return MediaMetadataProbe(
             url=request.url,
             title=title,
             available_video_heights=available_video_heights,
+            playlist_count=playlist_count,
         )
 
     def _build_options(self, *, request: DownloadRequest) -> YtDlpOptions:
@@ -78,7 +91,7 @@ class YtDlpMetadataExtractor:
             "no_warnings": True,
             "skip_download": True,
             "noplaylist": not request.include_playlist,
-            "extract_flat": False,
+            "extract_flat": request.include_playlist,
             "remote_components": REMOTE_COMPONENTS,
         }
 
@@ -86,6 +99,20 @@ class YtDlpMetadataExtractor:
             options["cookiefile"] = str(self.cookies_file)
 
         return options
+
+
+def select_metadata_info(
+    *,
+    raw_info: object,
+    include_playlist: bool,
+) -> Mapping[str, object]:
+    if not isinstance(raw_info, Mapping):
+        return {}
+
+    if include_playlist:
+        return raw_info
+
+    return select_primary_media_info(raw_info=raw_info)
 
 
 def select_primary_media_info(*, raw_info: object) -> Mapping[str, object]:
@@ -121,6 +148,21 @@ def extract_title(*, media_info: Mapping[str, object]) -> str | None:
     return normalized_title
 
 
+def extract_playlist_count(*, media_info: Mapping[str, object]) -> int | None:
+    for key in ("playlist_count", "n_entries"):
+        value = normalize_positive_int(media_info.get(key))
+
+        if value is not None:
+            return value
+
+    entries = media_info.get("entries")
+
+    if isinstance(entries, Sequence) and not isinstance(entries, (str, bytes)):
+        return len(entries)
+
+    return None
+
+
 def extract_available_video_heights(*, media_info: Mapping[str, object]) -> tuple[int, ...]:
     formats = media_info.get("formats")
 
@@ -143,6 +185,10 @@ def extract_available_video_heights(*, media_info: Mapping[str, object]) -> tupl
 
 
 def normalize_height(value: object) -> int | None:
+    return normalize_positive_int(value)
+
+
+def normalize_positive_int(value: object) -> int | None:
     if isinstance(value, bool):
         return None
 

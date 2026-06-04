@@ -5,7 +5,9 @@ from uuid import UUID
 
 from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QWidget
 
+from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.domain.entities.download_task import DownloadTask
+from yaloader.domain.source_media_kind import SourceMediaKind, detect_source_media_kind
 from yaloader.ui.widgets.download_queue.columns import URL_COLUMN_INDEX
 from yaloader.ui.widgets.download_queue.delegate import (
     URL_COPY_FEEDBACK_ROLE,
@@ -62,6 +64,33 @@ class DownloadQueueUrlPresenter:
             text=normalized_title,
             state=URL_TITLE_STATE_DEFAULT,
             tooltip=f"{task.url.value}\n{normalized_title}",
+        )
+
+    def set_progress(self, *, progress: DownloadProgress) -> None:
+        row_index = self._row_by_task_id.get(progress.task_id)
+        row_state = self._row_states_by_task_id.get(progress.task_id)
+
+        if row_index is None or row_state is None:
+            return
+
+        task = row_state.task
+
+        if not task.include_playlist:
+            return
+
+        playlist_title = self._build_running_playlist_title(
+            task=task,
+            progress=progress,
+        )
+
+        if playlist_title is None:
+            return
+
+        self.set_secondary_text(
+            row_index=row_index,
+            text=playlist_title,
+            state=URL_TITLE_STATE_DEFAULT,
+            tooltip=f"{task.url.value}\n{playlist_title}",
         )
 
     def mark_metadata_resolution_failed(self, *, task_id: UUID) -> None:
@@ -128,10 +157,70 @@ class DownloadQueueUrlPresenter:
         self._refresh_viewport()
 
     def normalize_task_title(self, *, task: DownloadTask) -> str | None:
-        if task.title is None:
+        source_kind = detect_source_media_kind(
+            url=task.url.value,
+            include_playlist=task.include_playlist,
+        )
+        normalized_title = self._normalize_title_value(title=task.title)
+
+        if source_kind is SourceMediaKind.PLAYLIST:
+            return self._build_pending_playlist_title(
+                title=normalized_title,
+                playlist_count=task.playlist_count,
+            )
+
+        if source_kind is SourceMediaKind.SHORTS:
+            if normalized_title is None:
+                return "[SHORTS]"
+
+            return f"[SHORTS] · {normalized_title}"
+
+        return normalized_title
+
+    def _build_pending_playlist_title(
+        self,
+        *,
+        title: str | None,
+        playlist_count: int | None,
+    ) -> str:
+        if playlist_count is not None and title is not None:
+            return f"[PLAYLIST] · {playlist_count} · {title}"
+
+        if playlist_count is not None:
+            return f"[PLAYLIST] · {playlist_count}"
+
+        if title is not None:
+            return f"[PLAYLIST] · {title}"
+
+        return "[PLAYLIST]"
+
+    def _build_running_playlist_title(
+        self,
+        *,
+        task: DownloadTask,
+        progress: DownloadProgress,
+    ) -> str | None:
+        current_title = self._normalize_title_value(title=progress.current_title)
+
+        if current_title is None:
             return None
 
-        normalized_title = task.title.strip()
+        playlist_index = progress.playlist_index
+        playlist_count = progress.playlist_count or task.playlist_count
+
+        if playlist_index is not None and playlist_count is not None:
+            return f"[PLAYLIST] · {playlist_index}/{playlist_count} · {current_title}"
+
+        if playlist_index is not None:
+            return f"[PLAYLIST] · {playlist_index} · {current_title}"
+
+        return f"[PLAYLIST] · {current_title}"
+
+    def _normalize_title_value(self, *, title: str | None) -> str | None:
+        if title is None:
+            return None
+
+        normalized_title = title.strip()
 
         if not normalized_title:
             return None

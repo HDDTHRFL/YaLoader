@@ -14,6 +14,7 @@ class MediaMetadataProbe(BaseModel):
     url: str = Field(min_length=1)
     title: str | None = None
     available_video_heights: tuple[int, ...] = ()
+    playlist_count: int | None = None
 
 
 class MediaMetadata(BaseModel):
@@ -28,3 +29,4 @@ class MediaMetadata(BaseModel):
     available_video_heights: tuple[int, ...] = ()
     requested_video_quality: VideoQuality
     resolved_video_quality: VideoQuality
+    playlist_count: int | None = None

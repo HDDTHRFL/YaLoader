@@ -24,6 +24,7 @@ class DownloadTask:
     video_quality: VideoQuality
     requested_video_quality: VideoQuality
     include_playlist: bool
+    playlist_count: int | None = None
     download_speed_limit_bytes_per_second: int | None = None
     status: DownloadStatus = DownloadStatus.PENDING
     created_at: datetime = field(default_factory=get_current_utc_datetime)
@@ -79,11 +80,13 @@ class DownloadTask:
         *,
         title: str | None,
         video_quality: VideoQuality,
+        playlist_count: int | None = None,
     ) -> DownloadTask:
         return replace(
             self,
             title=title,
             video_quality=video_quality,
+            playlist_count=playlist_count,
         )
 
     def with_download_speed_limit(

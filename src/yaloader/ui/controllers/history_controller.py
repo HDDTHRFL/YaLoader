@@ -78,6 +78,7 @@ class HistoryController:
                 mode=record.mode,
                 output_format=record.output_format,
                 video_quality=record.video_quality,
+                include_playlist=record.include_playlist,
                 download_speed_limit_bytes_per_second=(
                     record.download_speed_limit_bytes_per_second
                 ),
@@ -94,9 +95,24 @@ class HistoryController:
             return HistoryControllerUpdate(status_message="Эта ссылка уже есть в очереди")
 
         task = self._queue_service.add_download(request=request)
+        restored_task = self._queue_service.apply_metadata(
+            task_id=task.task_id,
+            title=record.title,
+            video_quality=record.video_quality,
+            playlist_count=record.playlist_count,
+        )
+
+        if restored_task is not None:
+            task = restored_task
 
         return HistoryControllerUpdate(
-            status_message="Задача из истории добавлена в очередь загрузок",
+            status_message=self._build_add_to_queue_success_message(request=request),
             added_task=task,
-            metadata_request=request,
+            metadata_request=None if request.include_playlist else request,
         )
+
+    def _build_add_to_queue_success_message(self, *, request: DownloadRequest) -> str:
+        if request.include_playlist:
+            return "Плейлист из истории добавлен в очередь загрузок"
+
+        return "Задача из истории добавлена в очередь загрузок"

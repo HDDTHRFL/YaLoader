@@ -116,6 +116,7 @@ class DownloadQueueService:
         task_id: UUID,
         title: str | None,
         video_quality: VideoQuality,
+        playlist_count: int | None = None,
     ) -> DownloadTask | None:
         with self._lock:
             task_index = self._task_index_by_id.get(task_id)
@@ -127,6 +128,7 @@ class DownloadQueueService:
             updated_task = current_task.with_metadata(
                 title=title,
                 video_quality=video_quality,
+                playlist_count=playlist_count,
             )
             self._tasks[task_index] = updated_task
 

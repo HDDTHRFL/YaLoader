@@ -397,6 +397,7 @@ def build_downloading_progress(
     downloaded_bytes = get_int_value(progress_info.get("downloaded_bytes"))
     total_bytes = get_total_bytes(progress_info=progress_info)
     speed_bytes_per_second = get_positive_int_value(progress_info.get("speed"))
+    info_dict = get_mapping_value(progress_info.get("info_dict"))
     percent = calculate_percent(
         downloaded_bytes=downloaded_bytes,
         total_bytes=total_bytes,
@@ -410,7 +411,53 @@ def build_downloading_progress(
         downloaded_bytes=downloaded_bytes,
         total_bytes=total_bytes,
         speed_bytes_per_second=speed_bytes_per_second,
+        playlist_index=get_playlist_index(progress_info=progress_info, info_dict=info_dict),
+        playlist_count=get_playlist_count(progress_info=progress_info, info_dict=info_dict),
+        current_title=get_non_empty_string(info_dict.get("title")),
+        playlist_title=get_non_empty_string(info_dict.get("playlist_title")),
     )
+
+
+def get_playlist_index(
+    *,
+    progress_info: YtDlpProgressInfo,
+    info_dict: Mapping[str, object],
+) -> int | None:
+    return get_positive_int_value(progress_info.get("playlist_index")) or get_positive_int_value(
+        info_dict.get("playlist_index")
+    )
+
+
+def get_playlist_count(
+    *,
+    progress_info: YtDlpProgressInfo,
+    info_dict: Mapping[str, object],
+) -> int | None:
+    return (
+        get_positive_int_value(progress_info.get("playlist_count"))
+        or get_positive_int_value(progress_info.get("n_entries"))
+        or get_positive_int_value(info_dict.get("playlist_count"))
+        or get_positive_int_value(info_dict.get("n_entries"))
+    )
+
+
+def get_mapping_value(value: object) -> Mapping[str, object]:
+    if isinstance(value, Mapping):
+        return value
+
+    return {}
+
+
+def get_non_empty_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+
+    normalized_value = value.strip()
+
+    if not normalized_value:
+        return None
+
+    return normalized_value
 
 
 def get_total_bytes(progress_info: YtDlpProgressInfo) -> int | None:

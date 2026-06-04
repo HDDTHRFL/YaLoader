@@ -19,7 +19,9 @@ class DownloadHistoryRecord(BaseModel):
 
     task_id: UUID
     url: str = Field(min_length=1)
+    include_playlist: bool = False
     title: str | None = Field(default=None, min_length=1)
+    playlist_count: int | None = None
     target_dir: Path
     mode: DownloadMode
     output_format: OutputFormat
@@ -42,7 +44,9 @@ class DownloadHistoryRecord(BaseModel):
         return cls(
             task_id=task.task_id,
             url=task.url.value,
+            include_playlist=task.include_playlist,
             title=task.title,
+            playlist_count=task.playlist_count,
             target_dir=task.target_dir,
             mode=task.mode,
             output_format=task.output_format,

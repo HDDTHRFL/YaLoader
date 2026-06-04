@@ -502,6 +502,7 @@ class MainWindow(QMainWindow):
             task_id=result.task_id,
             title=result.metadata.title,
             video_quality=result.metadata.resolved_video_quality,
+            playlist_count=result.metadata.playlist_count,
         )
 
         if updated_task is None:
@@ -1025,7 +1026,7 @@ class MainWindow(QMainWindow):
         self._environment_panel.delete_cookies_button.setEnabled(not has_active_download)
         self._environment_panel.refresh_button.setEnabled(not has_active_download)
         self._environment_panel.open_cookies_dir_button.setEnabled(not has_active_download)
-        self._environment_panel.open_downloads_dir_button.setEnabled(not has_active_download)
+        self._environment_panel.open_downloads_dir_button.setEnabled(True)
 
         self._start_queue_button.setEnabled(has_active_download or has_downloadable_tasks)
         self._remove_from_queue_button.setEnabled(has_selected_tasks and not has_active_download)

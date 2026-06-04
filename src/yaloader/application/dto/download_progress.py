@@ -20,6 +20,10 @@ class DownloadProgress(BaseModel):
     downloaded_bytes: int | None = None
     total_bytes: int | None = None
     speed_bytes_per_second: int | None = None
+    playlist_index: int | None = None
+    playlist_count: int | None = None
+    current_title: str | None = None
+    playlist_title: str | None = None
 
     @classmethod
     def started(cls, *, task_id: UUID) -> DownloadProgress:

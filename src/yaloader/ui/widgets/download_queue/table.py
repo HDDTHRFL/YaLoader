@@ -348,6 +348,7 @@ class DownloadQueueTable(QTableWidget):
         self._progress_presenter.prepare_tasks_for_download(task_ids=task_ids)
 
     def set_task_progress(self, progress: DownloadProgress) -> None:
+        self._url_presenter.set_progress(progress=progress)
         self._progress_presenter.set_task_progress(progress=progress)
 
     def resize_columns_to_viewport(self) -> None:

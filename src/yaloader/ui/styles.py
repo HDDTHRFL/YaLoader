@@ -535,25 +535,28 @@ QScrollBar::sub-page:horizontal {
     background-color: transparent;
 }
 
+
+
+
 QScrollBar#OverlayScrollBar:vertical {
-    width: 8px;
     background-color: transparent;
     margin: 0;
     border: none;
 }
 
 QScrollBar#OverlayScrollBar::handle:vertical {
-    min-height: 32px;
-    background-color: rgba(139, 148, 158, 145);
-    border-radius: 4px;
+    background-color: transparent;
+    border: none;
 }
 
 QScrollBar#OverlayScrollBar::handle:vertical:hover {
-    background-color: rgba(201, 209, 217, 185);
+    background-color: transparent;
+    border: none;
 }
 
 QScrollBar#OverlayScrollBar::handle:vertical:pressed {
-    background-color: rgba(240, 246, 252, 210);
+    background-color: transparent;
+    border: none;
 }
 
 QScrollBar#OverlayScrollBar::add-line:vertical,
