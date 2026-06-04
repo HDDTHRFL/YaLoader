@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import override
 from uuid import UUID
 
-from PyQt6.QtCore import QEvent, QTimer, QTimerEvent, QUrl
+from PyQt6.QtCore import QEasingCurve, QEvent, QTimer, QTimerEvent, QUrl, QVariantAnimation
 from PyQt6.QtGui import QCloseEvent, QDesktopServices, QShowEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
@@ -54,18 +54,26 @@ from yaloader.ui.widgets.download_queue.panel import DownloadQueuePanel
 from yaloader.ui.widgets.environment_panel import EnvironmentPanel
 from yaloader.ui.widgets.history.panel import HISTORY_PANEL_WIDTH, HistoryPanel
 from yaloader.ui.widgets.settings_panel import SettingsPanel
-from yaloader.ui.widgets.speed_limit_indicator import SpeedLimitIndicatorPanel
+from yaloader.ui.widgets.speed_limit_indicator import (
+    SPEED_LIMIT_INDICATOR_EXPANDED_HEIGHT,
+    SpeedLimitIndicatorPanel,
+)
 from yaloader.ui.widgets.speed_settings_dialog import (
     SpeedSettingsDialog,
     normalize_download_speed_limit_signal_value,
 )
 
 WINDOW_INITIAL_WIDTH = 1180
-WINDOW_INITIAL_HEIGHT = 920
+WINDOW_INITIAL_HEIGHT = 872
 WINDOW_MINIMUM_WIDTH = 1040
-WINDOW_MINIMUM_HEIGHT = 760
+WINDOW_MINIMUM_HEIGHT = 820
 
 DOWNLOAD_POLL_INTERVAL_MS = 250
+SPEED_LIMIT_INDICATOR_WINDOW_DELTA = SPEED_LIMIT_INDICATOR_EXPANDED_HEIGHT
+SPEED_LIMIT_INDICATOR_ANIMATION_DURATION_MS = 165
+HISTORY_PANEL_ANIMATION_DURATION_MS = 180
+ROW_SELECTION_MODE_STATUS_MESSAGE = "Режим выделения строк активирован"
+HISTORY_LINK_COPIED_STATUS_MESSAGE = "Ссылка из истории загрузок скопирована"
 
 CLEAR_QUEUE_CONFIRMATION_TITLE = "Очистить очередь?"
 CLEAR_QUEUE_CONFIRMATION_TEXT = "Очередь загрузок будет полностью очищена."
@@ -137,6 +145,20 @@ class MainWindow(QMainWindow):
         )
 
         self._is_history_panel_visible = False
+        self._history_animation: QVariantAnimation | None = None
+        self._speed_limit_indicator_animation: QVariantAnimation | None = None
+        self._speed_limit_indicator_animation_should_hide = False
+        self._is_speed_limit_indicator_expanded = False
+        self._is_speed_limit_window_extra_applied = False
+        self._speed_limit_indicator_start_height = 0
+        self._speed_limit_indicator_end_height = 0
+        self._speed_limit_indicator_start_window_height = 0
+        self._speed_limit_indicator_end_window_height = 0
+        self._speed_limit_indicator_frozen_widget_limits: tuple[tuple[QWidget, int, int], ...] = ()
+        self._history_animation_start_panel_width = 0
+        self._history_animation_end_panel_width = 0
+        self._history_animation_start_window_width = 0
+        self._history_animation_end_window_width = 0
         self._download_poll_timer = self.startTimer(DOWNLOAD_POLL_INTERVAL_MS)
 
         self._configure_window()
@@ -206,6 +228,7 @@ class MainWindow(QMainWindow):
         self._history_panel.set_context_menu_callbacks(
             on_add_to_queue=self._handle_add_history_record_to_queue,
             on_delete_record=self._handle_delete_history_record,
+            on_copy_url=self._handle_copy_history_record_url,
         )
         self._sync_start_queue_button_state()
 
@@ -215,6 +238,9 @@ class MainWindow(QMainWindow):
         self._remove_from_queue_button.clicked.connect(self._handle_remove_selected_tasks_clicked)
         self._clear_queue_button.clicked.connect(self._handle_clear_queue_clicked)
         self._queue_table.itemSelectionChanged.connect(self._sync_queue_controls_state)
+        self._queue_table.row_selection_mode_changed.connect(
+            self._handle_row_selection_mode_changed
+        )
 
         self._settings_panel.choose_downloads_dir_button.clicked.connect(
             self._handle_choose_downloads_dir_clicked
@@ -257,17 +283,27 @@ class MainWindow(QMainWindow):
         main_content_widget = QWidget(self)
         root_layout = QVBoxLayout(main_content_widget)
         root_layout.setContentsMargins(28, 10, 28, 24)
-        root_layout.setSpacing(18)
+        root_layout.setSpacing(14)
 
         root_layout.addWidget(self._header)
         root_layout.addWidget(self._input_panel)
         root_layout.addWidget(self._queue_panel, stretch=1)
-        root_layout.addWidget(self._settings_panel)
-        root_layout.addWidget(self._speed_limit_indicator)
+        root_layout.addWidget(self._build_settings_stack_widget())
         root_layout.addWidget(self._environment_panel)
         root_layout.addWidget(self._build_footer())
 
         return main_content_widget
+
+    def _build_settings_stack_widget(self) -> QWidget:
+        settings_stack_widget = QWidget(self)
+        settings_stack_layout = QVBoxLayout(settings_stack_widget)
+        settings_stack_layout.setContentsMargins(0, 0, 0, 0)
+        settings_stack_layout.setSpacing(0)
+
+        settings_stack_layout.addWidget(self._settings_panel)
+        settings_stack_layout.addWidget(self._speed_limit_indicator)
+
+        return settings_stack_widget
 
     def _build_footer(self) -> QWidget:
         footer = QWidget(self)
@@ -280,22 +316,108 @@ class MainWindow(QMainWindow):
         return footer
 
     def _toggle_history_panel(self) -> None:
-        if self._is_history_panel_visible:
-            self._is_history_panel_visible = False
-            self._sync_history_panel_visibility()
-            self.resize(
-                max(self.minimumWidth(), self.width() - HISTORY_PANEL_WIDTH),
-                self.height(),
+        self._animate_history_panel_visibility(
+            is_visible=not self._is_history_panel_visible,
+        )
+
+    def _sync_history_panel_visibility(self) -> None:
+        target_width = HISTORY_PANEL_WIDTH if self._is_history_panel_visible else 0
+        self._history_panel.set_drawer_width(width=target_width)
+        self._history_panel.setVisible(self._is_history_panel_visible)
+        self._header.set_history_visible(is_visible=self._is_history_panel_visible)
+
+    def _animate_history_panel_visibility(self, *, is_visible: bool) -> None:
+        if self._history_animation is not None:
+            self._history_animation.stop()
+            self._history_animation = None
+
+        if is_visible:
+            self._is_history_panel_visible = True
+            self._history_panel.setVisible(True)
+            self._history_panel.set_drawer_width(width=0)
+            self._header.set_history_visible(is_visible=True)
+            self._start_history_panel_width_animation(
+                start_panel_width=0,
+                end_panel_width=HISTORY_PANEL_WIDTH,
+                start_window_width=self.width(),
+                end_window_width=self.width() + HISTORY_PANEL_WIDTH,
+                hide_after_finish=False,
             )
             return
 
-        self._is_history_panel_visible = True
-        self._sync_history_panel_visibility()
-        self.resize(self.width() + HISTORY_PANEL_WIDTH, self.height())
+        start_panel_width = max(
+            self._history_panel.current_drawer_width(),
+            HISTORY_PANEL_WIDTH,
+        )
+        self._is_history_panel_visible = False
+        self._header.set_history_visible(is_visible=False)
+        self._start_history_panel_width_animation(
+            start_panel_width=start_panel_width,
+            end_panel_width=0,
+            start_window_width=self.width(),
+            end_window_width=max(self.minimumWidth(), self.width() - start_panel_width),
+            hide_after_finish=True,
+        )
 
-    def _sync_history_panel_visibility(self) -> None:
-        self._history_panel.setVisible(self._is_history_panel_visible)
-        self._header.set_history_visible(is_visible=self._is_history_panel_visible)
+    def _start_history_panel_width_animation(
+        self,
+        *,
+        start_panel_width: int,
+        end_panel_width: int,
+        start_window_width: int,
+        end_window_width: int,
+        hide_after_finish: bool,
+    ) -> None:
+        self._history_animation_start_panel_width = start_panel_width
+        self._history_animation_end_panel_width = end_panel_width
+        self._history_animation_start_window_width = start_window_width
+        self._history_animation_end_window_width = end_window_width
+
+        animation = QVariantAnimation(self)
+        animation.setDuration(HISTORY_PANEL_ANIMATION_DURATION_MS)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.valueChanged.connect(self._handle_history_panel_width_animation_value_changed)
+        animation.finished.connect(
+            lambda: self._handle_history_panel_width_animation_finished(
+                hide_after_finish=hide_after_finish,
+            )
+        )
+
+        self._history_animation = animation
+        animation.start()
+
+    def _handle_history_panel_width_animation_value_changed(self, value: object) -> None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return
+
+        progress = max(0.0, min(1.0, float(value)))
+        panel_width = round(
+            self._history_animation_start_panel_width
+            + (self._history_animation_end_panel_width - self._history_animation_start_panel_width)
+            * progress
+        )
+        window_width = round(
+            self._history_animation_start_window_width
+            + (
+                self._history_animation_end_window_width
+                - self._history_animation_start_window_width
+            )
+            * progress
+        )
+
+        self._history_panel.set_drawer_width(width=panel_width)
+        self.resize(max(self.minimumWidth(), window_width), self.height())
+
+    def _handle_history_panel_width_animation_finished(self, *, hide_after_finish: bool) -> None:
+        if hide_after_finish:
+            self._history_panel.set_drawer_width(width=0)
+            self._history_panel.setVisible(False)
+        else:
+            self._history_panel.set_drawer_width(width=HISTORY_PANEL_WIDTH)
+
+        self._history_animation = None
 
     def _reload_history_panel(self) -> None:
         self._apply_history_update(update=self._history_controller.load())
@@ -323,6 +445,9 @@ class MainWindow(QMainWindow):
 
     def _handle_delete_history_record(self, record: DownloadHistoryRecord) -> None:
         self._apply_history_update(update=self._history_controller.remove_record(record=record))
+
+    def _handle_copy_history_record_url(self, _record: DownloadHistoryRecord) -> None:
+        self._show_transient_status_message(HISTORY_LINK_COPIED_STATUS_MESSAGE)
 
     def _apply_history_update(self, *, update: HistoryControllerUpdate) -> None:
         if update.records is not None:
@@ -478,12 +603,10 @@ class MainWindow(QMainWindow):
         )
 
     def _handle_speed_settings_button_clicked(self) -> None:
-        self._speed_settings_dialog.set_download_speed_limit(
+        self._speed_settings_dialog.toggle_near_anchor(
+            anchor_widget=self._header.settings_button,
             bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
         )
-        self._speed_settings_dialog.show()
-        self._speed_settings_dialog.raise_()
-        self._speed_settings_dialog.activateWindow()
 
     def _handle_download_speed_limit_signal_changed(self, value: object) -> None:
         try:
@@ -518,7 +641,7 @@ class MainWindow(QMainWindow):
             self._queue_table.reload_tasks(queue_service.list_tasks())
 
         self._show_transient_status_message(
-            "Лимит скорости обновлён: "
+            "Лимит скорости загрузки обновлён: "
             f"{format_download_speed_limit_label(bytes_per_second=bytes_per_second)}"
         )
 
@@ -684,11 +807,207 @@ class MainWindow(QMainWindow):
 
     def _update_settings_panel(self) -> None:
         self._settings_panel.set_downloads_dir(downloads_dir=self._settings.downloads_dir)
-        self._speed_limit_indicator.set_download_speed_limit(
-            bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
-        )
         self._speed_settings_dialog.set_download_speed_limit(
             bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
+        )
+        self._sync_speed_limit_indicator(
+            bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
+        )
+
+    def _sync_speed_limit_indicator(self, *, bytes_per_second: int | None) -> None:
+        should_show_indicator = bytes_per_second is not None
+
+        self._speed_limit_indicator.set_download_speed_limit(
+            bytes_per_second=bytes_per_second,
+        )
+
+        if self._is_speed_limit_indicator_expanded == should_show_indicator:
+            return
+
+        self._is_speed_limit_indicator_expanded = should_show_indicator
+
+        if not self.isVisible():
+            self._apply_speed_limit_indicator_visibility_directly(
+                is_visible=should_show_indicator,
+            )
+            return
+
+        self._animate_speed_limit_indicator_visibility(is_visible=should_show_indicator)
+
+    def _apply_speed_limit_indicator_visibility_directly(self, *, is_visible: bool) -> None:
+        self._resize_window_for_speed_limit_indicator_visibility(is_visible=is_visible)
+
+        if is_visible:
+            self._speed_limit_indicator.set_expanded()
+            return
+
+        self._speed_limit_indicator.set_collapsed()
+
+    def _animate_speed_limit_indicator_visibility(self, *, is_visible: bool) -> None:
+        if self._speed_limit_indicator_animation is not None:
+            self._speed_limit_indicator_animation.stop()
+            self._speed_limit_indicator_animation = None
+            self._release_speed_limit_indicator_animation_widgets()
+
+        start_indicator_height = self._speed_limit_indicator.current_visible_height()
+        end_indicator_height = SPEED_LIMIT_INDICATOR_EXPANDED_HEIGHT if is_visible else 0
+
+        if start_indicator_height == end_indicator_height:
+            self._apply_speed_limit_indicator_visibility_directly(is_visible=is_visible)
+            return
+
+        self._freeze_speed_limit_indicator_animation_widgets()
+
+        if is_visible:
+            self._speed_limit_indicator.set_visible_height(height=start_indicator_height)
+            self._speed_limit_indicator.show()
+        else:
+            self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
+
+        self._speed_limit_indicator_animation_should_hide = not is_visible
+        self._speed_limit_indicator_start_height = start_indicator_height
+        self._speed_limit_indicator_end_height = end_indicator_height
+        self._speed_limit_indicator_start_window_height = self.height()
+        self._speed_limit_indicator_end_window_height = (
+            self._calculate_speed_limit_window_target_height(
+                start_indicator_height=start_indicator_height,
+                end_indicator_height=end_indicator_height,
+            )
+        )
+
+        animation = QVariantAnimation(self)
+        animation.setDuration(SPEED_LIMIT_INDICATOR_ANIMATION_DURATION_MS)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.valueChanged.connect(self._handle_speed_limit_indicator_animation_value_changed)
+        animation.finished.connect(self._handle_speed_limit_indicator_animation_finished)
+
+        self._speed_limit_indicator_animation = animation
+        animation.start()
+
+    def _handle_speed_limit_indicator_animation_value_changed(self, value: object) -> None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return
+
+        progress = max(0.0, min(1.0, float(value)))
+        indicator_height = round(
+            self._speed_limit_indicator_start_height
+            + (self._speed_limit_indicator_end_height - self._speed_limit_indicator_start_height)
+            * progress
+        )
+        window_height = round(
+            self._speed_limit_indicator_start_window_height
+            + (
+                self._speed_limit_indicator_end_window_height
+                - self._speed_limit_indicator_start_window_height
+            )
+            * progress
+        )
+
+        self._speed_limit_indicator.set_visible_height(height=indicator_height)
+        self.resize(self.width(), max(self.minimumHeight(), window_height))
+
+    def _handle_speed_limit_indicator_animation_finished(self) -> None:
+        self.resize(
+            self.width(),
+            max(
+                WINDOW_MINIMUM_HEIGHT,
+                self._speed_limit_indicator_end_window_height,
+            ),
+        )
+
+        if self._speed_limit_indicator_animation_should_hide:
+            self._speed_limit_indicator.set_download_speed_limit(bytes_per_second=None)
+            self._speed_limit_indicator.set_collapsed()
+            self._is_speed_limit_window_extra_applied = False
+            self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
+        else:
+            self._speed_limit_indicator.set_expanded()
+            self._is_speed_limit_window_extra_applied = True
+            self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT + SPEED_LIMIT_INDICATOR_WINDOW_DELTA)
+
+        self._release_speed_limit_indicator_animation_widgets()
+        self._speed_limit_indicator_animation = None
+
+    def _calculate_speed_limit_window_target_height(
+        self,
+        *,
+        start_indicator_height: int,
+        end_indicator_height: int,
+    ) -> int:
+        indicator_height_delta = end_indicator_height - start_indicator_height
+        target_height = self.height() + indicator_height_delta
+
+        if end_indicator_height > 0:
+            return max(
+                target_height,
+                WINDOW_MINIMUM_HEIGHT + SPEED_LIMIT_INDICATOR_WINDOW_DELTA,
+            )
+
+        return max(target_height, WINDOW_MINIMUM_HEIGHT)
+
+    def _resize_window_for_speed_limit_indicator_visibility(self, *, is_visible: bool) -> None:
+        if self._is_speed_limit_window_extra_applied == is_visible:
+            return
+
+        self._is_speed_limit_window_extra_applied = is_visible
+
+        if is_visible:
+            self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT + SPEED_LIMIT_INDICATOR_WINDOW_DELTA)
+            self.resize(
+                self.width(),
+                max(
+                    self.height() + SPEED_LIMIT_INDICATOR_WINDOW_DELTA,
+                    self.minimumHeight(),
+                ),
+            )
+            return
+
+        self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
+        self.resize(
+            self.width(),
+            max(
+                self.height() - SPEED_LIMIT_INDICATOR_WINDOW_DELTA,
+                self.minimumHeight(),
+            ),
+        )
+
+    def _freeze_speed_limit_indicator_animation_widgets(self) -> None:
+        if self._speed_limit_indicator_frozen_widget_limits:
+            return
+
+        frozen_widgets = (
+            self._queue_panel,
+            self._settings_panel,
+        )
+        self._speed_limit_indicator_frozen_widget_limits = tuple(
+            (widget, widget.minimumHeight(), widget.maximumHeight()) for widget in frozen_widgets
+        )
+
+        for widget in frozen_widgets:
+            widget.setFixedHeight(widget.height())
+
+    def _release_speed_limit_indicator_animation_widgets(self) -> None:
+        for (
+            widget,
+            minimum_height,
+            maximum_height,
+        ) in self._speed_limit_indicator_frozen_widget_limits:
+            widget.setMinimumHeight(minimum_height)
+            widget.setMaximumHeight(maximum_height)
+
+        self._speed_limit_indicator_frozen_widget_limits = ()
+
+    def _handle_row_selection_mode_changed(self, is_active: bool) -> None:
+        if is_active:
+            self._footer_status_presenter.show_activity(
+                message=ROW_SELECTION_MODE_STATUS_MESSAGE,
+            )
+            return
+
+        self._footer_status_presenter.clear_activity(
+            message=ROW_SELECTION_MODE_STATUS_MESSAGE,
         )
 
     def _sync_queue_controls_state(self) -> None:
@@ -699,7 +1018,9 @@ class MainWindow(QMainWindow):
         )
         has_active_download = self._download_controller.is_active
 
-        self._input_panel.add_to_queue_button.setEnabled(not has_active_download)
+        self._input_panel.set_add_to_queue_available(
+            is_available=not has_active_download,
+        )
         self._settings_panel.choose_downloads_dir_button.setEnabled(not has_active_download)
         self._environment_panel.delete_cookies_button.setEnabled(not has_active_download)
         self._environment_panel.refresh_button.setEnabled(not has_active_download)

@@ -6,7 +6,7 @@ from PyQt6.QtCore import QEvent, QObject, QSignalBlocker, Qt, QTimer
 from PyQt6.QtWidgets import QAbstractScrollArea, QScrollBar, QWidget
 
 OVERLAY_SCROLL_BAR_WIDTH = 8
-OVERLAY_SCROLL_BAR_RIGHT_MARGIN = -1
+OVERLAY_SCROLL_BAR_RIGHT_MARGIN = -2
 OVERLAY_SCROLL_BAR_VERTICAL_MARGIN = 6
 OVERLAY_SCROLL_SINGLE_STEP = 12
 
@@ -20,7 +20,7 @@ class OverlayVerticalScrollBarController(QObject):
         self._viewport = cast(QWidget, scroll_area.viewport())
         self._overlay_scroll_bar = QScrollBar(
             Qt.Orientation.Vertical,
-            self._viewport,
+            scroll_area,
         )
 
         self._configure_scroll_bars()
@@ -114,15 +114,18 @@ class OverlayVerticalScrollBarController(QObject):
         del blocker
 
     def _sync_geometry(self) -> None:
-        viewport_rect = self._viewport.rect()
-        height = max(0, viewport_rect.height() - OVERLAY_SCROLL_BAR_VERTICAL_MARGIN * 2)
+        viewport_geometry = self._viewport.geometry()
+        height = max(0, viewport_geometry.height() - OVERLAY_SCROLL_BAR_VERTICAL_MARGIN * 2)
         x_position = (
-            viewport_rect.right() - OVERLAY_SCROLL_BAR_WIDTH - OVERLAY_SCROLL_BAR_RIGHT_MARGIN + 1
+            viewport_geometry.right()
+            - OVERLAY_SCROLL_BAR_WIDTH
+            - OVERLAY_SCROLL_BAR_RIGHT_MARGIN
+            + 1
         )
 
         self._overlay_scroll_bar.setGeometry(
             x_position,
-            OVERLAY_SCROLL_BAR_VERTICAL_MARGIN,
+            viewport_geometry.top() + OVERLAY_SCROLL_BAR_VERTICAL_MARGIN,
             OVERLAY_SCROLL_BAR_WIDTH,
             height,
         )

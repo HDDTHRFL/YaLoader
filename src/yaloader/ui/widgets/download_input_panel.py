@@ -24,6 +24,8 @@ class DownloadInputPanel(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        self._is_add_to_queue_available = True
+
         self.url_input = UrlDropLineEdit(self)
         self.quality_combo_box = QComboBox(self)
         self.format_combo_box = QComboBox(self)
@@ -32,12 +34,14 @@ class DownloadInputPanel(QFrame):
         self._configure_widgets()
         self._connect_signals()
         self._build_layout()
+        self._sync_add_to_queue_button_state()
 
     def get_url_text(self) -> str:
         return self.url_input.text().strip()
 
     def clear_url(self) -> None:
         self.url_input.clear()
+        self._sync_add_to_queue_button_state()
 
     def focus_url_input(self) -> None:
         self.url_input.setFocus()
@@ -48,6 +52,10 @@ class DownloadInputPanel(QFrame):
 
     def get_selected_output_format(self) -> OutputFormat:
         return cast(OutputFormat, self.format_combo_box.currentData())
+
+    def set_add_to_queue_available(self, *, is_available: bool) -> None:
+        self._is_add_to_queue_available = is_available
+        self._sync_add_to_queue_button_state()
 
     @override
     def dragEnterEvent(self, event: QDragEnterEvent | None) -> None:
@@ -84,6 +92,7 @@ class DownloadInputPanel(QFrame):
         self.url_input.setText(dropped_url)
         self.url_input.setFocus()
         self.url_input.setCursorPosition(len(dropped_url))
+        self._sync_add_to_queue_button_state()
 
         event.acceptProposedAction()
 
@@ -102,7 +111,8 @@ class DownloadInputPanel(QFrame):
             self.format_combo_box.addItem(output_format.value, output_format)
 
     def _connect_signals(self) -> None:
-        self.url_input.returnPressed.connect(self.add_to_queue_button.click)
+        self.url_input.returnPressed.connect(self._handle_url_input_return_pressed)
+        self.url_input.textChanged.connect(self._handle_url_input_text_changed)
 
     def _build_layout(self) -> None:
         layout = QVBoxLayout(self)
@@ -121,6 +131,20 @@ class DownloadInputPanel(QFrame):
 
         layout.addWidget(url_label)
         layout.addLayout(controls_layout)
+
+    def _handle_url_input_text_changed(self, _text: str) -> None:
+        self._sync_add_to_queue_button_state()
+
+    def _handle_url_input_return_pressed(self) -> None:
+        if not self.add_to_queue_button.isEnabled():
+            return
+
+        self.add_to_queue_button.click()
+
+    def _sync_add_to_queue_button_state(self) -> None:
+        self.add_to_queue_button.setEnabled(
+            self._is_add_to_queue_available and bool(self.get_url_text())
+        )
 
     def _accept_supported_url_drag_event(
         self,

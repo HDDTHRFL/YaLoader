@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QEasingCurve, QObject, QPropertyAnimation, QTimer
-from PyQt6.QtWidgets import QGraphicsOpacityEffect, QLabel
+from PyQt6.QtWidgets import QGraphicsOpacityEffect, QLabel, QStyle
 
 from yaloader.ui.status_messages import (
     DEFAULT_STATUS_MESSAGE,
@@ -11,12 +11,17 @@ from yaloader.ui.status_messages import (
     TRANSIENT_STATUS_MESSAGE_RESTORE_OPACITY_THRESHOLD,
 )
 
+DEFAULT_STATUS_KIND = "default"
+TRANSIENT_STATUS_KIND = "transient"
+ACTIVITY_STATUS_KIND = "activity"
+
 
 class FooterStatusPresenter:
     def __init__(self, *, label: QLabel, parent: QObject) -> None:
         self._label = label
         self._default_status_message = DEFAULT_STATUS_MESSAGE
         self._is_default_restore_pending = False
+        self._activity_message: str | None = None
 
         self._reset_timer = QTimer(parent)
         self._opacity_effect = QGraphicsOpacityEffect(label)
@@ -28,14 +33,17 @@ class FooterStatusPresenter:
 
         self._configure_timer()
         self._configure_animation()
+        self._set_status_kind(kind=DEFAULT_STATUS_KIND)
 
     def show_primary(self, *, message: str) -> None:
         self._reset_timer.stop()
         self._is_default_restore_pending = False
+        self._activity_message = None
         self._stop_blink_animation()
 
         self._default_status_message = message
         self._label.setText(message)
+        self._set_status_kind(kind=DEFAULT_STATUS_KIND)
 
     def show_transient(
         self,
@@ -43,18 +51,39 @@ class FooterStatusPresenter:
         message: str,
         fallback_status_message: str | None = None,
     ) -> None:
+        if self._activity_message is not None:
+            return
+
         if fallback_status_message is not None:
             self._default_status_message = fallback_status_message
 
         self._is_default_restore_pending = False
         self._label.setText(message)
+        self._set_status_kind(kind=TRANSIENT_STATUS_KIND)
         self._start_blink_animation()
         self._reset_timer.start()
+
+    def show_activity(self, *, message: str) -> None:
+        self._activity_message = message
+        self._reset_timer.stop()
+        self._is_default_restore_pending = False
+        self._label.setText(message)
+        self._set_status_kind(kind=ACTIVITY_STATUS_KIND)
+        self._start_blink_animation()
+
+    def clear_activity(self, *, message: str) -> None:
+        if self._activity_message != message:
+            return
+
+        self._activity_message = None
+        self._restore_default_status_message()
 
     def shutdown(self) -> None:
         self._reset_timer.stop()
         self._is_default_restore_pending = False
+        self._activity_message = None
         self._stop_blink_animation()
+        self._set_status_kind(kind=DEFAULT_STATUS_KIND)
 
     def _configure_timer(self) -> None:
         self._reset_timer.setSingleShot(True)
@@ -101,6 +130,7 @@ class FooterStatusPresenter:
         self._is_default_restore_pending = False
         self._stop_blink_animation()
         self._label.setText(self._default_status_message)
+        self._set_status_kind(kind=DEFAULT_STATUS_KIND)
 
     def _start_blink_animation(self) -> None:
         self._blink_animation.stop()
@@ -110,3 +140,16 @@ class FooterStatusPresenter:
     def _stop_blink_animation(self) -> None:
         self._blink_animation.stop()
         self._opacity_effect.setOpacity(1.0)
+
+    def _set_status_kind(self, *, kind: str) -> None:
+        if self._label.property("statusKind") == kind:
+            return
+
+        self._label.setProperty("statusKind", kind)
+        style = self._label.style()
+
+        if not isinstance(style, QStyle):
+            return
+
+        style.unpolish(self._label)
+        style.polish(self._label)

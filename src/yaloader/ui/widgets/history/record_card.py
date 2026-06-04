@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import override
 
 from PyQt6.QtCore import QEvent, QObject, QPoint, Qt
-from PyQt6.QtGui import QAction, QContextMenuEvent
+from PyQt6.QtGui import QClipboard, QContextMenuEvent, QGuiApplication
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
 from yaloader.ui.widgets.common.context_menu_actions import (
+    add_menu_action,
     add_menu_button_action,
     create_context_menu,
 )
@@ -34,6 +35,7 @@ class HistoryRecordCard(QFrame):
         record: DownloadHistoryRecord,
         on_add_to_queue: Callable[[DownloadHistoryRecord], None] | None,
         on_delete_record: Callable[[DownloadHistoryRecord], None] | None,
+        on_copy_url: Callable[[DownloadHistoryRecord], None] | None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -41,6 +43,7 @@ class HistoryRecordCard(QFrame):
         self._record = record
         self._on_add_to_queue = on_add_to_queue
         self._on_delete_record = on_delete_record
+        self._on_copy_url = on_copy_url
 
         self._configure_widgets()
         self._build_layout()
@@ -157,9 +160,16 @@ class HistoryRecordCard(QFrame):
     def _show_context_menu(self, *, global_position: QPoint) -> None:
         context_menu = create_context_menu(parent=self)
 
-        add_to_queue_action = QAction("Добавить в очередь загрузок", context_menu)
+        copy_link_action = add_menu_action(
+            menu=context_menu,
+            text="Скопировать ссылку",
+        )
+
+        add_to_queue_action = add_menu_action(
+            menu=context_menu,
+            text="Добавить в очередь загрузок",
+        )
         add_to_queue_action.setEnabled(self._on_add_to_queue is not None)
-        context_menu.addAction(add_to_queue_action)
 
         delete_record_action = add_menu_button_action(
             menu=context_menu,
@@ -173,9 +183,24 @@ class HistoryRecordCard(QFrame):
         if selected_action is None:
             return
 
+        if selected_action == copy_link_action:
+            self._copy_url_to_clipboard()
+            return
+
         if selected_action == add_to_queue_action and self._on_add_to_queue is not None:
             self._on_add_to_queue(self._record)
             return
 
         if selected_action == delete_record_action and self._on_delete_record is not None:
             self._on_delete_record(self._record)
+
+    def _copy_url_to_clipboard(self) -> None:
+        clipboard = QGuiApplication.clipboard()
+
+        if not isinstance(clipboard, QClipboard):
+            return
+
+        clipboard.setText(self._record.url)
+
+        if self._on_copy_url is not None:
+            self._on_copy_url(self._record)

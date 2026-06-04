@@ -18,9 +18,13 @@ QFrame#PanelFrame {
 }
 
 QFrame#SpeedLimitIndicatorPanel {
-    background-color: #101820;
-    border: 1px solid #1F6F4A;
-    border-radius: 12px;
+    background-color: transparent;
+    border: none;
+}
+
+QFrame#EnvironmentPanelFrame {
+    background-color: transparent;
+    border: none;
 }
 
 QLabel#TitleLabel {
@@ -47,6 +51,12 @@ QLabel#SmallSectionTitleLabel {
     color: #C9D1D9;
 }
 
+QLabel#EnvironmentSectionTitleLabel {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #F3F5F7;
+}
+
 QLabel#FieldLabel {
     font-size: 10pt;
     font-weight: 600;
@@ -58,13 +68,18 @@ QLabel#MutedLabel {
 }
 
 QLabel#SpeedLimitLabel {
-    color: #A7F3D0;
+    color: #FCD34D;
     font-size: 9pt;
     font-weight: 600;
 }
 
 QLabel#StatusLabel {
     color: #9AA4B2;
+}
+
+QLabel#StatusLabel[statusKind="activity"] {
+    color: #58A6FF;
+    font-weight: 600;
 }
 
 QLabel#QueueEmptyHintLabel {
@@ -553,22 +568,142 @@ QScrollBar#OverlayScrollBar::sub-page:vertical {
     background-color: transparent;
 }
 
+QDialog#SpeedSettingsDialog {
+    background-color: #161B22;
+    border: 1px solid #30363D;
+    border-radius: 8px;
+}
+
+QLabel#SpeedSettingsPopupTitle {
+    color: #F3F5F7;
+    font-size: 10pt;
+    font-weight: 700;
+}
+
+QSpinBox#SpeedLimitSpinBox {
+    min-height: 34px;
+    min-width: 150px;
+    padding: 0 10px;
+    background-color: #0D1117;
+    color: #F0F3F6;
+    border: 1px solid #30363D;
+    border-radius: 8px;
+    selection-background-color: #2F81F7;
+}
+
+QSpinBox#SpeedLimitSpinBox:hover {
+    border-color: #3D444D;
+}
+
+QSpinBox#SpeedLimitSpinBox:focus {
+    border-color: #2F81F7;
+}
+
+QSpinBox#SpeedLimitSpinBox::up-button,
+QSpinBox#SpeedLimitSpinBox::down-button {
+    width: 0;
+    border: none;
+    background-color: transparent;
+}
+
+
+
+QPushButton#SpeedResetButton {
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0;
+    background-color: transparent;
+    color: #8B949E;
+    border: none;
+    border-radius: 0;
+    font-family: "Segoe UI Symbol", "Segoe UI Emoji", "Segoe UI";
+    font-size: 14pt;
+    font-weight: 700;
+}
+
+QPushButton#SpeedResetButton:hover {
+    background-color: transparent;
+    color: #FFFFFF;
+    border: none;
+}
+
+QPushButton#SpeedResetButton:pressed {
+    background-color: transparent;
+    color: #8B949E;
+    border: none;
+}
+
+
+
+
+
+
+QSlider#SpeedLimitSlider {
+    min-height: 28px;
+}
+
+QSlider#SpeedLimitSlider::groove:horizontal {
+    height: 5px;
+    background-color: #30363D;
+    border-radius: 3px;
+}
+
+QSlider#SpeedLimitSlider[pressed="true"]::groove:horizontal {
+    height: 7px;
+    border-radius: 4px;
+}
+
+QSlider#SpeedLimitSlider::sub-page:horizontal {
+    height: 5px;
+    background-color: #C9D1D9;
+    border-radius: 3px;
+}
+
+QSlider#SpeedLimitSlider[hovered="true"]::sub-page:horizontal {
+    background-color: #F0F3F6;
+}
+
+QSlider#SpeedLimitSlider[pressed="true"]::sub-page:horizontal {
+    height: 7px;
+    background-color: #FCD34D;
+    border-radius: 4px;
+}
+
+QSlider#SpeedLimitSlider::handle:horizontal {
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    background-color: #C9D1D9;
+    border: 2px solid #C9D1D9;
+    border-radius: 7px;
+}
+
+QSlider#SpeedLimitSlider[hovered="true"]::handle:horizontal {
+    background-color: #F0F3F6;
+    border-color: #F0F3F6;
+}
+
+QSlider#SpeedLimitSlider[pressed="true"]::handle:horizontal {
+    width: 16px;
+    height: 16px;
+    margin: -6px 0;
+    background-color: #FCD34D;
+    border: 2px solid #FFE58A;
+    border-radius: 8px;
+}
+
+QSpinBox#SpeedLimitSpinBox[sliderPressed="true"] {
+    color: #FCD34D;
+}
+
 QMenu {
     background-color: #161B22;
     color: #F0F3F6;
     border: 1px solid #30363D;
     border-radius: 8px;
     padding: 6px;
-}
-
-QMenu::item {
-    padding: 8px 24px;
-    border-radius: 6px;
-}
-
-QMenu::item:selected {
-    background-color: #1F6FEB;
-    color: #FFFFFF;
 }
 
 QFrame#HistoryDrawerToggleStrip {
@@ -597,6 +732,33 @@ QPushButton#DrawerToggleButton:hover {
 }
 
 QPushButton#DrawerToggleButton:pressed {
+    background-color: transparent;
+    color: #8B949E;
+    border: none;
+}
+
+QPushButton#SettingsToolButton {
+    min-width: 42px;
+    max-width: 42px;
+    min-height: 42px;
+    max-height: 42px;
+    padding: 0;
+    background-color: transparent;
+    color: #C9D1D9;
+    border: none;
+    border-radius: 0;
+    font-family: "Segoe UI Symbol", "Segoe UI Emoji", "Segoe UI";
+    font-size: 21pt;
+    font-weight: 700;
+}
+
+QPushButton#SettingsToolButton:hover {
+    background-color: transparent;
+    color: #FFFFFF;
+    border: none;
+}
+
+QPushButton#SettingsToolButton:pressed {
     background-color: transparent;
     color: #8B949E;
     border: none;

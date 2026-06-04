@@ -4,7 +4,17 @@ from collections.abc import Callable, Sequence
 from typing import cast, override
 from uuid import UUID
 
-from PyQt6.QtCore import QEvent, QItemSelectionModel, QModelIndex, Qt
+from PyQt6.QtCore import (
+    QAbstractItemModel,
+    QEvent,
+    QItemSelection,
+    QItemSelectionModel,
+    QModelIndex,
+    QPoint,
+    Qt,
+    QTimer,
+    pyqtSignal,
+)
 from PyQt6.QtGui import (
     QContextMenuEvent,
     QDragEnterEvent,
@@ -16,7 +26,7 @@ from PyQt6.QtGui import (
     QMouseEvent,
     QResizeEvent,
 )
-from PyQt6.QtWidgets import QLabel, QTableWidget, QWidget
+from PyQt6.QtWidgets import QLabel, QScrollBar, QTableWidget, QWidget
 
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.domain.entities.download_task import DownloadTask
@@ -55,9 +65,13 @@ from yaloader.ui.widgets.download_queue.url_presenter import DownloadQueueUrlPre
 
 QUEUE_EMPTY_HINT_TEXT = "Вставьте ссылку в поле «Ссылка» или перетащите её сюда ⬇️"
 QUEUE_EMPTY_HINT_MARGIN = 36
+LONG_PRESS_SELECTION_DELAY_MS = 500
+LONG_PRESS_MOVE_TOLERANCE_PX = 4
 
 
 class DownloadQueueTable(QTableWidget):
+    row_selection_mode_changed = pyqtSignal(bool)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
@@ -70,6 +84,12 @@ class DownloadQueueTable(QTableWidget):
         self._on_remove_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._on_url_dropped: Callable[[str], None] | None = None
         self._suppress_next_context_menu_event = False
+        self._vertical_row_selection_anchor_row: int | None = None
+        self._left_press_row: int | None = None
+        self._left_press_position: QPoint | None = None
+        self._last_drag_y_position: int | None = None
+        self._is_long_press_selection_active = False
+        self._long_press_generation = 0
 
         self._empty_hint_label = self._build_empty_hint_label()
         self._drop_highlight_overlay = self._build_drop_highlight_overlay()
@@ -132,6 +152,20 @@ class DownloadQueueTable(QTableWidget):
         ):
             return True
 
+        if (
+            event.type() == QEvent.Type.MouseMove
+            and isinstance(event, QMouseEvent)
+            and self._handle_viewport_mouse_move(event=event)
+        ):
+            return True
+
+        if (
+            event.type() == QEvent.Type.MouseButtonRelease
+            and isinstance(event, QMouseEvent)
+            and self._handle_viewport_mouse_release(event=event)
+        ):
+            return True
+
         if event.type() == QEvent.Type.ContextMenu and isinstance(event, QContextMenuEvent):
             if self._suppress_next_context_menu_event:
                 self._suppress_next_context_menu_event = False
@@ -175,6 +209,16 @@ class DownloadQueueTable(QTableWidget):
         self._position_empty_hint_label()
         self._sync_drop_highlight_geometry()
         self._sync_overlay_scroll_bar()
+
+    @override
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        super().scrollContentsBy(0, dy)
+
+        if dx == 0:
+            return
+
+        horizontal_scroll_bar = cast(QScrollBar, self.horizontalScrollBar())
+        horizontal_scroll_bar.setValue(0)
 
     @override
     def keyPressEvent(self, event: QKeyEvent | None) -> None:
@@ -483,11 +527,25 @@ class DownloadQueueTable(QTableWidget):
         clicked_position = event.position().toPoint()
         clicked_item = self.itemAt(clicked_position)
 
-        if event.button() == Qt.MouseButton.LeftButton and clicked_item is None:
-            self._clear_current_cell_focus()
-            self.clearFocus()
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._reset_left_drag_state()
+
+            if clicked_item is None:
+                self._clear_current_cell_focus()
+                self.clearFocus()
+                event.accept()
+                return True
+
+            row_index = clicked_item.row()
+            self._left_press_row = row_index
+            self._left_press_position = clicked_position
+            self._last_drag_y_position = clicked_position.y()
+            self.selectRow(row_index)
+            self._schedule_long_press_selection(row=row_index)
             event.accept()
             return True
+
+        self._reset_left_drag_state()
 
         if event.button() != Qt.MouseButton.RightButton:
             return False
@@ -514,6 +572,155 @@ class DownloadQueueTable(QTableWidget):
 
         event.accept()
         return True
+
+    def _handle_viewport_mouse_move(self, *, event: QMouseEvent) -> bool:
+        if self._left_press_row is None:
+            return False
+
+        if not event.buttons() & Qt.MouseButton.LeftButton:
+            self._reset_left_drag_state()
+            return False
+
+        current_position = event.position().toPoint()
+
+        if self._is_long_press_selection_active:
+            target_row = self._get_row_for_vertical_drag(y_position=current_position.y())
+
+            if target_row is None:
+                return False
+
+            self._select_vertical_row_range(
+                anchor_row=self._left_press_row,
+                target_row=target_row,
+            )
+            event.accept()
+            return True
+
+        if self._is_long_press_candidate_moved(current_position=current_position):
+            self._cancel_long_press_selection()
+
+        self._scroll_vertically_by_drag(current_y_position=current_position.y())
+        event.accept()
+        return True
+
+    def _handle_viewport_mouse_release(self, *, event: QMouseEvent) -> bool:
+        if event.button() != Qt.MouseButton.LeftButton:
+            return False
+
+        was_long_press_selection_active = self._is_long_press_selection_active
+        self._reset_left_drag_state()
+
+        return was_long_press_selection_active
+
+    def _schedule_long_press_selection(self, *, row: int) -> None:
+        self._long_press_generation += 1
+        generation = self._long_press_generation
+
+        QTimer.singleShot(
+            LONG_PRESS_SELECTION_DELAY_MS,
+            lambda: self._activate_long_press_selection(
+                row=row,
+                generation=generation,
+            ),
+        )
+
+    def _activate_long_press_selection(self, *, row: int, generation: int) -> None:
+        if generation != self._long_press_generation:
+            return
+
+        if self._left_press_row != row:
+            return
+
+        if self._left_press_position is None:
+            return
+
+        self._set_long_press_selection_active(is_active=True)
+        self._vertical_row_selection_anchor_row = row
+        self._select_vertical_row_range(anchor_row=row, target_row=row)
+
+    def _cancel_long_press_selection(self) -> None:
+        self._long_press_generation += 1
+        self._set_long_press_selection_active(is_active=False)
+        self._vertical_row_selection_anchor_row = None
+
+    def _set_long_press_selection_active(self, *, is_active: bool) -> None:
+        if self._is_long_press_selection_active == is_active:
+            return
+
+        self._is_long_press_selection_active = is_active
+        self.row_selection_mode_changed.emit(is_active)
+
+    def _reset_left_drag_state(self) -> None:
+        self._cancel_long_press_selection()
+        self._left_press_row = None
+        self._left_press_position = None
+        self._last_drag_y_position = None
+
+    def _is_long_press_candidate_moved(self, *, current_position: QPoint) -> bool:
+        if self._left_press_position is None:
+            return True
+
+        delta = current_position - self._left_press_position
+        return (
+            abs(delta.x()) > LONG_PRESS_MOVE_TOLERANCE_PX
+            or abs(delta.y()) > LONG_PRESS_MOVE_TOLERANCE_PX
+        )
+
+    def _scroll_vertically_by_drag(self, *, current_y_position: int) -> None:
+        if self._last_drag_y_position is None:
+            self._last_drag_y_position = current_y_position
+            return
+
+        delta_y = current_y_position - self._last_drag_y_position
+        self._last_drag_y_position = current_y_position
+
+        if delta_y == 0:
+            return
+
+        vertical_scroll_bar = cast(QScrollBar, self.verticalScrollBar())
+        vertical_scroll_bar.setValue(vertical_scroll_bar.value() - delta_y)
+
+        horizontal_scroll_bar = cast(QScrollBar, self.horizontalScrollBar())
+        horizontal_scroll_bar.setValue(0)
+
+    def _get_row_for_vertical_drag(self, *, y_position: int) -> int | None:
+        if self.rowCount() == 0:
+            return None
+
+        row_index = self.rowAt(y_position)
+
+        if row_index >= 0:
+            return row_index
+
+        if y_position < 0:
+            return 0
+
+        return self.rowCount() - 1
+
+    def _select_vertical_row_range(self, *, anchor_row: int, target_row: int) -> None:
+        first_row = max(0, min(anchor_row, target_row))
+        last_row = min(self.rowCount() - 1, max(anchor_row, target_row))
+
+        selection_model = self.selectionModel()
+
+        if not isinstance(selection_model, QItemSelectionModel):
+            return
+
+        model = cast(QAbstractItemModel, self.model())
+        top_left_index = model.index(first_row, 0)
+        bottom_right_index = model.index(last_row, max(0, self.columnCount() - 1))
+        current_index = model.index(target_row, 0)
+
+        selection = QItemSelection(top_left_index, bottom_right_index)
+        selection_model.select(
+            selection,
+            QItemSelectionModel.SelectionFlag.ClearAndSelect
+            | QItemSelectionModel.SelectionFlag.Rows,
+        )
+        selection_model.setCurrentIndex(
+            current_index,
+            QItemSelectionModel.SelectionFlag.NoUpdate,
+        )
 
     def _download_tasks(self, task_ids: tuple[UUID, ...]) -> None:
         if self._on_download_tasks is not None:

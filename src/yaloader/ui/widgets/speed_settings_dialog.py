@@ -1,6 +1,18 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import QSignalBlocker, Qt, pyqtSignal
+from typing import override
+
+from PyQt6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QParallelAnimationGroup,
+    QPropertyAnimation,
+    QRect,
+    QSignalBlocker,
+    Qt,
+    pyqtSignal,
+)
+from PyQt6.QtGui import QEnterEvent, QMouseEvent
 from PyQt6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -8,6 +20,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSlider,
     QSpinBox,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -17,10 +30,69 @@ from yaloader.domain.download_speed_limit import (
     MIN_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB,
     build_download_speed_limit_from_megabytes,
     convert_download_speed_limit_to_megabytes,
-    format_download_speed_limit_label,
 )
 
-DIALOG_WIDTH = 460
+POPUP_WIDTH = 320
+POPUP_SHOW_ANIMATION_DURATION_MS = 145
+POPUP_RIGHT_EDGE_SHIFT_LEFT = 52
+RESET_BUTTON_SIZE = 28
+WINDOW_MAXIMUM_HEIGHT = 16_777_215
+
+
+class SpeedLimitSlider(QSlider):
+    interaction_state_changed = pyqtSignal(bool)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(Qt.Orientation.Horizontal, parent)
+
+        self.setProperty("hovered", "false")
+        self.setProperty("pressed", "false")
+
+    @override
+    def enterEvent(self, event: QEnterEvent | None) -> None:
+        self._set_hovered(is_hovered=True)
+        super().enterEvent(event)
+
+    @override
+    def leaveEvent(self, event: QEvent | None) -> None:
+        self._set_hovered(is_hovered=False)
+        super().leaveEvent(event)
+
+    @override
+    def mousePressEvent(self, event: QMouseEvent | None) -> None:
+        self._set_pressed(is_pressed=True)
+        super().mousePressEvent(event)
+
+    @override
+    def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
+        super().mouseReleaseEvent(event)
+        self._set_pressed(is_pressed=False)
+
+    def _set_hovered(self, *, is_hovered: bool) -> None:
+        next_value = "true" if is_hovered else "false"
+
+        if self.property("hovered") == next_value:
+            return
+
+        self.setProperty("hovered", next_value)
+        self._refresh_style()
+
+    def _set_pressed(self, *, is_pressed: bool) -> None:
+        next_value = "true" if is_pressed else "false"
+
+        if self.property("pressed") == next_value:
+            return
+
+        self.setProperty("pressed", next_value)
+        self._refresh_style()
+        self.interaction_state_changed.emit(is_pressed)
+
+    def _refresh_style(self) -> None:
+        style = self.style()
+
+        if isinstance(style, QStyle):
+            style.unpolish(self)
+            style.polish(self)
 
 
 class SpeedSettingsDialog(QDialog):
@@ -29,27 +101,42 @@ class SpeedSettingsDialog(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self._slider = QSlider(Qt.Orientation.Horizontal, self)
+        self._slider = SpeedLimitSlider(self)
         self._spin_box = QSpinBox(self)
-        self._current_value_label = QLabel(self)
-        self._close_button = QPushButton("Закрыть", self)
+        self._reset_button = QPushButton("↻", self)
+        self._show_animation: QParallelAnimationGroup | None = None
+        self._final_popup_height = 0
 
         self._configure_widgets()
         self._connect_signals()
         self._build_layout()
+
+    def toggle_near_anchor(
+        self,
+        *,
+        anchor_widget: QWidget,
+        bytes_per_second: int | None,
+    ) -> None:
+        if self.isVisible():
+            self.close()
+            return
+
+        self.set_download_speed_limit(bytes_per_second=bytes_per_second)
+        self._show_near_anchor(anchor_widget=anchor_widget)
 
     def set_download_speed_limit(self, *, bytes_per_second: int | None) -> None:
         megabytes_per_second = convert_download_speed_limit_to_megabytes(
             bytes_per_second=bytes_per_second,
         )
         self._set_value_without_signal(megabytes_per_second=megabytes_per_second)
-        self._update_current_value_label(megabytes_per_second=megabytes_per_second)
 
     def _configure_widgets(self) -> None:
         self.setObjectName("SpeedSettingsDialog")
         self.setWindowTitle("Настройки загрузки")
+        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setModal(False)
-        self.setMinimumWidth(DIALOG_WIDTH)
+        self.setFixedWidth(POPUP_WIDTH)
 
         self._slider.setObjectName("SpeedLimitSlider")
         self._slider.setRange(
@@ -58,62 +145,148 @@ class SpeedSettingsDialog(QDialog):
         )
         self._slider.setSingleStep(1)
         self._slider.setPageStep(5)
-        self._slider.setTickInterval(10)
-        self._slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self._slider.setTickPosition(QSlider.TickPosition.NoTicks)
 
         self._spin_box.setObjectName("SpeedLimitSpinBox")
+        self._spin_box.setProperty("sliderPressed", "false")
         self._spin_box.setRange(
             MIN_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB,
             MAX_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB,
         )
         self._spin_box.setSpecialValueText("Без ограничения")
-        self._spin_box.setSuffix(" MB/s")
+        self._spin_box.setSuffix(" MBytes/s")
 
-        self._current_value_label.setObjectName("MutedLabel")
-        self._close_button.setObjectName("SecondaryButton")
+        self._reset_button.setObjectName("SpeedResetButton")
+        self._reset_button.setFixedSize(RESET_BUTTON_SIZE, RESET_BUTTON_SIZE)
+        self._reset_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._reset_button.setToolTip("Сбросить ограничение скорости")
 
     def _connect_signals(self) -> None:
         self._slider.valueChanged.connect(self._handle_slider_value_changed)
+        self._slider.interaction_state_changed.connect(
+            self._handle_slider_interaction_state_changed
+        )
         self._spin_box.valueChanged.connect(self._handle_spin_box_value_changed)
-        self._close_button.clicked.connect(self.close)
+        self._reset_button.clicked.connect(self._handle_reset_button_clicked)
 
     def _build_layout(self) -> None:
         root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(18, 18, 18, 18)
-        root_layout.setSpacing(14)
+        root_layout.setContentsMargins(14, 12, 14, 12)
+        root_layout.setSpacing(10)
 
-        title_label = QLabel("Ограничение скорости", self)
-        title_label.setObjectName("SectionTitleLabel")
+        title_layout = QHBoxLayout()
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(8)
 
-        value_layout = QHBoxLayout()
-        value_layout.setContentsMargins(0, 0, 0, 0)
-        value_layout.setSpacing(12)
-        value_layout.addWidget(self._spin_box)
-        value_layout.addWidget(self._current_value_label, stretch=1)
+        title_label = QLabel("Ограничение скорости загрузки", self)
+        title_label.setObjectName("SpeedSettingsPopupTitle")
 
-        actions_layout = QHBoxLayout()
-        actions_layout.setContentsMargins(0, 0, 0, 0)
-        actions_layout.addStretch(1)
-        actions_layout.addWidget(self._close_button)
+        title_layout.addWidget(title_label)
+        title_layout.addStretch(1)
+        title_layout.addWidget(self._reset_button)
 
-        root_layout.addWidget(title_label)
+        root_layout.addLayout(title_layout)
         root_layout.addWidget(self._slider)
-        root_layout.addLayout(value_layout)
-        root_layout.addLayout(actions_layout)
+        root_layout.addWidget(self._spin_box)
+
+    def _show_near_anchor(self, *, anchor_widget: QWidget) -> None:
+        self.setMinimumHeight(0)
+        self.setMaximumHeight(WINDOW_MAXIMUM_HEIGHT)
+        self.adjustSize()
+
+        final_width = self.sizeHint().width()
+        final_height = self.sizeHint().height()
+        self._final_popup_height = final_height
+
+        anchor_left_bottom = anchor_widget.mapToGlobal(anchor_widget.rect().bottomLeft())
+        final_right = anchor_left_bottom.x() - POPUP_RIGHT_EDGE_SHIFT_LEFT
+        final_top = anchor_left_bottom.y()
+
+        final_geometry = QRect(
+            final_right - final_width + 1,
+            final_top,
+            final_width,
+            final_height,
+        )
+
+        self._start_show_animation(final_geometry=final_geometry)
+
+    def _start_show_animation(self, *, final_geometry: QRect) -> None:
+        if self._show_animation is not None:
+            self._show_animation.stop()
+
+        start_height = 1
+        final_height = max(1, final_geometry.height())
+
+        self.setWindowOpacity(0.0)
+        self.setGeometry(
+            final_geometry.left(),
+            final_geometry.top(),
+            final_geometry.width(),
+            start_height,
+        )
+        self.setMinimumHeight(start_height)
+        self.setMaximumHeight(start_height)
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+        minimum_height_animation = QPropertyAnimation(self, b"minimumHeight", self)
+        minimum_height_animation.setDuration(POPUP_SHOW_ANIMATION_DURATION_MS)
+        minimum_height_animation.setStartValue(start_height)
+        minimum_height_animation.setEndValue(final_height)
+        minimum_height_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        maximum_height_animation = QPropertyAnimation(self, b"maximumHeight", self)
+        maximum_height_animation.setDuration(POPUP_SHOW_ANIMATION_DURATION_MS)
+        maximum_height_animation.setStartValue(start_height)
+        maximum_height_animation.setEndValue(final_height)
+        maximum_height_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        opacity_animation = QPropertyAnimation(self, b"windowOpacity", self)
+        opacity_animation.setDuration(POPUP_SHOW_ANIMATION_DURATION_MS)
+        opacity_animation.setStartValue(0.0)
+        opacity_animation.setEndValue(1.0)
+        opacity_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        animation_group = QParallelAnimationGroup(self)
+        animation_group.addAnimation(minimum_height_animation)
+        animation_group.addAnimation(maximum_height_animation)
+        animation_group.addAnimation(opacity_animation)
+        animation_group.finished.connect(self._handle_show_animation_finished)
+        animation_group.start()
+
+        self._show_animation = animation_group
+
+    def _handle_show_animation_finished(self) -> None:
+        final_height = max(1, self._final_popup_height)
+
+        self.setMinimumHeight(final_height)
+        self.setMaximumHeight(final_height)
+        self._show_animation = None
 
     def _handle_slider_value_changed(self, value: int) -> None:
         self._set_spin_box_value_without_signal(value=value)
         self._emit_speed_limit_change(megabytes_per_second=value)
 
+    def _handle_slider_interaction_state_changed(self, is_pressed: bool) -> None:
+        self._spin_box.setProperty("sliderPressed", "true" if is_pressed else "false")
+        self._refresh_spin_box_style()
+
     def _handle_spin_box_value_changed(self, value: int) -> None:
         self._set_slider_value_without_signal(value=value)
         self._emit_speed_limit_change(megabytes_per_second=value)
+
+    def _handle_reset_button_clicked(self, _checked: bool = False) -> None:
+        self._set_value_without_signal(megabytes_per_second=MIN_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB)
+        self._emit_speed_limit_change(
+            megabytes_per_second=MIN_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB,
+        )
 
     def _emit_speed_limit_change(self, *, megabytes_per_second: int) -> None:
         bytes_per_second = build_download_speed_limit_from_megabytes(
             megabytes_per_second=megabytes_per_second,
         )
-        self._update_current_value_label(megabytes_per_second=megabytes_per_second)
         self.download_speed_limit_changed.emit(bytes_per_second)
 
     def _set_value_without_signal(self, *, megabytes_per_second: int) -> None:
@@ -130,13 +303,12 @@ class SpeedSettingsDialog(QDialog):
         self._spin_box.setValue(value)
         del blocker
 
-    def _update_current_value_label(self, *, megabytes_per_second: int) -> None:
-        bytes_per_second = build_download_speed_limit_from_megabytes(
-            megabytes_per_second=megabytes_per_second,
-        )
-        self._current_value_label.setText(
-            format_download_speed_limit_label(bytes_per_second=bytes_per_second),
-        )
+    def _refresh_spin_box_style(self) -> None:
+        style = self._spin_box.style()
+
+        if isinstance(style, QStyle):
+            style.unpolish(self._spin_box)
+            style.polish(self._spin_box)
 
 
 def normalize_download_speed_limit_signal_value(value: object) -> int | None:

@@ -36,6 +36,7 @@ class HistoryPanel(QFrame):
         self._records_count = 0
         self._on_add_to_queue: Callable[[DownloadHistoryRecord], None] | None = None
         self._on_delete_record: Callable[[DownloadHistoryRecord], None] | None = None
+        self._on_copy_url: Callable[[DownloadHistoryRecord], None] | None = None
 
         self._configure_widgets()
         self._build_layout()
@@ -45,9 +46,11 @@ class HistoryPanel(QFrame):
         *,
         on_add_to_queue: Callable[[DownloadHistoryRecord], None],
         on_delete_record: Callable[[DownloadHistoryRecord], None],
+        on_copy_url: Callable[[DownloadHistoryRecord], None] | None = None,
     ) -> None:
         self._on_add_to_queue = on_add_to_queue
         self._on_delete_record = on_delete_record
+        self._on_copy_url = on_copy_url
 
     def set_records(self, records: Sequence[DownloadHistoryRecord]) -> None:
         self._clear_records_layout()
@@ -67,6 +70,7 @@ class HistoryPanel(QFrame):
                     record=record,
                     on_add_to_queue=self._on_add_to_queue,
                     on_delete_record=self._on_delete_record,
+                    on_copy_url=self._on_copy_url,
                     parent=self,
                 )
             )
@@ -76,9 +80,18 @@ class HistoryPanel(QFrame):
     def has_records(self) -> bool:
         return self._records_count > 0
 
+    def set_drawer_width(self, *, width: int) -> None:
+        normalized_width = max(0, min(HISTORY_PANEL_WIDTH, width))
+        self.setMinimumWidth(normalized_width)
+        self.setMaximumWidth(normalized_width)
+        self.resize(normalized_width, self.height())
+
+    def current_drawer_width(self) -> int:
+        return self.width()
+
     def _configure_widgets(self) -> None:
         self.setObjectName("HistoryPanel")
-        self.setFixedWidth(HISTORY_PANEL_WIDTH)
+        self.set_drawer_width(width=HISTORY_PANEL_WIDTH)
 
         self.refresh_button.setObjectName("TinyGhostButton")
         self.clear_button.setObjectName("TinyDangerButton")

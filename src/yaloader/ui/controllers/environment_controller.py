@@ -84,7 +84,7 @@ class EnvironmentController:
 
         return EnvironmentControllerUpdate(
             status_message=(
-                "Ограничение скорости: "
+                "Ограничение скорости загрузки: "
                 f"{format_download_speed_limit_label(bytes_per_second=bytes_per_second)}"
             ),
             settings=settings,

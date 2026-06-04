@@ -2,7 +2,32 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
+from yaloader.ui.widgets.download_queue.columns import QUEUE_ROW_HEIGHT
 from yaloader.ui.widgets.download_queue.table import DownloadQueueTable
+
+QUEUE_MINIMUM_VISIBLE_ROWS_NUMERATOR = 3
+QUEUE_MINIMUM_VISIBLE_ROWS_DENOMINATOR = 2
+QUEUE_TABLE_HEADER_AND_FRAME_HEIGHT = 44
+QUEUE_TABLE_MINIMUM_HEIGHT = (
+    QUEUE_ROW_HEIGHT
+    * QUEUE_MINIMUM_VISIBLE_ROWS_NUMERATOR
+    // QUEUE_MINIMUM_VISIBLE_ROWS_DENOMINATOR
+    + QUEUE_TABLE_HEADER_AND_FRAME_HEIGHT
+)
+
+QUEUE_PANEL_VERTICAL_MARGINS = 36
+QUEUE_PANEL_VERTICAL_SPACING = 24
+QUEUE_PANEL_TITLE_HEIGHT = 24
+QUEUE_PANEL_ACTIONS_HEIGHT = 38
+QUEUE_PANEL_HEIGHT_SAFETY_MARGIN = 8
+QUEUE_PANEL_MINIMUM_HEIGHT = (
+    QUEUE_TABLE_MINIMUM_HEIGHT
+    + QUEUE_PANEL_VERTICAL_MARGINS
+    + QUEUE_PANEL_VERTICAL_SPACING
+    + QUEUE_PANEL_TITLE_HEIGHT
+    + QUEUE_PANEL_ACTIONS_HEIGHT
+    + QUEUE_PANEL_HEIGHT_SAFETY_MARGIN
+)
 
 
 class DownloadQueuePanel(QFrame):
@@ -19,6 +44,8 @@ class DownloadQueuePanel(QFrame):
 
     def _configure_widgets(self) -> None:
         self.setObjectName("PanelFrame")
+        self.setMinimumHeight(QUEUE_PANEL_MINIMUM_HEIGHT)
+        self.queue_table.setMinimumHeight(QUEUE_TABLE_MINIMUM_HEIGHT)
 
         self.start_queue_button.setObjectName("PrimaryButton")
         self.remove_from_queue_button.setObjectName("SecondaryButton")

@@ -55,9 +55,15 @@ class StatusChip(QFrame):
     def _configure_widgets(self) -> None:
         self.setObjectName("StatusChipFrame")
         self.setProperty("refreshing", "false")
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+
         self._marker_label.setObjectName("StatusDot")
+        self._marker_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self._marker_label.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+
         self._text_label.setObjectName("StatusChipText")
-        self._text_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._text_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self._text_label.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
     def _build_layout(self) -> None:
         layout = QGridLayout(self)
@@ -112,7 +118,8 @@ class EnvironmentPanel(QFrame):
             chip.play_refresh_feedback()
 
     def _configure_widgets(self) -> None:
-        self.setObjectName("EnvironmentPanel")
+        self.setObjectName("EnvironmentPanelFrame")
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
         self.refresh_button.setObjectName("GhostButton")
         self.open_cookies_dir_button.setObjectName("TinyGhostButton")
@@ -134,7 +141,9 @@ class EnvironmentPanel(QFrame):
         header_layout.setSpacing(8)
 
         title_label = QLabel("Состояние системы", self)
-        title_label.setObjectName("SmallSectionTitleLabel")
+        title_label.setObjectName("EnvironmentSectionTitleLabel")
+        title_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        title_label.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
         header_layout.addWidget(title_label)
         header_layout.addStretch(1)

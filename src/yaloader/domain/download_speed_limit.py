@@ -60,7 +60,8 @@ def validate_custom_download_speed_limit_mb(*, megabytes_per_second: int) -> int
     ):
         message = (
             "Download speed limit must be between "
-            f"{MIN_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB} and {MAX_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB} MB/s."
+            f"{MIN_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB} and "
+            f"{MAX_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB} MBytes/s."
         )
         raise ValueError(message)
 
@@ -111,10 +112,10 @@ def format_download_speed_limit_label(*, bytes_per_second: int | None) -> str:
 def format_bytes_per_second(*, bytes_per_second: int) -> str:
     if bytes_per_second >= BYTES_PER_MIB:
         value = bytes_per_second / BYTES_PER_MIB
-        return f"{format_decimal_number(value=value)} MB/s"
+        return f"{format_decimal_number(value=value)} MBytes/s"
 
     value = bytes_per_second / BYTES_PER_KIB
-    return f"{format_decimal_number(value=value)} KB/s"
+    return f"{format_decimal_number(value=value)} KBytes/s"
 
 
 def format_decimal_number(*, value: float) -> str:

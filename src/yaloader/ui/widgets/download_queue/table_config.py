@@ -7,7 +7,6 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QScrollBar,
-    QScroller,
     QTableWidget,
     QWidget,
 )
@@ -56,11 +55,7 @@ def configure_download_queue_table(*, table: QTableWidget) -> None:
 
     viewport = cast(QWidget, table.viewport())
     viewport.setAcceptDrops(True)
-
-    QScroller.grabGesture(
-        viewport,
-        QScroller.ScrollerGestureType.LeftMouseButtonGesture,
-    )
+    viewport.setMouseTracking(True)
 
     horizontal_header = cast(QHeaderView, table.horizontalHeader())
     horizontal_header.setSectionsMovable(False)

@@ -6,12 +6,12 @@ from enum import StrEnum
 from uuid import UUID
 
 from PyQt6.QtCore import QPoint
-from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QWidget, QWidgetAction
 
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
 from yaloader.ui.widgets.common.context_menu_actions import (
+    add_menu_action,
     add_menu_button_action,
     create_context_menu,
 )
@@ -50,14 +50,13 @@ def show_download_queue_context_menu(
 
     context_menu = create_context_menu(parent=parent)
 
-    copy_action = QAction(
-        "Копировать ссылки" if len(selected_tasks) > 1 else "Копировать ссылку",
-        context_menu,
+    copy_action = add_menu_action(
+        menu=context_menu,
+        text="Копировать ссылки" if len(selected_tasks) > 1 else "Копировать ссылку",
     )
-    context_menu.addAction(copy_action)
 
-    download_action: QAction | None = None
-    cancel_action: QAction | None = None
+    download_action: QWidgetAction | None = None
+    cancel_action: QWidgetAction | None = None
     downloadable_task_ids: tuple[UUID, ...] = ()
 
     if len(selected_tasks) == 1 and selected_tasks[0].status is DownloadStatus.RUNNING:
@@ -72,11 +71,10 @@ def show_download_queue_context_menu(
         )
 
         if downloadable_task_ids:
-            download_action = QAction(
-                "Скачать файлы" if len(downloadable_task_ids) > 1 else "Скачать файл",
-                context_menu,
+            download_action = add_menu_action(
+                menu=context_menu,
+                text="Скачать файлы" if len(downloadable_task_ids) > 1 else "Скачать файл",
             )
-            context_menu.addAction(download_action)
 
     remove_action = add_menu_button_action(
         menu=context_menu,
