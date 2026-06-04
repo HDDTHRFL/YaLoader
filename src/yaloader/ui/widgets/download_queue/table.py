@@ -80,7 +80,7 @@ class DownloadQueueTable(QTableWidget):
         self._row_states_by_task_id: dict[UUID, QueueTableRowState] = {}
 
         self._on_download_tasks: Callable[[tuple[UUID, ...]], None] | None = None
-        self._on_cancel_task: Callable[[UUID], None] | None = None
+        self._on_cancel_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._on_remove_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._on_url_dropped: Callable[[str], None] | None = None
         self._suppress_next_context_menu_event = False
@@ -247,11 +247,11 @@ class DownloadQueueTable(QTableWidget):
         self,
         *,
         on_download_tasks: Callable[[tuple[UUID, ...]], None],
-        on_cancel_task: Callable[[UUID], None],
+        on_cancel_tasks: Callable[[tuple[UUID, ...]], None],
         on_remove_tasks: Callable[[tuple[UUID, ...]], None],
     ) -> None:
         self._on_download_tasks = on_download_tasks
-        self._on_cancel_task = on_cancel_task
+        self._on_cancel_tasks = on_cancel_tasks
         self._on_remove_tasks = on_remove_tasks
 
     def set_url_drop_callback(self, *, on_url_dropped: Callable[[str], None]) -> None:
@@ -456,8 +456,8 @@ class DownloadQueueTable(QTableWidget):
             self._download_tasks(task_ids=task_ids)
             return
 
-        if action is DownloadQueueContextAction.CANCEL and len(task_ids) == 1:
-            self._cancel_task(task_id=task_ids[0])
+        if action is DownloadQueueContextAction.CANCEL and task_ids:
+            self._cancel_tasks(task_ids=task_ids)
             return
 
         if action is DownloadQueueContextAction.REMOVE:
@@ -727,9 +727,9 @@ class DownloadQueueTable(QTableWidget):
         if self._on_download_tasks is not None:
             self._on_download_tasks(task_ids)
 
-    def _cancel_task(self, task_id: UUID) -> None:
-        if self._on_cancel_task is not None:
-            self._on_cancel_task(task_id)
+    def _cancel_tasks(self, task_ids: tuple[UUID, ...]) -> None:
+        if self._on_cancel_tasks is not None:
+            self._on_cancel_tasks(task_ids)
 
     def _remove_tasks(self, task_ids: tuple[UUID, ...]) -> None:
         if self._on_remove_tasks is not None:

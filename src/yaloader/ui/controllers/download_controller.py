@@ -32,6 +32,13 @@ HISTORY_RECORD_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
     }
 )
 
+CANCELABLE_TASK_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
+    {
+        DownloadStatus.PENDING,
+        DownloadStatus.RUNNING,
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class DownloadControllerUpdate:
@@ -102,29 +109,55 @@ class DownloadController:
         )
 
     def start_tasks(self, *, task_ids: tuple[UUID, ...]) -> DownloadControllerUpdate:
-        if self.is_active:
-            return DownloadControllerUpdate(status_message="Сейчас уже выполняется загрузка")
-
-        downloadable_task_ids: list[UUID] = []
-
-        for task_id in task_ids:
-            task = self._queue_service.get_task(task_id=task_id)
-
-            if task is not None and is_downloadable(task):
-                downloadable_task_ids.append(task.task_id)
+        downloadable_task_ids = self._collect_downloadable_task_ids(task_ids=task_ids)
 
         if not downloadable_task_ids:
             return DownloadControllerUpdate(
                 status_message="Среди выбранных задач нет доступных для загрузки"
             )
 
-        queued_task_ids = tuple(downloadable_task_ids)
+        if self.is_active:
+            queued_task_ids = tuple(
+                task_id
+                for task_id in downloadable_task_ids
+                if task_id not in self._queued_task_ids and task_id != self._active_download_task_id
+            )
+
+            if not queued_task_ids:
+                return DownloadControllerUpdate(
+                    status_message="Выбранные задачи уже ожидают скачивания"
+                )
+
+            self._queued_task_ids.extend(queued_task_ids)
+
+            return DownloadControllerUpdate(
+                status_message=f"Добавлено в текущую очередь: {len(queued_task_ids)}",
+                prepared_task_ids=queued_task_ids,
+            )
+
+        queued_task_ids = downloadable_task_ids
         self._queued_task_ids = list(queued_task_ids)
 
         return merge_download_updates(
             DownloadControllerUpdate(prepared_task_ids=queued_task_ids),
             self._start_next_queued_download(),
         )
+
+    def _collect_downloadable_task_ids(self, *, task_ids: tuple[UUID, ...]) -> tuple[UUID, ...]:
+        downloadable_task_ids: list[UUID] = []
+        seen_task_ids: set[UUID] = set()
+
+        for task_id in task_ids:
+            if task_id in seen_task_ids:
+                continue
+
+            seen_task_ids.add(task_id)
+            task = self._queue_service.get_task(task_id=task_id)
+
+            if task is not None and is_downloadable(task):
+                downloadable_task_ids.append(task.task_id)
+
+        return tuple(downloadable_task_ids)
 
     def cancel_active_download(self) -> DownloadControllerUpdate:
         if self._active_cancellation_token is None or self._active_download_task_id is None:
@@ -160,12 +193,70 @@ class DownloadController:
         )
 
     def cancel_task_download(self, *, task_id: UUID) -> DownloadControllerUpdate:
-        if self._active_download_task_id != task_id:
-            return DownloadControllerUpdate(
-                status_message="Отменить можно только активную загрузку"
+        return self.cancel_tasks_download(task_ids=(task_id,))
+
+    def cancel_tasks_download(self, *, task_ids: tuple[UUID, ...]) -> DownloadControllerUpdate:
+        unique_task_ids = tuple(dict.fromkeys(task_ids))
+
+        if not unique_task_ids:
+            return DownloadControllerUpdate(status_message="Выберите задачи для отмены")
+
+        task_id_set = set(unique_task_ids)
+        is_active_task_cancel_requested = (
+            self._active_download_task_id is not None
+            and self._active_download_task_id in task_id_set
+        )
+
+        if is_active_task_cancel_requested and self._active_cancellation_token is not None:
+            self._active_cancellation_token.request_cancel()
+
+        self._queued_task_ids = [
+            queued_task_id
+            for queued_task_id in self._queued_task_ids
+            if queued_task_id not in task_id_set
+        ]
+
+        updated_tasks: list[DownloadTask] = []
+        should_reload_history = False
+
+        for task_id in unique_task_ids:
+            task = self._queue_service.get_task(task_id=task_id)
+
+            if task is None or task.status not in CANCELABLE_TASK_STATUSES:
+                continue
+
+            canceled_task = self._queue_service.update_status(
+                task_id=task.task_id,
+                status=DownloadStatus.CANCELED,
+                error_message="Загрузка отменена пользователем.",
             )
 
-        return self.cancel_active_download()
+            if canceled_task is None:
+                continue
+
+            updated_tasks.append(canceled_task)
+            should_reload_history = (
+                self._record_download_history(task=canceled_task, output_path=None)
+                or should_reload_history
+            )
+
+        if not updated_tasks:
+            return DownloadControllerUpdate(
+                status_message="Среди выбранных задач нет активных или ожидающих загрузок"
+            )
+
+        if is_active_task_cancel_requested:
+            status_message = "Отмена выбранной загрузки... Частичные файлы будут удалены"
+        elif len(updated_tasks) == 1:
+            status_message = "Выбранная задача отменена"
+        else:
+            status_message = f"Отменено выбранных задач: {len(updated_tasks)}"
+
+        return DownloadControllerUpdate(
+            status_message=status_message,
+            updated_tasks=tuple(updated_tasks),
+            should_reload_history=should_reload_history,
+        )
 
     def remove_tasks_from_queue(self, *, task_ids: tuple[UUID, ...]) -> DownloadControllerUpdate:
         if self._active_download_task_id in task_ids:

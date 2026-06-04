@@ -219,7 +219,7 @@ class MainWindow(QMainWindow):
 
         self._queue_table.set_context_menu_callbacks(
             on_download_tasks=self._start_tasks_download,
-            on_cancel_task=self._cancel_task_download,
+            on_cancel_tasks=self._cancel_tasks_download,
             on_remove_tasks=self._remove_tasks_from_queue,
         )
         self._queue_table.set_url_drop_callback(
@@ -718,9 +718,9 @@ class MainWindow(QMainWindow):
     def _start_tasks_download(self, task_ids: tuple[UUID, ...]) -> None:
         self._apply_download_update(update=self._download_controller.start_tasks(task_ids=task_ids))
 
-    def _cancel_task_download(self, task_id: UUID) -> None:
+    def _cancel_tasks_download(self, task_ids: tuple[UUID, ...]) -> None:
         self._apply_download_update(
-            update=self._download_controller.cancel_task_download(task_id=task_id)
+            update=self._download_controller.cancel_tasks_download(task_ids=task_ids)
         )
 
     def _remove_tasks_from_queue(self, task_ids: tuple[UUID, ...]) -> None:
