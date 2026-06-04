@@ -130,6 +130,8 @@ class MainWindow(QMainWindow):
             queue_service=container.download_queue_service,
             history_service=container.download_history_service,
             downloader=container.downloader,
+            download_preparer=container.download_preparer,
+            prepared_download_cache=container.prepared_download_cache,
         )
         self._history_controller = HistoryController(
             history_service=container.download_history_service,

@@ -13,16 +13,20 @@ from yaloader.application.dto.cancellation import DownloadCancellationToken
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_result import DownloadResult
+from yaloader.application.dto.prepared_download import PreparedDownload
+from yaloader.application.ports.download_preparer import DownloadPreparer
 from yaloader.application.ports.downloader import Downloader
 from yaloader.application.services.download_history_service import DownloadHistoryService
 from yaloader.application.services.download_queue_service import (
     DownloadQueueService,
     is_downloadable,
 )
+from yaloader.application.services.prepared_download_cache import PreparedDownloadCache
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
 
 DOWNLOAD_WORKERS_COUNT = 1
+PREPARATION_WORKERS_COUNT = 3
 
 HISTORY_RECORD_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
     {
@@ -38,6 +42,14 @@ CANCELABLE_TASK_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
         DownloadStatus.RUNNING,
     }
 )
+
+
+@dataclass(frozen=True, slots=True)
+class DownloadPreparationResult:
+    task_id: UUID
+    prepared_download: PreparedDownload | None = None
+    error_message: str | None = None
+    is_canceled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,10 +69,14 @@ class DownloadController:
         queue_service: DownloadQueueService,
         history_service: DownloadHistoryService,
         downloader: Downloader,
+        download_preparer: DownloadPreparer | None = None,
+        prepared_download_cache: PreparedDownloadCache | None = None,
     ) -> None:
         self._queue_service = queue_service
         self._history_service = history_service
         self._downloader = downloader
+        self._download_preparer = download_preparer
+        self._prepared_download_cache = prepared_download_cache
 
         self._queued_task_ids: list[UUID] = []
         self._recorded_history_task_ids: set[UUID] = set()
@@ -70,9 +86,15 @@ class DownloadController:
             max_workers=DOWNLOAD_WORKERS_COUNT,
             thread_name_prefix="yaloader-download",
         )
+        self._preparation_executor = ThreadPoolExecutor(
+            max_workers=PREPARATION_WORKERS_COUNT,
+            thread_name_prefix="yaloader-prepare",
+        )
         self._active_download_future: Future[DownloadResult] | None = None
         self._active_download_task_id: UUID | None = None
         self._active_cancellation_token: DownloadCancellationToken | None = None
+        self._preparation_futures_by_task_id: dict[UUID, Future[DownloadPreparationResult]] = {}
+        self._preparation_tokens_by_task_id: dict[UUID, DownloadCancellationToken] = {}
 
     @property
     def is_active(self) -> bool:
@@ -86,7 +108,9 @@ class DownloadController:
         if self._active_cancellation_token is not None:
             self._active_cancellation_token.request_cancel()
 
+        self._cancel_preparation_tokens(task_ids=tuple(self._preparation_tokens_by_task_id))
         self._download_executor.shutdown(wait=False, cancel_futures=True)
+        self._preparation_executor.shutdown(wait=False, cancel_futures=True)
 
     def clear_recorded_history_flags(self) -> None:
         self._recorded_history_task_ids.clear()
@@ -104,7 +128,7 @@ class DownloadController:
         self._queued_task_ids = list(queued_task_ids)
 
         return merge_download_updates(
-            DownloadControllerUpdate(prepared_task_ids=queued_task_ids),
+            self._prepare_tasks_for_download(task_ids=queued_task_ids),
             self._start_next_queued_download(),
         )
 
@@ -130,16 +154,18 @@ class DownloadController:
 
             self._queued_task_ids.extend(queued_task_ids)
 
-            return DownloadControllerUpdate(
-                status_message=f"Добавлено в текущую очередь: {len(queued_task_ids)}",
-                prepared_task_ids=queued_task_ids,
+            return merge_download_updates(
+                self._prepare_tasks_for_download(task_ids=queued_task_ids),
+                DownloadControllerUpdate(
+                    status_message=f"Добавлено в текущую очередь: {len(queued_task_ids)}",
+                ),
             )
 
         queued_task_ids = downloadable_task_ids
         self._queued_task_ids = list(queued_task_ids)
 
         return merge_download_updates(
-            DownloadControllerUpdate(prepared_task_ids=queued_task_ids),
+            self._prepare_tasks_for_download(task_ids=queued_task_ids),
             self._start_next_queued_download(),
         )
 
@@ -166,11 +192,13 @@ class DownloadController:
         task_ids_to_cancel = self._build_prepared_task_ids_for_cancel()
         self._queued_task_ids.clear()
         self._active_cancellation_token.request_cancel()
+        self._cancel_preparation_tokens(task_ids=task_ids_to_cancel)
 
         updated_tasks: list[DownloadTask] = []
         should_reload_history = False
 
         for task_id in task_ids_to_cancel:
+            self._remove_prepared_download_from_cache(task_id=task_id)
             canceled_task = self._queue_service.update_status(
                 task_id=task_id,
                 status=DownloadStatus.CANCELED,
@@ -210,6 +238,7 @@ class DownloadController:
         if is_active_task_cancel_requested and self._active_cancellation_token is not None:
             self._active_cancellation_token.request_cancel()
 
+        self._cancel_preparation_tokens(task_ids=unique_task_ids)
         self._queued_task_ids = [
             queued_task_id
             for queued_task_id in self._queued_task_ids
@@ -220,6 +249,7 @@ class DownloadController:
         should_reload_history = False
 
         for task_id in unique_task_ids:
+            self._remove_prepared_download_from_cache(task_id=task_id)
             task = self._queue_service.get_task(task_id=task_id)
 
             if task is None or task.status not in CANCELABLE_TASK_STATUSES:
@@ -264,9 +294,12 @@ class DownloadController:
                 status_message="Нельзя удалить задачу, которая сейчас выполняется"
             )
 
+        self._cancel_preparation_tokens(task_ids=task_ids)
+
         removed_count = 0
 
         for task_id in task_ids:
+            self._remove_prepared_download_from_cache(task_id=task_id)
             removed_task = self._queue_service.remove_task(task_id=task_id)
 
             if removed_task is not None:
@@ -295,6 +328,8 @@ class DownloadController:
                 status_message="Нельзя очистить очередь во время загрузки"
             )
 
+        self._cancel_preparation_tokens(task_ids=tuple(self._preparation_tokens_by_task_id))
+        self._clear_prepared_download_cache()
         removed_count = self._queue_service.clear_tasks()
         self._queued_task_ids.clear()
 
@@ -311,12 +346,19 @@ class DownloadController:
 
     def poll(self) -> DownloadControllerUpdate:
         progress_events = self._drain_progress_events()
+        preparation_update = self._drain_preparation_results()
 
         if self._active_download_future is None:
-            return DownloadControllerUpdate(progress_events=progress_events)
+            return merge_download_updates(
+                preparation_update,
+                DownloadControllerUpdate(progress_events=progress_events),
+            )
 
         if not self._active_download_future.done():
-            return DownloadControllerUpdate(progress_events=progress_events)
+            return merge_download_updates(
+                preparation_update,
+                DownloadControllerUpdate(progress_events=progress_events),
+            )
 
         future = self._active_download_future
         self._active_download_future = None
@@ -326,9 +368,12 @@ class DownloadController:
         try:
             result = future.result()
         except Exception as error:
-            return DownloadControllerUpdate(
-                status_message=f"Ошибка загрузки: {error}",
-                progress_events=progress_events,
+            return merge_download_updates(
+                preparation_update,
+                DownloadControllerUpdate(
+                    status_message=f"Ошибка загрузки: {error}",
+                    progress_events=progress_events,
+                ),
             )
 
         progress_events = (*progress_events, *self._drain_progress_events())
@@ -350,12 +395,14 @@ class DownloadController:
 
         if self._queued_task_ids:
             return merge_download_updates(
+                preparation_update,
                 result_update,
                 self._start_next_queued_download(),
             )
 
         if updated_task is not None and updated_task.status is DownloadStatus.CANCELED:
             return merge_download_updates(
+                preparation_update,
                 result_update,
                 DownloadControllerUpdate(
                     status_message="Загрузка отменена. Частичные файлы удалены"
@@ -364,15 +411,157 @@ class DownloadController:
 
         if result.status is DownloadStatus.COMPLETED:
             return merge_download_updates(
+                preparation_update,
                 result_update,
                 DownloadControllerUpdate(status_message="Очередь загрузок завершена"),
             )
 
         return merge_download_updates(
+            preparation_update,
             result_update,
             DownloadControllerUpdate(
                 status_message=f"Загрузка завершилась ошибкой: {result.error_message}"
             ),
+        )
+
+    def _prepare_tasks_for_download(
+        self, *, task_ids: tuple[UUID, ...]
+    ) -> DownloadControllerUpdate:
+        prepared_task_ids: list[UUID] = []
+
+        for task_id in task_ids:
+            task = self._queue_service.get_task(task_id=task_id)
+
+            if task is None or not is_downloadable(task):
+                continue
+
+            if self._start_preparation_for_task(task=task):
+                prepared_task_ids.append(task.task_id)
+
+        return DownloadControllerUpdate(prepared_task_ids=tuple(prepared_task_ids))
+
+    def _start_preparation_for_task(self, *, task: DownloadTask) -> bool:
+        if self._download_preparer is None:
+            return True
+
+        if self._is_prepared_download_cached(task_id=task.task_id):
+            return True
+
+        if task.task_id in self._preparation_futures_by_task_id:
+            return True
+
+        cancellation_token = DownloadCancellationToken()
+        future = self._preparation_executor.submit(
+            self._prepare_task_worker,
+            task=task,
+            cancellation_token=cancellation_token,
+        )
+        self._preparation_futures_by_task_id[task.task_id] = future
+        self._preparation_tokens_by_task_id[task.task_id] = cancellation_token
+
+        return True
+
+    def _prepare_task_worker(
+        self,
+        *,
+        task: DownloadTask,
+        cancellation_token: DownloadCancellationToken,
+    ) -> DownloadPreparationResult:
+        download_preparer = self._download_preparer
+
+        if download_preparer is None:
+            return DownloadPreparationResult(task_id=task.task_id, is_canceled=True)
+
+        try:
+            prepared_download = download_preparer.prepare(
+                task=task,
+                cancellation_token=cancellation_token,
+            )
+
+            if cancellation_token.is_cancel_requested:
+                return DownloadPreparationResult(task_id=task.task_id, is_canceled=True)
+
+            if self._prepared_download_cache is not None:
+                self._prepared_download_cache.save(prepared_download=prepared_download)
+
+            return DownloadPreparationResult(
+                task_id=task.task_id,
+                prepared_download=prepared_download,
+            )
+        except Exception as error:
+            if cancellation_token.is_cancel_requested:
+                return DownloadPreparationResult(task_id=task.task_id, is_canceled=True)
+
+            logger.opt(exception=error).warning(
+                "Download preparation failed. task_id={} url={} error={}",
+                task.task_id,
+                task.url.value,
+                error,
+            )
+            return DownloadPreparationResult(
+                task_id=task.task_id,
+                error_message=str(error),
+            )
+
+    def _drain_preparation_results(self) -> DownloadControllerUpdate:
+        updated_tasks: list[DownloadTask] = []
+        status_message: str | None = None
+
+        for task_id, future in tuple(self._preparation_futures_by_task_id.items()):
+            if not future.done():
+                continue
+
+            self._preparation_futures_by_task_id.pop(task_id, None)
+            self._preparation_tokens_by_task_id.pop(task_id, None)
+
+            try:
+                result = future.result()
+            except Exception as error:
+                logger.opt(exception=error).warning(
+                    "Download preparation future failed unexpectedly. task_id={}",
+                    task_id,
+                )
+                status_message = "Подготовка загрузки не удалась. yt-dlp попробует скачать напрямую"
+                continue
+
+            if result.is_canceled:
+                continue
+
+            if result.prepared_download is None:
+                status_message = "Подготовка загрузки не удалась. yt-dlp попробует скачать напрямую"
+                continue
+
+            updated_task = self._apply_prepared_download(result.prepared_download)
+
+            if updated_task is not None:
+                updated_tasks.append(updated_task)
+
+        return DownloadControllerUpdate(
+            status_message=status_message,
+            updated_tasks=tuple(updated_tasks),
+        )
+
+    def _apply_prepared_download(
+        self,
+        prepared_download: PreparedDownload,
+    ) -> DownloadTask | None:
+        current_task = self._queue_service.get_task(task_id=prepared_download.task_id)
+
+        if current_task is None:
+            return None
+
+        if current_task.status in {
+            DownloadStatus.RUNNING,
+            DownloadStatus.COMPLETED,
+            DownloadStatus.CANCELED,
+        }:
+            return None
+
+        return self._queue_service.apply_metadata(
+            task_id=current_task.task_id,
+            title=prepared_download.title,
+            video_quality=current_task.video_quality,
+            playlist_count=prepared_download.playlist_count,
         )
 
     def _start_next_queued_download(self) -> DownloadControllerUpdate:
@@ -484,6 +673,31 @@ class DownloadController:
 
         self._recorded_history_task_ids.add(task.task_id)
         return True
+
+    def _cancel_preparation_tokens(self, *, task_ids: tuple[UUID, ...]) -> None:
+        for task_id in task_ids:
+            cancellation_token = self._preparation_tokens_by_task_id.get(task_id)
+
+            if cancellation_token is not None:
+                cancellation_token.request_cancel()
+
+    def _is_prepared_download_cached(self, *, task_id: UUID) -> bool:
+        if self._prepared_download_cache is None:
+            return False
+
+        return self._prepared_download_cache.contains(task_id=task_id)
+
+    def _remove_prepared_download_from_cache(self, *, task_id: UUID) -> None:
+        if self._prepared_download_cache is None:
+            return
+
+        self._prepared_download_cache.remove(task_id=task_id)
+
+    def _clear_prepared_download_cache(self) -> None:
+        if self._prepared_download_cache is None:
+            return
+
+        self._prepared_download_cache.clear()
 
 
 def merge_download_updates(
