@@ -4,6 +4,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, SimpleQueue
+from time import sleep
 from typing import Final
 from uuid import UUID
 
@@ -15,7 +16,7 @@ from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_result import DownloadResult
 from yaloader.application.dto.prepared_download import PreparedDownload
 from yaloader.application.ports.download_preparer import DownloadPreparer
-from yaloader.application.ports.downloader import Downloader
+from yaloader.application.ports.downloader import Downloader, ProgressCallback
 from yaloader.application.services.download_history_service import DownloadHistoryService
 from yaloader.application.services.download_queue_service import (
     DownloadQueueService,
@@ -27,6 +28,7 @@ from yaloader.domain.enums import DownloadStatus
 
 DOWNLOAD_WORKERS_COUNT = 1
 PREPARATION_WORKERS_COUNT = 3
+PREPARATION_WAIT_POLL_SECONDS = 0.05
 
 HISTORY_RECORD_STATUSES: Final[frozenset[DownloadStatus]] = frozenset(
     {
@@ -58,6 +60,7 @@ class DownloadControllerUpdate:
     updated_tasks: tuple[DownloadTask, ...] = ()
     progress_events: tuple[DownloadProgress, ...] = ()
     prepared_task_ids: tuple[UUID, ...] = ()
+    completed_preparation_task_ids: tuple[UUID, ...] = ()
     tasks_snapshot: tuple[DownloadTask, ...] | None = None
     should_reload_history: bool = False
 
@@ -505,6 +508,7 @@ class DownloadController:
 
     def _drain_preparation_results(self) -> DownloadControllerUpdate:
         updated_tasks: list[DownloadTask] = []
+        completed_preparation_task_ids: list[UUID] = []
         status_message: str | None = None
 
         for task_id, future in tuple(self._preparation_futures_by_task_id.items()):
@@ -521,11 +525,14 @@ class DownloadController:
                     "Download preparation future failed unexpectedly. task_id={}",
                     task_id,
                 )
+                completed_preparation_task_ids.append(task_id)
                 status_message = "Подготовка загрузки не удалась. yt-dlp попробует скачать напрямую"
                 continue
 
             if result.is_canceled:
                 continue
+
+            completed_preparation_task_ids.append(result.task_id)
 
             if result.prepared_download is None:
                 status_message = "Подготовка загрузки не удалась. yt-dlp попробует скачать напрямую"
@@ -539,6 +546,7 @@ class DownloadController:
         return DownloadControllerUpdate(
             status_message=status_message,
             updated_tasks=tuple(updated_tasks),
+            completed_preparation_task_ids=tuple(completed_preparation_task_ids),
         )
 
     def _apply_prepared_download(
@@ -564,6 +572,58 @@ class DownloadController:
             playlist_count=prepared_download.playlist_count,
         )
 
+    def _download_task_worker(
+        self,
+        *,
+        task: DownloadTask,
+        progress_callback: ProgressCallback,
+        cancellation_token: DownloadCancellationToken,
+    ) -> DownloadResult:
+        preparation_cancel_result = self._wait_for_task_preparation(
+            task=task,
+            cancellation_token=cancellation_token,
+        )
+
+        if preparation_cancel_result is not None:
+            return preparation_cancel_result
+
+        return self._downloader.download(
+            task=task,
+            progress_callback=progress_callback,
+            cancellation_token=cancellation_token,
+        )
+
+    def _wait_for_task_preparation(
+        self,
+        *,
+        task: DownloadTask,
+        cancellation_token: DownloadCancellationToken,
+    ) -> DownloadResult | None:
+        future = self._preparation_futures_by_task_id.get(task.task_id)
+
+        if future is None:
+            return None
+
+        while not future.done():
+            if cancellation_token.is_cancel_requested:
+                return DownloadResult.canceled(task_id=task.task_id)
+
+            sleep(PREPARATION_WAIT_POLL_SECONDS)
+
+        try:
+            result = future.result()
+        except Exception as error:
+            logger.opt(exception=error).warning(
+                "Download preparation wait failed unexpectedly. task_id={}",
+                task.task_id,
+            )
+            return None
+
+        if result.is_canceled or cancellation_token.is_cancel_requested:
+            return DownloadResult.canceled(task_id=task.task_id)
+
+        return None
+
     def _start_next_queued_download(self) -> DownloadControllerUpdate:
         if self.is_active:
             return DownloadControllerUpdate()
@@ -586,7 +646,7 @@ class DownloadController:
             self._active_download_task_id = running_task.task_id
             self._active_cancellation_token = DownloadCancellationToken()
             self._active_download_future = self._download_executor.submit(
-                self._downloader.download,
+                self._download_task_worker,
                 task=running_task,
                 progress_callback=self._handle_download_progress,
                 cancellation_token=self._active_cancellation_token,
@@ -707,6 +767,7 @@ def merge_download_updates(
     updated_tasks: list[DownloadTask] = []
     progress_events: list[DownloadProgress] = []
     prepared_task_ids: list[UUID] = []
+    completed_preparation_task_ids: list[UUID] = []
     tasks_snapshot: tuple[DownloadTask, ...] | None = None
     should_reload_history = False
 
@@ -717,6 +778,7 @@ def merge_download_updates(
         updated_tasks.extend(update.updated_tasks)
         progress_events.extend(update.progress_events)
         prepared_task_ids.extend(update.prepared_task_ids)
+        completed_preparation_task_ids.extend(update.completed_preparation_task_ids)
         should_reload_history = should_reload_history or update.should_reload_history
 
         if update.tasks_snapshot is not None:
@@ -727,6 +789,7 @@ def merge_download_updates(
         updated_tasks=tuple(updated_tasks),
         progress_events=tuple(progress_events),
         prepared_task_ids=tuple(prepared_task_ids),
+        completed_preparation_task_ids=tuple(completed_preparation_task_ids),
         tasks_snapshot=tasks_snapshot,
         should_reload_history=should_reload_history,
     )

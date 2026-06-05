@@ -730,6 +730,11 @@ class MainWindow(QMainWindow):
         for task in update.updated_tasks:
             self._queue_table.update_task(task=task)
 
+        if update.completed_preparation_task_ids:
+            self._queue_table.mark_tasks_prepared_for_download(
+                task_ids=update.completed_preparation_task_ids,
+            )
+
         for progress in update.progress_events:
             self._queue_table.set_task_progress(progress=progress)
 

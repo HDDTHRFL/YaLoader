@@ -5,6 +5,8 @@ from pathlib import Path
 
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_result import DownloadResult
+from yaloader.application.dto.prepared_download import PreparedDownload
+from yaloader.application.services.prepared_download_cache import PreparedDownloadCache
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, DownloadStatus, OutputFormat, VideoQuality
 from yaloader.domain.value_objects.media_url import MediaUrl
@@ -20,9 +22,19 @@ class RecordingYtDlpBackend:
     def __init__(self) -> None:
         self.urls: tuple[str, ...] = ()
         self.options: YtDlpOptions | None = None
+        self.prepared_download: PreparedDownload | None = None
 
     def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
         self.urls = tuple(urls)
+        self.options = options
+
+    def download_prepared(
+        self,
+        *,
+        prepared_download: PreparedDownload,
+        options: YtDlpOptions,
+    ) -> None:
+        self.prepared_download = prepared_download
         self.options = options
 
 
@@ -76,6 +88,35 @@ def test_ytdlp_downloader_adds_progress_hook_when_callback_is_passed(tmp_path: P
     assert "progress_hooks" in backend.options
     assert progress_events[0] == DownloadProgress.started(task_id=task.task_id)
     assert progress_events[-1] == DownloadProgress.completed(task_id=task.task_id)
+
+
+def test_ytdlp_downloader_uses_prepared_download_from_cache(tmp_path: Path) -> None:
+    backend = RecordingYtDlpBackend()
+    prepared_download_cache = PreparedDownloadCache()
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(),
+        backend=backend,
+        prepared_download_cache=prepared_download_cache,
+    )
+    task = create_video_task(target_dir=tmp_path)
+    prepared_download = PreparedDownload(
+        task_id=task.task_id,
+        url=task.url.value,
+        title="Prepared video",
+        raw_info={
+            "id": "test",
+            "title": "Prepared video",
+        },
+    )
+    prepared_download_cache.save(prepared_download=prepared_download)
+
+    result = downloader.download(task=task)
+
+    assert result.status == DownloadStatus.COMPLETED
+    assert backend.urls == ()
+    assert backend.prepared_download == prepared_download
+    assert backend.options is not None
+    assert backend.options["merge_output_format"] == "mp4"
 
 
 def test_ytdlp_downloader_returns_failed_result_on_backend_error(tmp_path: Path) -> None:

@@ -47,6 +47,7 @@ def build_app_container() -> AppContainer:
     download_speed_limit_state = DownloadSpeedLimitState(
         bytes_per_second=settings.download_speed_limit_bytes_per_second,
     )
+    prepared_download_cache = PreparedDownloadCache()
 
     return AppContainer(
         paths=paths,
@@ -59,7 +60,7 @@ def build_app_container() -> AppContainer:
         download_queue_service=DownloadQueueService(),
         download_speed_limit_state=download_speed_limit_state,
         download_history_service=DownloadHistoryService(history_file=paths.history_file),
-        prepared_download_cache=PreparedDownloadCache(),
+        prepared_download_cache=prepared_download_cache,
         media_metadata_service=MediaMetadataService(
             extractor=YtDlpMetadataExtractor.create_default(cookies_file=paths.cookies_file),
         ),
@@ -69,5 +70,6 @@ def build_app_container() -> AppContainer:
         downloader=YtDlpDownloader.create_default(
             cookies_file=paths.cookies_file,
             speed_limit_provider=download_speed_limit_state,
+            prepared_download_cache=prepared_download_cache,
         ),
     )

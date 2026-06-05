@@ -15,7 +15,9 @@ from loguru import logger
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
+from yaloader.application.dto.prepared_download import PreparedDownload
 from yaloader.application.ports.downloader import CancellationToken, ProgressCallback
+from yaloader.application.services.prepared_download_cache import PreparedDownloadCache
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
 
@@ -41,6 +43,13 @@ class DownloadCancelledError(RuntimeError):
 class YtDlpBackend(Protocol):
     def download(self, urls: Sequence[str], options: YtDlpOptions) -> None: ...
 
+    def download_prepared(
+        self,
+        *,
+        prepared_download: PreparedDownload,
+        options: YtDlpOptions,
+    ) -> None: ...
+
 
 class DownloadSpeedLimitProvider(Protocol):
     def get_download_speed_limit_bytes_per_second(self) -> int | None: ...
@@ -57,6 +66,8 @@ class YoutubeDLRuntime(Protocol):
     ) -> bool | None: ...
 
     def download(self, url_list: list[str]) -> int | None: ...
+
+    def process_ie_result(self, ie_result: object, download: bool = True) -> object: ...
 
 
 class YoutubeDLFactory(Protocol):
@@ -82,6 +93,26 @@ class YtDlpPythonBackend:
             raise RuntimeError(message)
 
         logger.debug("yt-dlp backend finished successfully.")
+
+    def download_prepared(
+        self,
+        *,
+        prepared_download: PreparedDownload,
+        options: YtDlpOptions,
+    ) -> None:
+        logger.debug(
+            "yt-dlp prepared backend started. task_id={} title={}",
+            prepared_download.task_id,
+            prepared_download.title,
+        )
+
+        with self.youtube_dl_factory(options) as downloader:
+            downloader.process_ie_result(prepared_download.raw_info, download=True)
+
+        logger.debug(
+            "yt-dlp prepared backend finished successfully. task_id={}",
+            prepared_download.task_id,
+        )
 
 
 @dataclass(slots=True)
@@ -201,6 +232,7 @@ class YtDlpDownloader:
     backend: YtDlpBackend
     cookies_file: Path | None = None
     speed_limit_provider: DownloadSpeedLimitProvider | None = None
+    prepared_download_cache: PreparedDownloadCache | None = None
 
     @classmethod
     def create_default(
@@ -208,12 +240,14 @@ class YtDlpDownloader:
         *,
         cookies_file: Path | None = None,
         speed_limit_provider: DownloadSpeedLimitProvider | None = None,
+        prepared_download_cache: PreparedDownloadCache | None = None,
     ) -> YtDlpDownloader:
         return cls(
             options_builder=YtDlpOptionsBuilder(cookies_file=cookies_file),
             backend=YtDlpPythonBackend.create_default(),
             cookies_file=cookies_file,
             speed_limit_provider=speed_limit_provider,
+            prepared_download_cache=prepared_download_cache,
         )
 
     def download(
@@ -253,8 +287,16 @@ class YtDlpDownloader:
                 )
             ]
 
+        prepared_download = self._get_prepared_download(task=task)
+
         try:
-            self.backend.download(urls=(task.url.value,), options=options)
+            if prepared_download is not None and prepared_download.raw_info:
+                self.backend.download_prepared(
+                    prepared_download=prepared_download,
+                    options=options,
+                )
+            else:
+                self.backend.download(urls=(task.url.value,), options=options)
         except DownloadCancelledError:
             removed_files_count = cleanup_created_files(
                 download_dir=task.target_dir,
@@ -309,6 +351,31 @@ class YtDlpDownloader:
 
         logger.info("Download completed. task_id={}", task.task_id)
         return DownloadResult.completed(task_id=task.task_id)
+
+    def _get_prepared_download(self, *, task: DownloadTask) -> PreparedDownload | None:
+        if self.prepared_download_cache is None:
+            return None
+
+        prepared_download = self.prepared_download_cache.get(task_id=task.task_id)
+
+        if prepared_download is None:
+            return None
+
+        if prepared_download.url != task.url.value:
+            logger.warning(
+                "Prepared download URL mismatch. task_id={} task_url={} prepared_url={}",
+                task.task_id,
+                task.url.value,
+                prepared_download.url,
+            )
+            return None
+
+        logger.debug(
+            "Prepared download found in cache. task_id={} title={}",
+            task.task_id,
+            prepared_download.title,
+        )
+        return prepared_download
 
     def _build_request_from_task(self, task: DownloadTask) -> DownloadRequest:
         return DownloadRequest(

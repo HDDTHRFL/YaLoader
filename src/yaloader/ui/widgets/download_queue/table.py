@@ -294,7 +294,15 @@ class DownloadQueueTable(QTableWidget):
 
         self.setRowHeight(row_index, QUEUE_ROW_HEIGHT)
         self._row_presenter.set_task_row_values(row_index=row_index, task=task)
-        self._progress_presenter.sync_with_task_status(row_index=row_index, task=task)
+        current_row_state = self._row_states_by_task_id.get(task.task_id)
+
+        if current_row_state is not None:
+            self._sync_progress_for_row_state(
+                row_index=row_index,
+                row_state=current_row_state,
+            )
+        else:
+            self._progress_presenter.sync_with_task_status(row_index=row_index, task=task)
         self._quality_presenter.sync_timer()
         self.resize_columns_to_viewport()
         self._sync_empty_hint_visibility()
@@ -308,16 +316,40 @@ class DownloadQueueTable(QTableWidget):
         updated_row_state = row_state.with_task(task=task)
 
         if task.status is DownloadStatus.RUNNING:
-            return updated_row_state.with_download_prepared(is_prepared=True)
+            return updated_row_state.with_download_preparation_running(
+                is_running=False
+            ).with_download_prepared(is_prepared=True)
 
         if task.status in {
             DownloadStatus.COMPLETED,
             DownloadStatus.FAILED,
             DownloadStatus.CANCELED,
         }:
-            return updated_row_state.with_download_prepared(is_prepared=False)
+            return updated_row_state.with_download_preparation_running(
+                is_running=False
+            ).with_download_prepared(is_prepared=False)
 
         return updated_row_state
+
+    def _sync_progress_for_row_state(
+        self,
+        *,
+        row_index: int,
+        row_state: QueueTableRowState,
+    ) -> None:
+        task = row_state.task
+
+        if task.status is DownloadStatus.PENDING and row_state.is_download_preparation_running:
+            self._progress_presenter.prepare_tasks_for_download(
+                task_ids=(task.task_id,),
+            )
+            return
+
+        if task.status is DownloadStatus.PENDING and row_state.is_download_prepared:
+            self._progress_presenter.mark_task_prepared(task_id=task.task_id)
+            return
+
+        self._progress_presenter.sync_with_task_status(row_index=row_index, task=task)
 
     def reload_tasks(self, tasks: Sequence[DownloadTask]) -> None:
         previous_row_states = self._row_states_by_task_id.copy()
@@ -341,11 +373,15 @@ class DownloadQueueTable(QTableWidget):
             if previous_row_state.is_metadata_resolution_failed:
                 self.mark_metadata_resolution_failed(task_id=task.task_id)
 
-            if previous_row_state.is_download_prepared:
-                self._mark_tasks_prepared_for_download(task_ids=(task.task_id,))
+            if previous_row_state.is_download_preparation_running:
+                self._mark_tasks_preparation_running(task_ids=(task.task_id,))
                 self._progress_presenter.prepare_tasks_for_download(
                     task_ids=(task.task_id,),
                 )
+
+            if previous_row_state.is_download_prepared:
+                self._mark_tasks_prepared_for_download(task_ids=(task.task_id,))
+                self._progress_presenter.mark_task_prepared(task_id=task.task_id)
 
         self.resize_columns_to_viewport()
         self._sync_empty_hint_visibility()
@@ -375,8 +411,25 @@ class DownloadQueueTable(QTableWidget):
         self._url_presenter.mark_metadata_resolution_failed(task_id=task_id)
 
     def prepare_tasks_for_download(self, *, task_ids: tuple[UUID, ...]) -> None:
-        self._mark_tasks_prepared_for_download(task_ids=task_ids)
+        self._mark_tasks_preparation_running(task_ids=task_ids)
         self._progress_presenter.prepare_tasks_for_download(task_ids=task_ids)
+
+    def mark_tasks_prepared_for_download(self, *, task_ids: tuple[UUID, ...]) -> None:
+        self._mark_tasks_prepared_for_download(task_ids=task_ids)
+
+        for task_id in task_ids:
+            self._progress_presenter.mark_task_prepared(task_id=task_id)
+
+    def _mark_tasks_preparation_running(self, *, task_ids: tuple[UUID, ...]) -> None:
+        for task_id in task_ids:
+            row_state = self._row_states_by_task_id.get(task_id)
+
+            if row_state is None:
+                continue
+
+            self._row_states_by_task_id[task_id] = row_state.with_download_preparation_running(
+                is_running=True
+            ).with_download_prepared(is_prepared=False)
 
     def _mark_tasks_prepared_for_download(self, *, task_ids: tuple[UUID, ...]) -> None:
         for task_id in task_ids:
@@ -385,11 +438,20 @@ class DownloadQueueTable(QTableWidget):
             if row_state is None:
                 continue
 
-            self._row_states_by_task_id[task_id] = row_state.with_download_prepared(
-                is_prepared=True,
-            )
+            self._row_states_by_task_id[task_id] = row_state.with_download_preparation_running(
+                is_running=False
+            ).with_download_prepared(is_prepared=True)
 
     def set_task_progress(self, progress: DownloadProgress) -> None:
+        row_state = self._row_states_by_task_id.get(progress.task_id)
+
+        if row_state is not None:
+            self._row_states_by_task_id[progress.task_id] = (
+                row_state.with_download_preparation_running(
+                    is_running=False
+                ).with_download_prepared(is_prepared=True)
+            )
+
         self._url_presenter.set_progress(progress=progress)
         self._progress_presenter.set_task_progress(progress=progress)
 
@@ -519,8 +581,10 @@ class DownloadQueueTable(QTableWidget):
             if row_state is None:
                 continue
 
-            if row_state.is_download_prepared or self._progress_presenter.has_progress_bar(
-                task_id=task_id,
+            if (
+                row_state.is_download_preparation_running
+                or row_state.is_download_prepared
+                or self._progress_presenter.has_progress_bar(task_id=task_id)
             ):
                 prepared_task_ids.append(task_id)
 

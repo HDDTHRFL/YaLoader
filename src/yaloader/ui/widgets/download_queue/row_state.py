@@ -10,6 +10,7 @@ class QueueTableRowState:
     task: DownloadTask
     is_quality_resolution_pending: bool = False
     is_metadata_resolution_failed: bool = False
+    is_download_preparation_running: bool = False
     is_download_prepared: bool = False
     copy_feedback_generation: int | None = None
 
@@ -33,6 +34,13 @@ class QueueTableRowState:
         is_failed: bool,
     ) -> QueueTableRowState:
         return replace(self, is_metadata_resolution_failed=is_failed)
+
+    def with_download_preparation_running(
+        self,
+        *,
+        is_running: bool,
+    ) -> QueueTableRowState:
+        return replace(self, is_download_preparation_running=is_running)
 
     def with_download_prepared(
         self,

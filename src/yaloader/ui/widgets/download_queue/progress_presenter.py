@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QProgressBar, QTableWidget, QTableWidgetItem
 
 from yaloader.application.dto.download_progress import DownloadProgress
@@ -10,6 +10,15 @@ from yaloader.domain.download_speed_limit import format_bytes_per_second
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadStatus
 from yaloader.ui.widgets.download_queue.columns import STATUS_PROGRESS_COLUMN_INDEX
+
+PREPARATION_ANIMATION_INTERVAL_MS = 420
+PREPARING_DOWNLOAD_TOOLTIP = "Подготавливаем загрузку"
+PREPARED_DOWNLOAD_TOOLTIP = "Загрузка подготовлена и ожидает очереди"
+PREPARING_DOWNLOAD_TEXT_STATES = (
+    "running.",
+    "running..",
+    "running...",
+)
 
 STATUS_TEXT_BY_STATUS = {
     DownloadStatus.PENDING: DownloadStatus.PENDING.value,
@@ -32,6 +41,10 @@ class DownloadQueueProgressPresenter:
     ) -> None:
         self._table = table
         self._row_by_task_id = row_by_task_id
+        self._preparing_task_ids: set[UUID] = set()
+        self._preparation_step_index = 0
+        self._preparation_timer = QTimer(table)
+        self._configure_preparation_timer()
 
     def prepare_tasks_for_download(self, *, task_ids: tuple[UUID, ...]) -> None:
         for task_id in task_ids:
@@ -40,10 +53,30 @@ class DownloadQueueProgressPresenter:
             if row_index is None:
                 continue
 
-            progress_bar = self._ensure_progress_bar(row_index=row_index)
-            progress_bar.setRange(0, 100)
-            progress_bar.setValue(0)
-            progress_bar.setFormat("0%")
+            self._preparing_task_ids.add(task_id)
+            self._set_preparation_text(row_index=row_index)
+
+        self._sync_preparation_timer()
+
+    def mark_task_prepared(self, *, task_id: UUID) -> None:
+        self._preparing_task_ids.discard(task_id)
+        self._sync_preparation_timer()
+
+        row_index = self._row_by_task_id.get(task_id)
+
+        if row_index is None:
+            return
+
+        progress_bar = self._ensure_progress_bar(row_index=row_index)
+        progress_bar.setRange(0, 100)
+        progress_bar.setValue(0)
+        progress_bar.setTextVisible(False)
+        progress_bar.setFormat("")
+        progress_bar.setToolTip(PREPARED_DOWNLOAD_TOOLTIP)
+
+    def clear_task_download_state(self, *, task_id: UUID) -> None:
+        self._preparing_task_ids.discard(task_id)
+        self._sync_preparation_timer()
 
     def has_progress_bar(self, *, task_id: UUID) -> bool:
         row_index = self._row_by_task_id.get(task_id)
@@ -57,12 +90,16 @@ class DownloadQueueProgressPresenter:
         )
 
     def set_task_progress(self, progress: DownloadProgress) -> None:
+        self._preparing_task_ids.discard(progress.task_id)
+        self._sync_preparation_timer()
+
         row_index = self._row_by_task_id.get(progress.task_id)
 
         if row_index is None:
             return
 
         progress_bar = self._ensure_progress_bar(row_index=row_index)
+        progress_bar.setTextVisible(True)
 
         if progress.percent is None:
             progress_bar.setRange(0, 0)
@@ -78,11 +115,15 @@ class DownloadQueueProgressPresenter:
         progress_bar.setToolTip(progress_text)
 
     def sync_with_task_status(self, *, row_index: int, task: DownloadTask) -> None:
+        self.clear_task_download_state(task_id=task.task_id)
+
         if task.status is DownloadStatus.RUNNING:
             progress_bar = self._ensure_progress_bar(row_index=row_index)
             progress_bar.setRange(0, 100)
             progress_bar.setValue(0)
-            progress_bar.setFormat("0%")
+            progress_bar.setTextVisible(False)
+            progress_bar.setFormat("")
+            progress_bar.setToolTip(PREPARED_DOWNLOAD_TOOLTIP)
             return
 
         self.set_text(
@@ -102,6 +143,49 @@ class DownloadQueueProgressPresenter:
             table_item.setText(text)
 
         table_item.setToolTip(text)
+
+    def _configure_preparation_timer(self) -> None:
+        self._preparation_timer.setInterval(PREPARATION_ANIMATION_INTERVAL_MS)
+        self._preparation_timer.timeout.connect(self._handle_preparation_timer_timeout)
+
+    def _handle_preparation_timer_timeout(self) -> None:
+        self._preparation_step_index = (self._preparation_step_index + 1) % len(
+            PREPARING_DOWNLOAD_TEXT_STATES
+        )
+        stale_task_ids: list[UUID] = []
+
+        for task_id in tuple(self._preparing_task_ids):
+            row_index = self._row_by_task_id.get(task_id)
+
+            if row_index is None:
+                stale_task_ids.append(task_id)
+                continue
+
+            self._set_preparation_text(row_index=row_index)
+
+        for task_id in stale_task_ids:
+            self._preparing_task_ids.discard(task_id)
+
+        self._sync_preparation_timer()
+
+    def _sync_preparation_timer(self) -> None:
+        if self._preparing_task_ids:
+            if not self._preparation_timer.isActive():
+                self._preparation_timer.start()
+            return
+
+        if self._preparation_timer.isActive():
+            self._preparation_timer.stop()
+
+    def _set_preparation_text(self, *, row_index: int) -> None:
+        self.set_text(
+            row_index=row_index,
+            text=PREPARING_DOWNLOAD_TEXT_STATES[self._preparation_step_index],
+        )
+        table_item = self._table.item(row_index, STATUS_PROGRESS_COLUMN_INDEX)
+
+        if table_item is not None:
+            table_item.setToolTip(PREPARING_DOWNLOAD_TOOLTIP)
 
     def _build_progress_bar_text(self, *, progress: DownloadProgress) -> str:
         if progress.status_text == PROCESSING_STATUS_TEXT:

@@ -102,7 +102,11 @@ def test_start_tasks_while_active_prepares_new_pending_task_without_parallel_dow
         assert downloader.started_task_ids == [first_task.task_id]
         assert prepared_download_cache.contains(task_id=second_task.task_id)
 
-        controller.poll()
+        preparation_update = controller.poll()
+
+        assert second_task.task_id in preparation_update.completed_preparation_task_ids
+        assert controller.active_task_id == first_task.task_id
+
         prepared_task = queue_service.get_task(task_id=second_task.task_id)
 
         assert prepared_task is not None
