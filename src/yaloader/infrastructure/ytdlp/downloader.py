@@ -31,6 +31,12 @@ YTDLP_STATUS_ERROR = "error"
 PERCENT_MULTIPLIER = 100.0
 THROTTLE_SLEEP_STEP_SECONDS = 0.1
 MAX_SINGLE_THROTTLE_SLEEP_SECONDS = 1.0
+TEMPORARY_DOWNLOAD_FILE_SUFFIXES = (
+    ".part",
+    ".tmp",
+    ".temp",
+    ".ytdl",
+)
 
 YtDlpProgressInfo = Mapping[str, object]
 YtDlpProgressHook = Callable[[YtDlpProgressInfo], None]
@@ -346,11 +352,23 @@ class YtDlpDownloader:
 
             return DownloadResult.canceled(task_id=task.task_id)
 
+        output_path = detect_primary_output_path(
+            download_dir=task.target_dir,
+            existing_files=existing_files,
+        )
+
         if progress_callback is not None:
             progress_callback(DownloadProgress.completed(task_id=task.task_id))
 
-        logger.info("Download completed. task_id={}", task.task_id)
-        return DownloadResult.completed(task_id=task.task_id)
+        logger.info(
+            "Download completed. task_id={} output_path={}",
+            task.task_id,
+            output_path,
+        )
+        return DownloadResult.completed(
+            task_id=task.task_id,
+            output_path=output_path,
+        )
 
     def _get_prepared_download(self, *, task: DownloadTask) -> PreparedDownload | None:
         if self.prepared_download_cache is None:
@@ -588,6 +606,38 @@ def collect_files(*, download_dir: Path) -> frozenset[Path]:
     )
 
     return files
+
+
+def detect_primary_output_path(
+    *,
+    download_dir: Path,
+    existing_files: frozenset[Path],
+) -> Path | None:
+    created_files = collect_files(download_dir=download_dir) - existing_files
+    completed_files = tuple(
+        file_path
+        for file_path in created_files
+        if not is_temporary_download_file(file_path=file_path)
+    )
+
+    if not completed_files:
+        return None
+
+    return max(completed_files, key=get_output_file_sort_key)
+
+
+def is_temporary_download_file(*, file_path: Path) -> bool:
+    file_name = file_path.name.casefold()
+    return file_name.endswith(TEMPORARY_DOWNLOAD_FILE_SUFFIXES)
+
+
+def get_output_file_sort_key(file_path: Path) -> tuple[int, int, str]:
+    try:
+        stat_result = file_path.stat()
+    except OSError:
+        return (0, 0, str(file_path))
+
+    return (stat_result.st_mtime_ns, stat_result.st_size, str(file_path))
 
 
 def cleanup_created_files(*, download_dir: Path, existing_files: frozenset[Path]) -> int:

@@ -38,6 +38,24 @@ class RecordingYtDlpBackend:
         self.options = options
 
 
+class CreatingOutputYtDlpBackend:
+    def __init__(self, *, output_file_name: str = "downloaded.mp4") -> None:
+        self.output_file_name = output_file_name
+
+    def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
+        target_dir = get_target_dir_from_options(options=options)
+        (target_dir / self.output_file_name).write_text("video", encoding="utf-8")
+
+    def download_prepared(
+        self,
+        *,
+        prepared_download: PreparedDownload,
+        options: YtDlpOptions,
+    ) -> None:
+        target_dir = get_target_dir_from_options(options=options)
+        (target_dir / self.output_file_name).write_text("video", encoding="utf-8")
+
+
 class FailingYtDlpBackend:
     def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
         raise RuntimeError("download failed")
@@ -67,6 +85,36 @@ def test_ytdlp_downloader_returns_completed_result(tmp_path: Path) -> None:
     assert backend.urls == (task.url.value,)
     assert backend.options is not None
     assert backend.options["merge_output_format"] == "mp4"
+
+
+def test_ytdlp_downloader_returns_created_output_path(tmp_path: Path) -> None:
+    backend = CreatingOutputYtDlpBackend(output_file_name="created-video.mp4")
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(),
+        backend=backend,
+    )
+    task = create_video_task(target_dir=tmp_path)
+
+    result = downloader.download(task=task)
+
+    assert result.status == DownloadStatus.COMPLETED
+    assert result.output_path == (tmp_path / "created-video.mp4").resolve()
+
+
+def test_ytdlp_downloader_ignores_existing_files_for_output_path(tmp_path: Path) -> None:
+    existing_file = tmp_path / "already-existed.mp4"
+    existing_file.write_text("old", encoding="utf-8")
+    backend = CreatingOutputYtDlpBackend(output_file_name="new-video.mp4")
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(),
+        backend=backend,
+    )
+    task = create_video_task(target_dir=tmp_path)
+
+    result = downloader.download(task=task)
+
+    assert result.status == DownloadStatus.COMPLETED
+    assert result.output_path == (tmp_path / "new-video.mp4").resolve()
 
 
 def test_ytdlp_downloader_adds_progress_hook_when_callback_is_passed(tmp_path: Path) -> None:
@@ -184,6 +232,15 @@ def test_strip_ansi_escape_sequences_removes_color_codes() -> None:
     result = strip_ansi_escape_sequences(text=text)
 
     assert result == "ERROR: failed"
+
+
+def get_target_dir_from_options(*, options: YtDlpOptions) -> Path:
+    output_template = options.get("outtmpl")
+
+    if not isinstance(output_template, str):
+        raise AssertionError("yt-dlp output template is not configured")
+
+    return Path(output_template).parent
 
 
 def create_video_task(target_dir: Path) -> DownloadTask:

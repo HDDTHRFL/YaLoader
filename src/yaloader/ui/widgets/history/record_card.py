@@ -26,7 +26,7 @@ from yaloader.ui.widgets.history.formatting import (
     format_history_quality,
     format_history_title,
 )
-from yaloader.ui.widgets.history.labels import ClickableDirectoryLabel, ClickableUrlLabel
+from yaloader.ui.widgets.history.labels import ClickablePathLabel, ClickableUrlLabel
 
 
 class HistoryRecordCard(QFrame):
@@ -111,20 +111,21 @@ class HistoryRecordCard(QFrame):
         )
         meta_label.setObjectName("MutedLabel")
 
-        folder_label = ClickableDirectoryLabel(
-            directory_path=self._record.target_dir,
+        output_path = self._record.output_path or self._record.target_dir
+        path_label = ClickablePathLabel(
+            path=output_path,
             parent=self,
         )
 
         self._configure_compressible_label(url_label)
         self._configure_compressible_label(meta_label)
-        self._configure_compressible_label(folder_label)
+        self._configure_compressible_label(path_label)
 
         self._install_context_menu_filter(status_label)
         self._install_context_menu_filter(time_label)
         self._install_context_menu_filter(url_label)
         self._install_context_menu_filter(meta_label)
-        self._install_context_menu_filter(folder_label)
+        self._install_context_menu_filter(path_label)
 
         if title_label is not None:
             self._configure_compressible_label(title_label)
@@ -137,7 +138,7 @@ class HistoryRecordCard(QFrame):
 
         layout.addWidget(url_label)
         layout.addWidget(meta_label)
-        layout.addWidget(folder_label)
+        layout.addWidget(path_label)
 
         if self._record.error_message:
             error_label = QLabel(self._record.error_message, self)

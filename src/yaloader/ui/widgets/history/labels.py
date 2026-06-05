@@ -48,21 +48,21 @@ class ClickableUrlLabel(QLabel):
         return external_url.isValid() and scheme in SUPPORTED_EXTERNAL_URL_SCHEMES
 
 
-class ClickableDirectoryLabel(QLabel):
+class ClickablePathLabel(QLabel):
     def __init__(
         self,
         *,
-        directory_path: Path,
+        path: Path,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__(str(directory_path), parent)
+        super().__init__(str(path), parent)
 
-        self._directory_path = directory_path
+        self._path = path
 
         self.setObjectName("HistoryPathLabel")
         self.setWordWrap(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip(f"Открыть папку: {directory_path}")
+        self.setToolTip(f"Открыть: {path}")
 
     @override
     def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
@@ -74,7 +74,20 @@ class ClickableDirectoryLabel(QLabel):
             super().mouseReleaseEvent(event)
             return
 
-        if self._directory_path.is_dir():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._directory_path)))
+        target_path = self._resolve_existing_path()
+
+        if target_path is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target_path)))
 
         event.accept()
+
+    def _resolve_existing_path(self) -> Path | None:
+        if self._path.exists():
+            return self._path
+
+        parent_path = self._path.parent
+
+        if parent_path.exists():
+            return parent_path
+
+        return None
