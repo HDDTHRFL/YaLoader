@@ -8,8 +8,32 @@ from yaloader.domain.value_objects.media_url import MediaUrl
 from yaloader.ui.widgets.download_queue.context_menu import (
     can_show_remove_action,
     collect_cancelable_task_ids,
+    collect_completed_task_ids,
     collect_downloadable_task_ids,
 )
+
+
+def test_completed_task_is_redownloadable_but_not_regular_downloadable(
+    tmp_path: Path,
+) -> None:
+    task = create_task(
+        target_dir=tmp_path,
+        url_suffix="completed001",
+        status=DownloadStatus.COMPLETED,
+    )
+
+    assert collect_completed_task_ids(selected_tasks=(task,)) == (task.task_id,)
+    assert (
+        collect_downloadable_task_ids(
+            selected_tasks=(task,),
+            prepared_task_ids=(),
+        )
+        == ()
+    )
+    assert can_show_remove_action(
+        selected_tasks=(task,),
+        prepared_task_ids=(),
+    )
 
 
 def test_pending_prepared_task_is_cancelable_and_not_downloadable(tmp_path: Path) -> None:

@@ -56,6 +56,7 @@ def show_download_queue_context_menu(
         text="Копировать ссылки" if len(selected_tasks) > 1 else "Копировать ссылку",
     )
 
+    completed_task_ids = collect_completed_task_ids(selected_tasks=selected_tasks)
     downloadable_task_ids = collect_downloadable_task_ids(
         selected_tasks=selected_tasks,
         prepared_task_ids=prepared_task_ids,
@@ -65,9 +66,16 @@ def show_download_queue_context_menu(
         prepared_task_ids=prepared_task_ids,
     )
 
+    redownload_action: QWidgetAction | None = None
     download_action: QWidgetAction | None = None
     cancel_action: QWidgetAction | None = None
     remove_action: QWidgetAction | None = None
+
+    if completed_task_ids:
+        redownload_action = add_menu_action(
+            menu=context_menu,
+            text=("Скачать снова выбранные" if len(completed_task_ids) > 1 else "Скачать снова"),
+        )
 
     if downloadable_task_ids:
         download_action = add_menu_action(
@@ -103,6 +111,12 @@ def show_download_queue_context_menu(
             task_ids=selected_task_ids,
         )
 
+    if redownload_action is not None and selected_action == redownload_action:
+        return DownloadQueueContextMenuResult(
+            action=DownloadQueueContextAction.DOWNLOAD,
+            task_ids=completed_task_ids,
+        )
+
     if download_action is not None and selected_action == download_action:
         return DownloadQueueContextMenuResult(
             action=DownloadQueueContextAction.DOWNLOAD,
@@ -122,6 +136,10 @@ def show_download_queue_context_menu(
         )
 
     return None
+
+
+def collect_completed_task_ids(*, selected_tasks: Sequence[DownloadTask]) -> tuple[UUID, ...]:
+    return tuple(task.task_id for task in selected_tasks if task.status is DownloadStatus.COMPLETED)
 
 
 def collect_downloadable_task_ids(

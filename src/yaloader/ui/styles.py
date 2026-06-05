@@ -772,13 +772,19 @@ QFrame#HistoryPanel {
     border-left: 1px solid #272C36;
 }
 
+QWidget#HistoryPanelContent,
+QWidget#HistoryRecordsContainer,
+QWidget#HistoryScrollAreaViewport {
+    background-color: #13161D;
+}
+
 QScrollArea#HistoryScrollArea {
-    background-color: transparent;
+    background-color: #13161D;
     border: none;
 }
 
 QScrollArea#HistoryScrollArea QWidget {
-    background-color: transparent;
+    background-color: #13161D;
 }
 
 QFrame#HistoryCard {

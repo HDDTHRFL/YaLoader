@@ -14,6 +14,7 @@ from yaloader.ui.widgets.download_queue.columns import STATUS_PROGRESS_COLUMN_IN
 PREPARATION_ANIMATION_INTERVAL_MS = 420
 PREPARING_DOWNLOAD_TOOLTIP = "Подготавливаем загрузку"
 PREPARED_DOWNLOAD_TOOLTIP = "Загрузка подготовлена и ожидает очереди"
+PREPARED_DOWNLOAD_TEXT = "prepared"
 PREPARING_DOWNLOAD_TEXT_STATES = (
     "running.",
     "running..",
@@ -70,8 +71,8 @@ class DownloadQueueProgressPresenter:
         progress_bar = self._ensure_progress_bar(row_index=row_index)
         progress_bar.setRange(0, 100)
         progress_bar.setValue(0)
-        progress_bar.setTextVisible(False)
-        progress_bar.setFormat("")
+        progress_bar.setTextVisible(True)
+        progress_bar.setFormat(PREPARED_DOWNLOAD_TEXT)
         progress_bar.setToolTip(PREPARED_DOWNLOAD_TOOLTIP)
 
     def clear_task_download_state(self, *, task_id: UUID) -> None:

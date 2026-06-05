@@ -7,6 +7,8 @@ from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices, QMouseEvent
 from PyQt6.QtWidgets import QLabel, QWidget
 
+from yaloader.infrastructure.windows.explorer import reveal_path_in_file_manager
+
 SUPPORTED_EXTERNAL_URL_SCHEMES = frozenset({"http", "https"})
 
 
@@ -62,7 +64,7 @@ class ClickablePathLabel(QLabel):
         self.setObjectName("HistoryPathLabel")
         self.setWordWrap(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip(f"Открыть: {path}")
+        self.setToolTip(f"Открыть расположение: {path}")
 
     @override
     def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
@@ -74,12 +76,22 @@ class ClickablePathLabel(QLabel):
             super().mouseReleaseEvent(event)
             return
 
-        target_path = self._resolve_existing_path()
-
-        if target_path is not None:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target_path)))
+        if not reveal_path_in_file_manager(path=self._path):
+            self._open_fallback_location()
 
         event.accept()
+
+    def _open_fallback_location(self) -> None:
+        existing_path = self._resolve_existing_path()
+
+        if existing_path is None:
+            return
+
+        if existing_path.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(existing_path.parent.resolve())))
+            return
+
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(existing_path.resolve())))
 
     def _resolve_existing_path(self) -> Path | None:
         if self._path.exists():

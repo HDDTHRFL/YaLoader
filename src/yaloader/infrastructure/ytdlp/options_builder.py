@@ -13,7 +13,7 @@ YtDlpPostProcessorOptions = dict[str, object]
 DEFAULT_RETRIES = 10
 DEFAULT_FRAGMENT_RETRIES = 10
 DEFAULT_AUDIO_QUALITY = "0"
-OUTPUT_TEMPLATE = "%(title).200B [%(id)s].%(ext)s"
+OUTPUT_TEMPLATE = "%(title).200B.%(ext)s"
 REMOTE_COMPONENTS: Final[list[str]] = ["ejs:github"]
 
 

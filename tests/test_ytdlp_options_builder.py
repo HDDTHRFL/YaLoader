@@ -147,3 +147,20 @@ def test_build_options_does_not_add_static_download_speed_limit(tmp_path: Path) 
     options = builder.build(request=request)
 
     assert "ratelimit" not in options
+
+
+def test_build_output_template_does_not_append_generated_id(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        mode=DownloadMode.VIDEO,
+        output_format=OutputFormat.MP4,
+        video_quality=VideoQuality.BEST,
+    )
+    builder = YtDlpOptionsBuilder()
+
+    options = builder.build(request=request)
+
+    output_template = str(options["outtmpl"])
+    assert "[%(id)s]" not in output_template
+    assert output_template.endswith("%(title).200B.%(ext)s")

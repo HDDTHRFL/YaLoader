@@ -167,6 +167,62 @@ def test_ytdlp_downloader_uses_prepared_download_from_cache(tmp_path: Path) -> N
     assert backend.options["merge_output_format"] == "mp4"
 
 
+def test_ytdlp_downloader_uses_unique_prepared_output_template_for_duplicate_file(
+    tmp_path: Path,
+) -> None:
+    existing_file = tmp_path / "Prepared video.mp4"
+    existing_file.write_text("old", encoding="utf-8")
+    backend = RecordingYtDlpBackend()
+    prepared_download_cache = PreparedDownloadCache()
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(),
+        backend=backend,
+        prepared_download_cache=prepared_download_cache,
+    )
+    task = create_video_task(target_dir=tmp_path)
+    prepared_download = PreparedDownload(
+        task_id=task.task_id,
+        url=task.url.value,
+        title="Prepared video",
+        raw_info={"title": "Prepared video"},
+    )
+    prepared_download_cache.save(prepared_download=prepared_download)
+
+    result = downloader.download(task=task)
+
+    assert result.status == DownloadStatus.COMPLETED
+    assert backend.options is not None
+    assert str(backend.options["outtmpl"]).endswith("Prepared video (1).%(ext)s")
+
+
+def test_ytdlp_downloader_removes_generated_id_suffix_from_prepared_output_template(
+    tmp_path: Path,
+) -> None:
+    backend = RecordingYtDlpBackend()
+    prepared_download_cache = PreparedDownloadCache()
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(),
+        backend=backend,
+        prepared_download_cache=prepared_download_cache,
+    )
+    task = create_video_task(target_dir=tmp_path)
+    prepared_download = PreparedDownload(
+        task_id=task.task_id,
+        url=task.url.value,
+        title="Wanderbelle [TedhnnoEqiz]",
+        raw_info={"title": "Wanderbelle [TedhnnoEqiz]"},
+    )
+    prepared_download_cache.save(prepared_download=prepared_download)
+
+    result = downloader.download(task=task)
+
+    assert result.status == DownloadStatus.COMPLETED
+    assert backend.options is not None
+    output_template = str(backend.options["outtmpl"])
+    assert output_template.endswith("Wanderbelle.%(ext)s")
+    assert "TedhnnoEqiz" not in output_template
+
+
 def test_ytdlp_downloader_returns_failed_result_on_backend_error(tmp_path: Path) -> None:
     downloader = YtDlpDownloader(
         options_builder=YtDlpOptionsBuilder(),

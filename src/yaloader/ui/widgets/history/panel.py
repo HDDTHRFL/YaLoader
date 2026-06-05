@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from typing import cast, override
 
 from PyQt6.QtCore import QEvent, QObject, Qt, QTimer
+from PyQt6.QtGui import QResizeEvent
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -21,18 +22,22 @@ from yaloader.ui.widgets.common.overlay_scrollbar import OverlayVerticalScrollBa
 from yaloader.ui.widgets.history.record_card import HistoryRecordCard
 
 HISTORY_PANEL_WIDTH = 380
+HISTORY_PANEL_HORIZONTAL_MARGIN = 16
+HISTORY_RECORDS_CONTAINER_MIN_WIDTH = HISTORY_PANEL_WIDTH - HISTORY_PANEL_HORIZONTAL_MARGIN * 2
 
 
 class HistoryPanel(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.refresh_button = QPushButton("Обновить", self)
-        self.clear_button = QPushButton("Очистить", self)
+        self._content_widget = QWidget(self)
 
-        self._records_container = QWidget(self)
+        self.refresh_button = QPushButton("Обновить", self._content_widget)
+        self.clear_button = QPushButton("Очистить", self._content_widget)
+
+        self._records_container = QWidget(self._content_widget)
         self._records_layout = QVBoxLayout(self._records_container)
-        self._scroll_area = QScrollArea(self)
+        self._scroll_area = QScrollArea(self._content_widget)
         self._overlay_scroll_bar_controller: OverlayVerticalScrollBarController | None = None
 
         self._records_count = 0
@@ -42,6 +47,13 @@ class HistoryPanel(QFrame):
 
         self._configure_widgets()
         self._build_layout()
+        self._sync_content_geometry()
+
+    @override
+    def resizeEvent(self, event: QResizeEvent | None) -> None:
+        super().resizeEvent(event)
+        self._sync_content_geometry()
+        self._sync_records_container_later()
 
     @override
     def eventFilter(self, watched: QObject | None, event: QEvent | None) -> bool:
@@ -111,16 +123,22 @@ class HistoryPanel(QFrame):
 
     def set_drawer_width(self, *, width: int) -> None:
         normalized_width = max(0, min(HISTORY_PANEL_WIDTH, width))
-        self.setMinimumWidth(normalized_width)
-        self.setMaximumWidth(normalized_width)
-        self.resize(normalized_width, self.height())
+        self.setFixedWidth(normalized_width)
+        self._sync_content_geometry()
+        self.updateGeometry()
+        self.update()
 
     def current_drawer_width(self) -> int:
-        return self.width()
+        return max(0, min(HISTORY_PANEL_WIDTH, self.width()))
 
     def _configure_widgets(self) -> None:
         self.setObjectName("HistoryPanel")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.set_drawer_width(width=HISTORY_PANEL_WIDTH)
+
+        self._content_widget.setObjectName("HistoryPanelContent")
+        self._content_widget.setFixedWidth(HISTORY_PANEL_WIDTH)
+        self._content_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         self.refresh_button.setObjectName("TinyGhostButton")
         self.clear_button.setObjectName("TinyDangerButton")
@@ -128,11 +146,16 @@ class HistoryPanel(QFrame):
         self.refresh_button.setToolTip("Перечитать историю из файла")
         self.clear_button.setToolTip("Очистить историю загрузок")
 
+        self._records_container.setObjectName("HistoryRecordsContainer")
+        self._records_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
         self._scroll_area.setObjectName("HistoryScrollArea")
         self._scroll_area.setWidgetResizable(True)
         self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll_area.setWidget(self._records_container)
+        self._viewport().setObjectName("HistoryScrollAreaViewport")
+        self._viewport().setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         horizontal_scroll_bar = self._horizontal_scroll_bar()
         horizontal_scroll_bar.setEnabled(False)
@@ -156,15 +179,20 @@ class HistoryPanel(QFrame):
         self._records_layout.setSpacing(10)
 
     def _build_layout(self) -> None:
-        root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(16, 18, 16, 18)
+        root_layout = QVBoxLayout(self._content_widget)
+        root_layout.setContentsMargins(
+            HISTORY_PANEL_HORIZONTAL_MARGIN,
+            18,
+            HISTORY_PANEL_HORIZONTAL_MARGIN,
+            18,
+        )
         root_layout.setSpacing(14)
 
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(8)
 
-        title_label = QLabel("История", self)
+        title_label = QLabel("История", self._content_widget)
         title_label.setObjectName("SectionTitleLabel")
 
         header_layout.addWidget(title_label)
@@ -175,6 +203,14 @@ class HistoryPanel(QFrame):
         root_layout.addLayout(header_layout)
         root_layout.addWidget(self._scroll_area, stretch=1)
 
+    def _sync_content_geometry(self) -> None:
+        self._content_widget.setGeometry(
+            0,
+            0,
+            HISTORY_PANEL_WIDTH,
+            max(0, self.height()),
+        )
+
     def _sync_records_container_later(self) -> None:
         self._sync_records_container_width()
         self._lock_horizontal_scroll_position()
@@ -183,12 +219,10 @@ class HistoryPanel(QFrame):
 
     def _sync_records_container_width(self) -> None:
         viewport_width = self._viewport().width()
+        target_width = max(HISTORY_RECORDS_CONTAINER_MIN_WIDTH, viewport_width)
 
-        if viewport_width <= 0:
-            return
-
-        self._records_container.setMinimumWidth(viewport_width)
-        self._records_container.setMaximumWidth(viewport_width)
+        self._records_container.setMinimumWidth(target_width)
+        self._records_container.setMaximumWidth(target_width)
 
     def _handle_horizontal_scroll_range_changed(self, _minimum: int, _maximum: int) -> None:
         self._lock_horizontal_scroll_position()
