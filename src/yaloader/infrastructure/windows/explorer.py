@@ -10,6 +10,7 @@ from typing import Protocol, cast
 from loguru import logger
 
 WINDOWS_PLATFORM_PREFIX = "win"
+WINDOWS_EXPLORER_EXECUTABLE = "explorer.exe"
 
 SVSI_SELECT = 0x0001
 SVSI_DESELECTOTHERS = 0x0004
@@ -180,13 +181,11 @@ def activate_shell_window(*, shell_window: ShellWindow) -> None:
 
 
 def open_windows_explorer_with_file_selected(*, file_path: Path) -> bool:
+    command = build_windows_explorer_file_select_command(file_path=file_path)
+
     try:
-        subprocess.Popen(
-            (
-                "explorer.exe",
-                f"/select,{file_path.resolve()}",
-            )
-        )
+        logger.debug("Opening Explorer with selected file. command={}", command)
+        subprocess.Popen(command)
         return True
     except OSError as error:
         logger.debug(
@@ -198,13 +197,11 @@ def open_windows_explorer_with_file_selected(*, file_path: Path) -> bool:
 
 
 def open_windows_explorer_directory(*, directory_path: Path) -> bool:
+    command = build_windows_explorer_directory_command(directory_path=directory_path)
+
     try:
-        subprocess.Popen(
-            (
-                "explorer.exe",
-                str(directory_path.resolve()),
-            )
-        )
+        logger.debug("Opening Explorer directory. command={}", command)
+        subprocess.Popen(command)
         return True
     except OSError as error:
         logger.debug(
@@ -213,6 +210,14 @@ def open_windows_explorer_directory(*, directory_path: Path) -> bool:
             error,
         )
         return False
+
+
+def build_windows_explorer_file_select_command(*, file_path: Path) -> str:
+    return f'{WINDOWS_EXPLORER_EXECUTABLE} /select,"{file_path.resolve()}"'
+
+
+def build_windows_explorer_directory_command(*, directory_path: Path) -> str:
+    return f'{WINDOWS_EXPLORER_EXECUTABLE} "{directory_path.resolve()}"'
 
 
 def is_same_windows_path(left_path: Path, right_path: Path) -> bool:
