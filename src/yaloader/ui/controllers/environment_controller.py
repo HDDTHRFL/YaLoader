@@ -7,6 +7,10 @@ from pydantic import ValidationError
 
 from yaloader.application.dto.app_settings import AppSettings
 from yaloader.application.dto.environment_status import EnvironmentStatus
+from yaloader.application.services.cookies_file_service import (
+    CookiesFileImportError,
+    CookiesFileService,
+)
 from yaloader.application.services.environment_check_service import EnvironmentCheckService
 from yaloader.application.services.settings_service import SettingsService
 from yaloader.config.paths import AppPaths
@@ -29,10 +33,14 @@ class EnvironmentController:
         paths: AppPaths,
         settings_service: SettingsService,
         environment_check_service: EnvironmentCheckService,
+        cookies_file_service: CookiesFileService | None = None,
     ) -> None:
         self._paths = paths
         self._settings_service = settings_service
         self._environment_check_service = environment_check_service
+        self._cookies_file_service = cookies_file_service or CookiesFileService(
+            target_file=paths.cookies_file,
+        )
 
     def load_status(self, *, downloads_dir: Path) -> EnvironmentControllerUpdate:
         return EnvironmentControllerUpdate(
@@ -88,6 +96,28 @@ class EnvironmentController:
                 f"{format_download_speed_limit_label(bytes_per_second=bytes_per_second)}"
             ),
             settings=settings,
+        )
+
+    def import_cookies(
+        self,
+        *,
+        source_file: Path,
+        downloads_dir: Path,
+    ) -> EnvironmentControllerUpdate:
+        try:
+            imported_file = self._cookies_file_service.import_cookies_file(
+                source_file=source_file,
+            )
+        except CookiesFileImportError as error:
+            return EnvironmentControllerUpdate(
+                status_message=f"Не удалось импортировать cookies.txt: {error}",
+                environment_status=self._check_environment(downloads_dir=downloads_dir),
+            )
+
+        return EnvironmentControllerUpdate(
+            status_message=f"cookies.txt импортирован: {imported_file}",
+            environment_status=self._check_environment(downloads_dir=downloads_dir),
+            should_play_refresh_feedback=True,
         )
 
     def delete_cookies(self, *, downloads_dir: Path) -> EnvironmentControllerUpdate:

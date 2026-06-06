@@ -93,6 +93,7 @@ class EnvironmentPanel(QFrame):
         super().__init__(parent)
 
         self.refresh_button = QPushButton("Обновить", self)
+        self.import_cookies_button = QPushButton("Импорт cookies.txt", self)
         self.open_cookies_dir_button = QPushButton("Открыть cookies", self)
         self.delete_cookies_button = QPushButton("Удалить cookies.txt", self)
         self.open_downloads_dir_button = QPushButton("Открыть загрузки", self)
@@ -122,10 +123,14 @@ class EnvironmentPanel(QFrame):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
         self.refresh_button.setObjectName("GhostButton")
+        self.import_cookies_button.setObjectName("TinyGhostButton")
         self.open_cookies_dir_button.setObjectName("TinyGhostButton")
         self.open_downloads_dir_button.setObjectName("TinyGhostButton")
         self.delete_cookies_button.setObjectName("TinyDangerButton")
 
+        self.import_cookies_button.setToolTip(
+            "Выбрать cookies.txt и скопировать его в папку YaLoader"
+        )
         self.open_cookies_dir_button.setToolTip("Открыть папку с cookies.txt")
         self.delete_cookies_button.setToolTip("Безвозвратно удалить cookies.txt")
         self.open_downloads_dir_button.setToolTip("Открыть папку загрузок")
@@ -163,10 +168,11 @@ class EnvironmentPanel(QFrame):
         actions_layout.setHorizontalSpacing(8)
         actions_layout.setVerticalSpacing(6)
 
-        actions_layout.addWidget(self.open_cookies_dir_button, 0, 0)
-        actions_layout.addWidget(self.open_downloads_dir_button, 0, 1)
+        actions_layout.addWidget(self.import_cookies_button, 0, 0)
+        actions_layout.addWidget(self.open_cookies_dir_button, 0, 1)
+        actions_layout.addWidget(self.open_downloads_dir_button, 0, 2)
         actions_layout.addWidget(self.delete_cookies_button, 1, 0)
-        actions_layout.setColumnStretch(2, 1)
+        actions_layout.setColumnStretch(3, 1)
 
         root_layout.addLayout(header_layout)
         root_layout.addLayout(chips_layout)

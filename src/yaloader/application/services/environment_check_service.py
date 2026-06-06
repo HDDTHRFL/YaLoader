@@ -9,12 +9,8 @@ from loguru import logger
 
 from yaloader.application.dto.environment_status import EnvironmentItemStatus, EnvironmentStatus
 from yaloader.application.ports.process_runner import ProcessRunner
+from yaloader.application.services.cookies_file_service import COOKIES_HEADER_PREFIXES
 from yaloader.config.paths import AppPaths
-
-COOKIES_HEADER_PREFIXES = (
-    "# Netscape HTTP Cookie File",
-    "# HTTP Cookie File",
-)
 
 
 @dataclass(frozen=True, slots=True)

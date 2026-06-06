@@ -7,6 +7,8 @@ from yaloader.application.services.settings_service import SettingsService
 from yaloader.config.paths import AppPaths
 from yaloader.ui.controllers.environment_controller import EnvironmentController
 
+VALID_COOKIES_TEXT = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tVALUE\n"
+
 
 class FakeProcessRunner:
     def __init__(self, executables: dict[str, Path]) -> None:
@@ -64,12 +66,66 @@ def test_change_downloads_dir_rejects_relative_path(tmp_path: Path) -> None:
     assert update.status_message == "Папка загрузок должна быть абсолютным путём"
 
 
-def test_delete_cookies_removes_existing_file_and_refreshes_status(tmp_path: Path) -> None:
+def test_import_cookies_copies_valid_file_and_refreshes_status(tmp_path: Path) -> None:
+    paths = create_app_paths(tmp_path=tmp_path)
+    source_file = tmp_path / "exported-cookies.txt"
+    source_file.write_text(VALID_COOKIES_TEXT, encoding="utf-8")
+    controller = create_controller(tmp_path=tmp_path, paths=paths)
+
+    update = controller.import_cookies(
+        source_file=source_file,
+        downloads_dir=paths.downloads_dir,
+    )
+
+    assert paths.cookies_file.read_text(encoding="utf-8") == VALID_COOKIES_TEXT
+    assert update.environment_status is not None
+    assert update.environment_status.cookies.is_ok is True
+    assert update.should_play_refresh_feedback is True
+    assert update.status_message == f"cookies.txt импортирован: {paths.cookies_file}"
+
+
+def test_import_cookies_rejects_suspicious_file_and_refreshes_status(tmp_path: Path) -> None:
+    paths = create_app_paths(tmp_path=tmp_path)
+    source_file = tmp_path / "bad-cookies.txt"
+    source_file.write_text("not a cookies file\n", encoding="utf-8")
+    controller = create_controller(tmp_path=tmp_path, paths=paths)
+
+    update = controller.import_cookies(
+        source_file=source_file,
+        downloads_dir=paths.downloads_dir,
+    )
+
+    assert paths.cookies_file.is_file() is False
+    assert update.environment_status is not None
+    assert update.environment_status.cookies.is_ok is False
+    assert update.status_message is not None
+    assert "Не удалось импортировать cookies.txt" in update.status_message
+    assert "подозрительный формат" in update.status_message
+
+
+def test_import_cookies_replaces_existing_file(tmp_path: Path) -> None:
     paths = create_app_paths(tmp_path=tmp_path)
     paths.cookies_file.write_text(
-        "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tVALUE\n",
+        "# Netscape HTTP Cookie File\n.old\tTRUE\t/\tTRUE\t0\tOLD\tVALUE\n",
         encoding="utf-8",
     )
+    source_file = tmp_path / "exported-cookies.txt"
+    source_file.write_text(VALID_COOKIES_TEXT, encoding="utf-8")
+    controller = create_controller(tmp_path=tmp_path, paths=paths)
+
+    update = controller.import_cookies(
+        source_file=source_file,
+        downloads_dir=paths.downloads_dir,
+    )
+
+    assert paths.cookies_file.read_text(encoding="utf-8") == VALID_COOKIES_TEXT
+    assert update.environment_status is not None
+    assert update.environment_status.cookies.is_ok is True
+
+
+def test_delete_cookies_removes_existing_file_and_refreshes_status(tmp_path: Path) -> None:
+    paths = create_app_paths(tmp_path=tmp_path)
+    paths.cookies_file.write_text(VALID_COOKIES_TEXT, encoding="utf-8")
     controller = create_controller(tmp_path=tmp_path, paths=paths)
 
     update = controller.delete_cookies(downloads_dir=paths.downloads_dir)

@@ -87,6 +87,16 @@ DELETE_COOKIES_CONFIRMATION_TEXT = "Файл cookies.txt будет удалён
 DELETE_COOKIES_CONFIRMATION_DETAILS = "При необходимости cookies.txt придётся создать заново."
 DELETE_COOKIES_CONFIRMATION_BUTTON = "Удалить cookies.txt"
 
+IMPORT_COOKIES_DIALOG_TITLE = "Выберите cookies.txt"
+IMPORT_COOKIES_DIALOG_FILTER = "Cookies files (*.txt);;All files (*)"
+REPLACE_COOKIES_CONFIRMATION_TITLE = "Заменить cookies.txt?"
+REPLACE_COOKIES_CONFIRMATION_TEXT = "Текущий cookies.txt будет заменён выбранным файлом."
+REPLACE_COOKIES_CONFIRMATION_DETAILS = (
+    "Используйте только файл, который вы получили из своего браузера или yt-dlp. "
+    "Не импортируйте чужие cookies."
+)
+REPLACE_COOKIES_CONFIRMATION_BUTTON = "Заменить cookies.txt"
+
 CLEAR_HISTORY_CONFIRMATION_TITLE = "Очистить историю?"
 CLEAR_HISTORY_CONFIRMATION_TEXT = "История загрузок будет полностью очищена."
 CLEAR_HISTORY_CONFIRMATION_DETAILS = (
@@ -253,6 +263,9 @@ class MainWindow(QMainWindow):
             self._handle_download_speed_limit_signal_changed
         )
 
+        self._environment_panel.import_cookies_button.clicked.connect(
+            self._handle_import_cookies_clicked
+        )
         self._environment_panel.delete_cookies_button.clicked.connect(
             self._handle_delete_cookies_clicked
         )
@@ -645,6 +658,36 @@ class MainWindow(QMainWindow):
             f"{format_download_speed_limit_label(bytes_per_second=bytes_per_second)}"
         )
 
+    def _handle_import_cookies_clicked(self) -> None:
+        selected_file, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            IMPORT_COOKIES_DIALOG_TITLE,
+            str(self._container.paths.data_dir),
+            IMPORT_COOKIES_DIALOG_FILTER,
+        )
+
+        if not selected_file:
+            return
+
+        source_file = Path(selected_file)
+
+        if (
+            self._container.paths.cookies_file.is_file()
+            and not is_same_filesystem_path(
+                left_path=source_file,
+                right_path=self._container.paths.cookies_file,
+            )
+            and not self._confirm_replace_cookies()
+        ):
+            return
+
+        self._apply_environment_update(
+            update=self._environment_controller.import_cookies(
+                source_file=source_file,
+                downloads_dir=self._settings.downloads_dir,
+            )
+        )
+
     def _handle_delete_cookies_clicked(self) -> None:
         if self._container.paths.cookies_file.is_file() and not self._confirm_delete_cookies():
             return
@@ -801,6 +844,15 @@ class MainWindow(QMainWindow):
             text=DELETE_COOKIES_CONFIRMATION_TEXT,
             informative_text=DELETE_COOKIES_CONFIRMATION_DETAILS,
             confirm_button_text=DELETE_COOKIES_CONFIRMATION_BUTTON,
+        )
+
+    def _confirm_replace_cookies(self) -> bool:
+        return confirm_dangerous_action(
+            parent=self,
+            title=REPLACE_COOKIES_CONFIRMATION_TITLE,
+            text=REPLACE_COOKIES_CONFIRMATION_TEXT,
+            informative_text=REPLACE_COOKIES_CONFIRMATION_DETAILS,
+            confirm_button_text=REPLACE_COOKIES_CONFIRMATION_BUTTON,
         )
 
     def _confirm_clear_history(self) -> bool:
@@ -1032,6 +1084,7 @@ class MainWindow(QMainWindow):
             is_available=True,
         )
         self._settings_panel.choose_downloads_dir_button.setEnabled(not has_active_download)
+        self._environment_panel.import_cookies_button.setEnabled(not has_active_download)
         self._environment_panel.delete_cookies_button.setEnabled(not has_active_download)
         self._environment_panel.refresh_button.setEnabled(not has_active_download)
         self._environment_panel.open_cookies_dir_button.setEnabled(not has_active_download)
@@ -1058,3 +1111,10 @@ class MainWindow(QMainWindow):
 
     def _focus_url_input_later(self) -> None:
         QTimer.singleShot(0, self._input_panel.focus_url_input)
+
+
+def is_same_filesystem_path(*, left_path: Path, right_path: Path) -> bool:
+    try:
+        return left_path.samefile(right_path)
+    except OSError:
+        return left_path.resolve() == right_path.resolve()
