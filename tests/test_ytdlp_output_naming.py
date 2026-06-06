@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from yaloader.infrastructure.ytdlp.downloader import (
+from yaloader.infrastructure.ytdlp.output_naming import (
     MAX_OUTPUT_FILE_STEM_LENGTH,
     build_unique_output_file_stem,
     build_unique_output_template,
