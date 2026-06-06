@@ -12,6 +12,7 @@ from yaloader.application.services.environment_check_service import EnvironmentC
 from yaloader.application.services.media_metadata_service import MediaMetadataService
 from yaloader.application.services.prepared_download_cache import PreparedDownloadCache
 from yaloader.application.services.settings_service import SettingsService
+from yaloader.application.services.tool_installation_service import ToolInstallationService
 from yaloader.config.paths import AppPaths, build_default_app_paths, ensure_app_directories
 from yaloader.infrastructure.system.tool_locator import ToolLocatorProcessRunner
 from yaloader.infrastructure.ytdlp.download_preparer import YtDlpDownloadPreparer
@@ -25,6 +26,7 @@ class AppContainer:
     settings: AppSettings
     settings_service: SettingsService
     environment_check_service: EnvironmentCheckService
+    tool_installation_service: ToolInstallationService
     download_queue_service: DownloadQueueService
     download_speed_limit_state: DownloadSpeedLimitState
     download_history_service: DownloadHistoryService
@@ -57,6 +59,10 @@ def build_app_container() -> AppContainer:
         environment_check_service=EnvironmentCheckService(
             paths=paths,
             process_runner=tool_locator,
+        ),
+        tool_installation_service=ToolInstallationService(
+            process_runner=tool_locator,
+            installers={},
         ),
         download_queue_service=DownloadQueueService(),
         download_speed_limit_state=download_speed_limit_state,
