@@ -13,6 +13,10 @@ HTTP_DOWNLOAD_TIMEOUT_SECONDS = 180.0
 HTTP_DOWNLOAD_CHUNK_SIZE_BYTES = 1024 * 512
 
 
+class FileDownloadError(RuntimeError):
+    pass
+
+
 class FileDownloader(Protocol):
     def download_file(
         self,
@@ -40,35 +44,41 @@ class HttpFileDownloader:
         destination_file.parent.mkdir(parents=True, exist_ok=True)
         downloaded_bytes = 0
 
-        with httpx.stream(
-            "GET",
-            url,
-            follow_redirects=True,
-            timeout=self.timeout_seconds,
-        ) as response:
-            response.raise_for_status()
-            total_bytes = parse_content_length(value=response.headers.get("content-length"))
+        try:
+            with httpx.stream(
+                "GET",
+                url,
+                follow_redirects=True,
+                timeout=self.timeout_seconds,
+            ) as response:
+                response.raise_for_status()
+                total_bytes = parse_content_length(value=response.headers.get("content-length"))
 
-            with destination_file.open("wb") as file:
-                for chunk in response.iter_bytes(chunk_size=self.chunk_size_bytes):
-                    if not chunk:
-                        continue
+                with destination_file.open("wb") as file:
+                    for chunk in response.iter_bytes(chunk_size=self.chunk_size_bytes):
+                        if not chunk:
+                            continue
 
-                    file.write(chunk)
-                    downloaded_bytes += len(chunk)
+                        file.write(chunk)
+                        downloaded_bytes += len(chunk)
 
-                    if progress_callback is not None:
-                        progress_callback(downloaded_bytes, total_bytes)
+                        if progress_callback is not None:
+                            progress_callback(downloaded_bytes, total_bytes)
+        except httpx.HTTPError as error:
+            raise FileDownloadError(f"download failed: {url}: {error}") from error
 
     def download_text(self, *, url: str) -> str:
-        with httpx.Client(
-            follow_redirects=True,
-            timeout=self.timeout_seconds,
-        ) as client:
-            response = client.get(url)
-            response.raise_for_status()
+        try:
+            with httpx.Client(
+                follow_redirects=True,
+                timeout=self.timeout_seconds,
+            ) as client:
+                response = client.get(url)
+                response.raise_for_status()
 
-            return response.text
+                return response.text
+        except httpx.HTTPError as error:
+            raise FileDownloadError(f"text download failed: {url}: {error}") from error
 
 
 def parse_content_length(*, value: str | None) -> int | None:
