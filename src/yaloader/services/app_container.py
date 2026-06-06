@@ -48,6 +48,9 @@ def build_app_container() -> AppContainer:
         bytes_per_second=settings.download_speed_limit_bytes_per_second,
     )
     prepared_download_cache = PreparedDownloadCache()
+    tool_locator = ToolLocatorProcessRunner(
+        search_paths=ToolSearchPaths(app_tools_dir=paths.data_dir / "tools"),
+    )
 
     return AppContainer(
         paths=paths,
@@ -55,9 +58,7 @@ def build_app_container() -> AppContainer:
         settings_service=settings_service,
         environment_check_service=EnvironmentCheckService(
             paths=paths,
-            process_runner=ToolLocatorProcessRunner(
-                search_paths=ToolSearchPaths(app_tools_dir=paths.data_dir / "tools"),
-            ),
+            process_runner=tool_locator,
         ),
         download_queue_service=DownloadQueueService(),
         download_speed_limit_state=download_speed_limit_state,
@@ -68,10 +69,12 @@ def build_app_container() -> AppContainer:
         ),
         download_preparer=YtDlpDownloadPreparer.create_default(
             cookies_file=paths.cookies_file,
+            process_runner=tool_locator,
         ),
         downloader=YtDlpDownloader.create_default(
             cookies_file=paths.cookies_file,
             speed_limit_provider=download_speed_limit_state,
             prepared_download_cache=prepared_download_cache,
+            process_runner=tool_locator,
         ),
     )

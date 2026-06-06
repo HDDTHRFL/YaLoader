@@ -17,6 +17,7 @@ from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
 from yaloader.application.dto.prepared_download import PreparedDownload
 from yaloader.application.ports.downloader import CancellationToken, ProgressCallback
+from yaloader.application.ports.process_runner import ProcessRunner
 from yaloader.application.services.prepared_download_cache import PreparedDownloadCache
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
@@ -248,9 +249,13 @@ class YtDlpDownloader:
         cookies_file: Path | None = None,
         speed_limit_provider: DownloadSpeedLimitProvider | None = None,
         prepared_download_cache: PreparedDownloadCache | None = None,
+        process_runner: ProcessRunner | None = None,
     ) -> YtDlpDownloader:
         return cls(
-            options_builder=YtDlpOptionsBuilder(cookies_file=cookies_file),
+            options_builder=YtDlpOptionsBuilder(
+                cookies_file=cookies_file,
+                process_runner=process_runner,
+            ),
             backend=YtDlpPythonBackend.create_default(),
             cookies_file=cookies_file,
             speed_limit_provider=speed_limit_provider,

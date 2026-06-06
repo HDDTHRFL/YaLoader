@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Final
 
 from yaloader.application.dto.download_request import DownloadRequest
+from yaloader.application.ports.process_runner import ProcessRunner
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
 
 YtDlpOptions = dict[str, object]
@@ -15,11 +16,13 @@ DEFAULT_FRAGMENT_RETRIES = 10
 DEFAULT_AUDIO_QUALITY = "0"
 OUTPUT_TEMPLATE = "%(title).200B.%(ext)s"
 REMOTE_COMPONENTS: Final[list[str]] = ["ejs:github"]
+FFMPEG_EXECUTABLE_NAME: Final = "ffmpeg"
 
 
 @dataclass(frozen=True, slots=True)
 class YtDlpOptionsBuilder:
     cookies_file: Path | None = None
+    process_runner: ProcessRunner | None = None
 
     def build(self, request: DownloadRequest) -> YtDlpOptions:
         options: YtDlpOptions = {
@@ -42,6 +45,11 @@ class YtDlpOptionsBuilder:
         if self.cookies_file is not None and self.cookies_file.is_file():
             options["cookiefile"] = str(self.cookies_file)
 
+        ffmpeg_location = self._find_ffmpeg_location()
+
+        if ffmpeg_location is not None:
+            options["ffmpeg_location"] = str(ffmpeg_location)
+
         postprocessors = self._build_postprocessors(request=request)
 
         if postprocessors:
@@ -51,6 +59,12 @@ class YtDlpOptionsBuilder:
 
     def _build_output_template(self, target_dir: Path) -> str:
         return str(target_dir / OUTPUT_TEMPLATE)
+
+    def _find_ffmpeg_location(self) -> Path | None:
+        if self.process_runner is None:
+            return None
+
+        return self.process_runner.find_executable(FFMPEG_EXECUTABLE_NAME)
 
     def _build_format_selector(self, request: DownloadRequest) -> str:
         if request.mode is DownloadMode.VIDEO:

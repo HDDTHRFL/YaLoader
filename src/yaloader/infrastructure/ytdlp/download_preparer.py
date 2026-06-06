@@ -12,6 +12,7 @@ from loguru import logger
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.prepared_download import PreparedDownload
 from yaloader.application.ports.downloader import CancellationToken
+from yaloader.application.ports.process_runner import ProcessRunner
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.infrastructure.ytdlp.metadata_extractor import (
     extract_playlist_count,
@@ -48,10 +49,18 @@ class YtDlpDownloadPreparer:
     options_builder: YtDlpOptionsBuilder
 
     @classmethod
-    def create_default(cls, *, cookies_file: Path | None = None) -> YtDlpDownloadPreparer:
+    def create_default(
+        cls,
+        *,
+        cookies_file: Path | None = None,
+        process_runner: ProcessRunner | None = None,
+    ) -> YtDlpDownloadPreparer:
         return cls(
             youtube_dl_factory=load_youtube_dl_preparation_factory(),
-            options_builder=YtDlpOptionsBuilder(cookies_file=cookies_file),
+            options_builder=YtDlpOptionsBuilder(
+                cookies_file=cookies_file,
+                process_runner=process_runner,
+            ),
         )
 
     def prepare(
