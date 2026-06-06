@@ -3,8 +3,18 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 from yaloader.config.app_info import APP_NAME
+
+TOOLS_DIR_NAME: Final = "tools"
+
+FFMPEG_DIR_NAME: Final = "ffmpeg"
+FFMPEG_BIN_DIR_NAME: Final = "bin"
+FFMPEG_EXECUTABLE_NAME: Final = "ffmpeg.exe"
+
+DENO_DIR_NAME: Final = "deno"
+DENO_EXECUTABLE_NAME: Final = "deno.exe"
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,11 +27,36 @@ class AppPaths:
     history_file: Path
 
     @property
+    def tools_dir(self) -> Path:
+        return self.data_dir / TOOLS_DIR_NAME
+
+    @property
+    def ffmpeg_dir(self) -> Path:
+        return self.tools_dir / FFMPEG_DIR_NAME
+
+    @property
+    def ffmpeg_bin_dir(self) -> Path:
+        return self.ffmpeg_dir / FFMPEG_BIN_DIR_NAME
+
+    @property
+    def ffmpeg_executable(self) -> Path:
+        return self.ffmpeg_bin_dir / FFMPEG_EXECUTABLE_NAME
+
+    @property
+    def deno_dir(self) -> Path:
+        return self.tools_dir / DENO_DIR_NAME
+
+    @property
+    def deno_executable(self) -> Path:
+        return self.deno_dir / DENO_EXECUTABLE_NAME
+
+    @property
     def required_directories(self) -> tuple[Path, ...]:
         return (
             self.data_dir,
             self.downloads_dir,
             self.logs_dir,
+            self.tools_dir,
         )
 
 

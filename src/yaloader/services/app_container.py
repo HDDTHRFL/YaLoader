@@ -13,7 +13,7 @@ from yaloader.application.services.media_metadata_service import MediaMetadataSe
 from yaloader.application.services.prepared_download_cache import PreparedDownloadCache
 from yaloader.application.services.settings_service import SettingsService
 from yaloader.config.paths import AppPaths, build_default_app_paths, ensure_app_directories
-from yaloader.infrastructure.system.tool_locator import ToolLocatorProcessRunner, ToolSearchPaths
+from yaloader.infrastructure.system.tool_locator import ToolLocatorProcessRunner
 from yaloader.infrastructure.ytdlp.download_preparer import YtDlpDownloadPreparer
 from yaloader.infrastructure.ytdlp.downloader import YtDlpDownloader
 from yaloader.infrastructure.ytdlp.metadata_extractor import YtDlpMetadataExtractor
@@ -48,9 +48,7 @@ def build_app_container() -> AppContainer:
         bytes_per_second=settings.download_speed_limit_bytes_per_second,
     )
     prepared_download_cache = PreparedDownloadCache()
-    tool_locator = ToolLocatorProcessRunner(
-        search_paths=ToolSearchPaths(app_tools_dir=paths.data_dir / "tools"),
-    )
+    tool_locator = ToolLocatorProcessRunner(paths=paths)
 
     return AppContainer(
         paths=paths,
