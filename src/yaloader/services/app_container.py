@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from yaloader.application.dto.app_settings import AppSettings
+from yaloader.application.dto.tool_installation import ToolId
 from yaloader.application.ports.download_preparer import DownloadPreparer
 from yaloader.application.ports.downloader import Downloader
 from yaloader.application.services.download_history_service import DownloadHistoryService
@@ -15,6 +16,7 @@ from yaloader.application.services.settings_service import SettingsService
 from yaloader.application.services.tool_installation_service import ToolInstallationService
 from yaloader.config.paths import AppPaths, build_default_app_paths, ensure_app_directories
 from yaloader.infrastructure.system.tool_locator import ToolLocatorProcessRunner
+from yaloader.infrastructure.tools.ffmpeg_installer import FfmpegPortableInstaller
 from yaloader.infrastructure.ytdlp.download_preparer import YtDlpDownloadPreparer
 from yaloader.infrastructure.ytdlp.downloader import YtDlpDownloader
 from yaloader.infrastructure.ytdlp.metadata_extractor import YtDlpMetadataExtractor
@@ -62,7 +64,9 @@ def build_app_container() -> AppContainer:
         ),
         tool_installation_service=ToolInstallationService(
             process_runner=tool_locator,
-            installers={},
+            installers={
+                ToolId.FFMPEG: FfmpegPortableInstaller(paths=paths),
+            },
         ),
         download_queue_service=DownloadQueueService(),
         download_speed_limit_state=download_speed_limit_state,
