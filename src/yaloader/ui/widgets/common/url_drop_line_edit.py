@@ -14,13 +14,13 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QLineEdit, QWidget
 
 from yaloader.domain.source_policy import validate_supported_media_url
-from yaloader.domain.value_objects.media_url import MediaUrl
-from yaloader.ui.widgets.common.drop_highlight import DropHighlightOverlay
-from yaloader.ui.widgets.common.url_extraction import (
+from yaloader.domain.url_extraction import (
     HTTP_URL_PATTERN,
     extract_first_http_url_from_candidates,
     normalize_url_candidate,
 )
+from yaloader.domain.value_objects.media_url import MediaUrl
+from yaloader.ui.widgets.common.drop_highlight import DropHighlightOverlay
 
 DropUrlEvent = QDragEnterEvent | QDragMoveEvent | QDropEvent
 

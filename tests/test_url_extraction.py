@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from yaloader.ui.widgets.common.url_extraction import (
+from yaloader.domain.url_extraction import (
     extract_first_http_url,
     extract_first_http_url_from_candidates,
     is_http_url,
@@ -43,6 +43,18 @@ def test_extract_first_http_url_from_candidates_uses_first_valid_url() -> None:
             )
         )
         == "https://youtu.be/video-id"
+    )
+
+
+def test_extract_first_http_url_from_candidates_extracts_url_from_mixed_text() -> None:
+    assert (
+        extract_first_http_url_from_candidates(
+            candidates=(
+                "Открой это видео: https://www.youtube.com/watch?v=abc123",
+                "https://www.youtube.com/watch?v=second",
+            )
+        )
+        == "https://www.youtube.com/watch?v=abc123"
     )
 
 
