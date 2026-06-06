@@ -9,6 +9,7 @@ htmlcov/
 dist/
 build/
 *.spec
+!specs/*.spec
 
 .env
 .env.local

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TextIO, cast
 
 from loguru import logger
 
@@ -30,14 +31,37 @@ def configure_application_logging(*, paths: AppPaths) -> Path:
     log_file_path = paths.logs_dir / LOG_FILE_NAME
 
     logger.remove()
+    add_console_log_sink_if_available()
+    add_file_log_sink(log_file_path=log_file_path)
+
+    logger.info("=" * 90)
+    logger.info("{} started. version={}", APP_DISPLAY_NAME, APP_VERSION)
+    logger.info("Log file: {}", log_file_path)
+    logger.info("Data directory: {}", paths.data_dir)
+    logger.info("Settings file: {}", paths.settings_file)
+    logger.info("Cookies file: {}", paths.cookies_file)
+    logger.info("Default downloads directory: {}", paths.downloads_dir)
+
+    return log_file_path
+
+
+def add_console_log_sink_if_available() -> None:
+    stderr = sys.stderr
+
+    if stderr is None:
+        return
+
     logger.add(
-        sys.stderr,
+        cast(TextIO, stderr),
         level=CONSOLE_LOG_LEVEL,
         format=LOG_FORMAT,
         backtrace=False,
         diagnose=False,
         enqueue=True,
     )
+
+
+def add_file_log_sink(*, log_file_path: Path) -> None:
     logger.add(
         log_file_path,
         level=LOG_LEVEL,
@@ -49,13 +73,3 @@ def configure_application_logging(*, paths: AppPaths) -> Path:
         diagnose=False,
         enqueue=True,
     )
-
-    logger.info("=" * 90)
-    logger.info("{} started. version={}", APP_DISPLAY_NAME, APP_VERSION)
-    logger.info("Log file: {}", log_file_path)
-    logger.info("Data directory: {}", paths.data_dir)
-    logger.info("Settings file: {}", paths.settings_file)
-    logger.info("Cookies file: {}", paths.cookies_file)
-    logger.info("Default downloads directory: {}", paths.downloads_dir)
-
-    return log_file_path

@@ -64,6 +64,7 @@ class BundleConfig:
             ".ps1",
             ".py",
             ".qrc",
+            ".spec",
             ".qss",
             ".svg",
             ".toml",
