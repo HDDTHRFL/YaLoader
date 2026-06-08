@@ -42,6 +42,10 @@ from yaloader.ui.controllers.queue_input_controller import (
     QueueInputController,
     QueueInputControllerUpdate,
 )
+from yaloader.ui.controllers.tool_installation_controller import (
+    ToolInstallationController,
+    ToolInstallationControllerUpdate,
+)
 from yaloader.ui.footer_status_presenter import FooterStatusPresenter
 from yaloader.ui.status_messages import (
     DEFAULT_STATUS_MESSAGE,
@@ -155,6 +159,9 @@ class MainWindow(QMainWindow):
             settings_service=container.settings_service,
             environment_check_service=container.environment_check_service,
         )
+        self._tool_installation_controller = ToolInstallationController(
+            service=container.tool_installation_service,
+        )
 
         self._is_history_panel_visible = False
         self._history_animation: QVariantAnimation | None = None
@@ -171,6 +178,7 @@ class MainWindow(QMainWindow):
         self._history_animation_end_panel_width = 0
         self._history_animation_start_window_width = 0
         self._history_animation_end_window_width = 0
+        self._tool_installation_activity_message: str | None = None
         self._download_poll_timer = self.startTimer(DOWNLOAD_POLL_INTERVAL_MS)
 
         self._configure_window()
@@ -210,6 +218,7 @@ class MainWindow(QMainWindow):
         self.killTimer(self._download_poll_timer)
         self._download_controller.shutdown()
         self._metadata_controller.shutdown()
+        self._tool_installation_controller.shutdown()
         super().closeEvent(event)
 
     @override
@@ -220,6 +229,9 @@ class MainWindow(QMainWindow):
 
         self._drain_metadata_events()
         self._apply_download_update(update=self._download_controller.poll())
+        self._apply_tool_installation_update(
+            update=self._tool_installation_controller.poll(),
+        )
 
     def _configure_window(self) -> None:
         self.setWindowTitle(APP_DISPLAY_NAME)
@@ -263,6 +275,9 @@ class MainWindow(QMainWindow):
             self._handle_download_speed_limit_signal_changed
         )
 
+        self._environment_panel.prepare_system_button.clicked.connect(
+            self._handle_prepare_system_clicked
+        )
         self._environment_panel.import_cookies_button.clicked.connect(
             self._handle_import_cookies_clicked
         )
@@ -688,6 +703,11 @@ class MainWindow(QMainWindow):
             )
         )
 
+    def _handle_prepare_system_clicked(self) -> None:
+        self._apply_tool_installation_update(
+            update=self._tool_installation_controller.start_required_tools_installation(),
+        )
+
     def _handle_delete_cookies_clicked(self) -> None:
         if self._container.paths.cookies_file.is_file() and not self._confirm_delete_cookies():
             return
@@ -733,6 +753,50 @@ class MainWindow(QMainWindow):
             self._show_transient_status_message(update.status_message)
 
         self._sync_queue_controls_state()
+
+    def _apply_tool_installation_update(
+        self,
+        *,
+        update: ToolInstallationControllerUpdate,
+    ) -> None:
+        for progress in update.progress_events:
+            self._show_tool_installation_activity_message(message=progress.message)
+
+        if update.should_refresh_environment_status:
+            self._apply_environment_update(
+                update=self._environment_controller.load_status(
+                    downloads_dir=self._settings.downloads_dir,
+                )
+            )
+            self._environment_panel.play_refresh_feedback()
+
+        if update.status_message is not None:
+            if not self._tool_installation_controller.is_active:
+                self._clear_tool_installation_activity_message()
+
+            self._show_transient_status_message(update.status_message)
+
+        self._sync_queue_controls_state()
+
+    def _show_tool_installation_activity_message(self, *, message: str) -> None:
+        activity_message = f"Подготовка системы: {message}"
+
+        if self._tool_installation_activity_message is not None:
+            self._footer_status_presenter.clear_activity(
+                message=self._tool_installation_activity_message,
+            )
+
+        self._tool_installation_activity_message = activity_message
+        self._footer_status_presenter.show_activity(message=activity_message)
+
+    def _clear_tool_installation_activity_message(self) -> None:
+        if self._tool_installation_activity_message is None:
+            return
+
+        self._footer_status_presenter.clear_activity(
+            message=self._tool_installation_activity_message,
+        )
+        self._tool_installation_activity_message = None
 
     def _handle_start_or_cancel_queue_clicked(self) -> None:
         if self._download_controller.is_active:
@@ -1079,20 +1143,25 @@ class MainWindow(QMainWindow):
             self._container.download_queue_service.list_downloadable_tasks()
         )
         has_active_download = self._download_controller.is_active
+        has_active_tool_installation = self._tool_installation_controller.is_active
+        has_blocking_operation = has_active_download or has_active_tool_installation
 
         self._input_panel.set_add_to_queue_available(
-            is_available=True,
+            is_available=not has_active_tool_installation,
         )
-        self._settings_panel.choose_downloads_dir_button.setEnabled(not has_active_download)
-        self._environment_panel.import_cookies_button.setEnabled(not has_active_download)
-        self._environment_panel.delete_cookies_button.setEnabled(not has_active_download)
-        self._environment_panel.refresh_button.setEnabled(not has_active_download)
-        self._environment_panel.open_cookies_dir_button.setEnabled(not has_active_download)
+        self._settings_panel.choose_downloads_dir_button.setEnabled(not has_blocking_operation)
+        self._environment_panel.prepare_system_button.setEnabled(not has_blocking_operation)
+        self._environment_panel.import_cookies_button.setEnabled(not has_blocking_operation)
+        self._environment_panel.delete_cookies_button.setEnabled(not has_blocking_operation)
+        self._environment_panel.refresh_button.setEnabled(not has_blocking_operation)
+        self._environment_panel.open_cookies_dir_button.setEnabled(not has_blocking_operation)
         self._environment_panel.open_downloads_dir_button.setEnabled(True)
 
-        self._start_queue_button.setEnabled(has_active_download or has_downloadable_tasks)
-        self._remove_from_queue_button.setEnabled(has_selected_tasks and not has_active_download)
-        self._clear_queue_button.setEnabled(has_tasks and not has_active_download)
+        self._start_queue_button.setEnabled(
+            not has_active_tool_installation and (has_active_download or has_downloadable_tasks)
+        )
+        self._remove_from_queue_button.setEnabled(has_selected_tasks and not has_blocking_operation)
+        self._clear_queue_button.setEnabled(has_tasks and not has_blocking_operation)
         self._sync_start_queue_button_state()
 
     def _sync_start_queue_button_state(self) -> None:

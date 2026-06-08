@@ -93,6 +93,7 @@ class EnvironmentPanel(QFrame):
         super().__init__(parent)
 
         self.refresh_button = QPushButton("Обновить", self)
+        self.prepare_system_button = QPushButton("Подготовить систему", self)
         self.import_cookies_button = QPushButton("Импорт cookies.txt", self)
         self.open_cookies_dir_button = QPushButton("Открыть cookies", self)
         self.delete_cookies_button = QPushButton("Удалить cookies.txt", self)
@@ -123,11 +124,13 @@ class EnvironmentPanel(QFrame):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
         self.refresh_button.setObjectName("GhostButton")
+        self.prepare_system_button.setObjectName("GhostButton")
         self.import_cookies_button.setObjectName("TinyGhostButton")
         self.open_cookies_dir_button.setObjectName("TinyGhostButton")
         self.open_downloads_dir_button.setObjectName("TinyGhostButton")
         self.delete_cookies_button.setObjectName("TinyDangerButton")
 
+        self.prepare_system_button.setToolTip("Скачать и подключить FFmpeg и Deno в папку YaLoader")
         self.import_cookies_button.setToolTip(
             "Выбрать cookies.txt и скопировать его в папку YaLoader"
         )
@@ -152,6 +155,7 @@ class EnvironmentPanel(QFrame):
 
         header_layout.addWidget(title_label)
         header_layout.addStretch(1)
+        header_layout.addWidget(self.prepare_system_button)
         header_layout.addWidget(self.refresh_button)
 
         chips_layout = QHBoxLayout()
