@@ -22,14 +22,17 @@ class FakeToolInstallationService:
     results_by_tool_id: dict[ToolId, ToolInstallationResult]
     delay_seconds: float = 0.0
     calls: list[ToolId] = field(default_factory=list, init=False)
+    force_reinstall_values: list[bool] = field(default_factory=list, init=False)
 
     def install_tool(
         self,
         *,
         tool_id: ToolId,
         progress_callback: ToolInstallationProgressCallback | None = None,
+        force_reinstall: bool = False,
     ) -> ToolInstallationResult:
         self.calls.append(tool_id)
+        self.force_reinstall_values.append(force_reinstall)
 
         if self.delay_seconds > 0:
             time.sleep(self.delay_seconds)
@@ -67,8 +70,38 @@ def test_start_required_tools_installation_runs_ffmpeg_and_deno() -> None:
 
         assert start_update.status_message == "Подготовка системы запущена"
         assert service.calls == [ToolId.FFMPEG, ToolId.DENO]
+        assert service.force_reinstall_values == [False, False]
         assert len(finished_update.results) == 2
         assert finished_update.status_message == "Системные компоненты подготовлены"
+        assert finished_update.should_refresh_environment_status is True
+    finally:
+        controller.shutdown()
+
+
+def test_start_required_tools_update_runs_ffmpeg_and_deno_with_force_reinstall() -> None:
+    service = FakeToolInstallationService(
+        results_by_tool_id={
+            ToolId.FFMPEG: ToolInstallationResult.installed(
+                tool_id=ToolId.FFMPEG,
+                executable_path=Path("C:/AppData/yaloader/tools/ffmpeg/bin/ffmpeg.exe"),
+            ),
+            ToolId.DENO: ToolInstallationResult.installed(
+                tool_id=ToolId.DENO,
+                executable_path=Path("C:/AppData/yaloader/tools/deno/deno.exe"),
+            ),
+        }
+    )
+    controller = ToolInstallationController(service=service)
+
+    try:
+        start_update = controller.start_required_tools_update()
+        finished_update = wait_for_finished_update(controller=controller)
+
+        assert start_update.status_message == "Обновление инструментов запущено"
+        assert service.calls == [ToolId.FFMPEG, ToolId.DENO]
+        assert service.force_reinstall_values == [True, True]
+        assert len(finished_update.results) == 2
+        assert finished_update.status_message == "Системные инструменты обновлены"
         assert finished_update.should_refresh_environment_status is True
     finally:
         controller.shutdown()
@@ -119,10 +152,10 @@ def test_start_required_tools_installation_rejects_parallel_run() -> None:
 
     try:
         first_update = controller.start_required_tools_installation()
-        second_update = controller.start_required_tools_installation()
+        second_update = controller.start_required_tools_update()
 
         assert first_update.status_message == "Подготовка системы запущена"
-        assert second_update.status_message == "Подготовка системы уже выполняется"
+        assert second_update.status_message == "Подготовка или обновление системы уже выполняется"
     finally:
         wait_for_finished_update(controller=controller)
         controller.shutdown()
@@ -142,7 +175,21 @@ def test_build_tool_installation_summary_reports_failures() -> None:
         )
     )
 
-    assert summary == "Подготовка системы завершилась с ошибками: Не удалось установить FFmpeg"
+    assert summary == "Подготовка системы завершилось с ошибками: Не удалось установить FFmpeg"
+
+
+def test_build_tool_installation_summary_reports_update_failures() -> None:
+    summary = build_tool_installation_summary(
+        results=(
+            ToolInstallationResult.failed(
+                tool_id=ToolId.FFMPEG,
+                message="Не удалось обновить FFmpeg",
+            ),
+        ),
+        force_reinstall=True,
+    )
+
+    assert summary == "Обновление инструментов завершилось с ошибками: Не удалось обновить FFmpeg"
 
 
 def test_build_tool_installation_summary_reports_already_available_tools() -> None:

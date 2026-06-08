@@ -110,6 +110,26 @@ def test_deno_portable_installer_returns_installed_when_deno_already_exists(
     assert paths.deno_executable.read_text(encoding="utf-8") == "existing deno"
 
 
+def test_deno_portable_installer_force_reinstall_replaces_existing_deno(
+    tmp_path: Path,
+) -> None:
+    archive_file = create_deno_archive(tmp_path=tmp_path)
+    paths = create_app_paths(tmp_path=tmp_path)
+    paths.deno_executable.parent.mkdir(parents=True)
+    paths.deno_executable.write_text("existing deno", encoding="utf-8")
+
+    installer = DenoPortableInstaller(
+        paths=paths,
+        downloader=FakeFileDownloader(archive_file=archive_file),
+    )
+
+    result = installer.install(force_reinstall=True)
+
+    assert result.status is ToolInstallationStatus.INSTALLED
+    assert result.executable_path == paths.deno_executable
+    assert paths.deno_executable.read_text(encoding="utf-8") == "fake deno"
+
+
 def test_deno_portable_installer_rejects_invalid_latest_version(tmp_path: Path) -> None:
     archive_file = create_deno_archive(tmp_path=tmp_path)
     paths = create_app_paths(tmp_path=tmp_path)

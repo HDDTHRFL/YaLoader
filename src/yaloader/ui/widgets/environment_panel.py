@@ -43,6 +43,7 @@ class StatusChip(QFrame):
         self._refresh_style(self)
         self._refresh_style(self._marker_label)
         self._refresh_style(self._text_label)
+        self._refresh_style(self._text_label)
 
     def play_refresh_feedback(self) -> None:
         self.setProperty("refreshing", "true")
@@ -96,6 +97,7 @@ class EnvironmentPanel(QFrame):
 
         self.refresh_button = QPushButton("Обновить", self)
         self.prepare_system_button = QPushButton("Подготовить систему", self)
+        self.update_tools_button = QPushButton("Обновить инструменты", self)
         self.import_cookies_button = QPushButton("Импорт cookies.txt", self)
         self.export_firefox_cookies_button = QPushButton("Создать cookies из Firefox", self)
         self.open_cookies_dir_button = QPushButton("Открыть cookies", self)
@@ -128,6 +130,7 @@ class EnvironmentPanel(QFrame):
 
         self.refresh_button.setObjectName("GhostButton")
         self.prepare_system_button.setObjectName("GhostButton")
+        self.update_tools_button.setObjectName("GhostButton")
         self.import_cookies_button.setObjectName("TinyGhostButton")
         self.export_firefox_cookies_button.setObjectName("TinyGhostButton")
         self.open_cookies_dir_button.setObjectName("TinyGhostButton")
@@ -135,6 +138,9 @@ class EnvironmentPanel(QFrame):
         self.delete_cookies_button.setObjectName("TinyDangerButton")
 
         self.prepare_system_button.setToolTip("Скачать и подключить FFmpeg и Deno в папку YaLoader")
+        self.update_tools_button.setToolTip(
+            "Принудительно скачать свежие FFmpeg и Deno в папку YaLoader"
+        )
         self.import_cookies_button.setToolTip(
             "Выбрать cookies.txt и скопировать его в папку YaLoader"
         )
@@ -163,6 +169,7 @@ class EnvironmentPanel(QFrame):
         header_layout.addWidget(title_label)
         header_layout.addStretch(1)
         header_layout.addWidget(self.prepare_system_button)
+        header_layout.addWidget(self.update_tools_button)
         header_layout.addWidget(self.refresh_button)
 
         chips_layout = QHBoxLayout()

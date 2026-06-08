@@ -291,6 +291,9 @@ class MainWindow(QMainWindow):
         self._environment_panel.prepare_system_button.clicked.connect(
             self._handle_prepare_system_clicked
         )
+        self._environment_panel.update_tools_button.clicked.connect(
+            self._handle_update_tools_clicked
+        )
         self._environment_panel.import_cookies_button.clicked.connect(
             self._handle_import_cookies_clicked
         )
@@ -729,6 +732,11 @@ class MainWindow(QMainWindow):
             )
         )
 
+    def _handle_update_tools_clicked(self) -> None:
+        self._apply_tool_installation_update(
+            update=self._tool_installation_controller.start_required_tools_update(),
+        )
+
     def _handle_prepare_system_clicked(self) -> None:
         self._apply_tool_installation_update(
             update=self._tool_installation_controller.start_required_tools_installation(),
@@ -849,7 +857,7 @@ class MainWindow(QMainWindow):
         self._sync_queue_controls_state()
 
     def _show_tool_installation_activity_message(self, *, message: str) -> None:
-        activity_message = f"Подготовка системы: {message}"
+        activity_message = f"Инструменты: {message}"
 
         if self._tool_installation_activity_message is not None:
             self._footer_status_presenter.clear_activity(
@@ -1225,6 +1233,7 @@ class MainWindow(QMainWindow):
         )
         self._settings_panel.choose_downloads_dir_button.setEnabled(not has_blocking_operation)
         self._environment_panel.prepare_system_button.setEnabled(not has_blocking_operation)
+        self._environment_panel.update_tools_button.setEnabled(not has_blocking_operation)
         self._environment_panel.import_cookies_button.setEnabled(not has_blocking_operation)
         self._environment_panel.export_firefox_cookies_button.setEnabled(not has_blocking_operation)
         self._environment_panel.delete_cookies_button.setEnabled(not has_blocking_operation)

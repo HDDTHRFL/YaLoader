@@ -94,6 +94,26 @@ def test_ffmpeg_portable_installer_returns_installed_when_ffmpeg_already_exists(
     assert paths.ffmpeg_executable.read_text(encoding="utf-8") == "existing ffmpeg"
 
 
+def test_ffmpeg_portable_installer_force_reinstall_replaces_existing_ffmpeg(
+    tmp_path: Path,
+) -> None:
+    archive_file = create_ffmpeg_archive(tmp_path=tmp_path)
+    paths = create_app_paths(tmp_path=tmp_path)
+    paths.ffmpeg_executable.parent.mkdir(parents=True)
+    paths.ffmpeg_executable.write_text("existing ffmpeg", encoding="utf-8")
+
+    installer = FfmpegPortableInstaller(
+        paths=paths,
+        downloader=FakeFileDownloader(archive_file=archive_file),
+    )
+
+    result = installer.install(force_reinstall=True)
+
+    assert result.status is ToolInstallationStatus.INSTALLED
+    assert result.executable_path == paths.ffmpeg_executable
+    assert paths.ffmpeg_executable.read_text(encoding="utf-8") == "fake ffmpeg"
+
+
 def test_ffmpeg_portable_installer_rejects_invalid_checksum(tmp_path: Path) -> None:
     archive_file = create_ffmpeg_archive(tmp_path=tmp_path)
     paths = create_app_paths(tmp_path=tmp_path)

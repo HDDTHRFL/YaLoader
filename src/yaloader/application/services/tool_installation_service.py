@@ -45,10 +45,11 @@ class ToolInstallationService:
         *,
         tool_id: ToolId,
         progress_callback: ToolInstallationProgressCallback | None = None,
+        force_reinstall: bool = False,
     ) -> ToolInstallationResult:
         current_result = self.check_tool(tool_id=tool_id)
 
-        if current_result.is_success:
+        if current_result.is_success and not force_reinstall:
             self._emit_progress(
                 progress_callback=progress_callback,
                 tool_id=tool_id,
@@ -73,11 +74,17 @@ class ToolInstallationService:
         self._emit_progress(
             progress_callback=progress_callback,
             tool_id=tool_id,
-            message=f"Начинаем установку {tool_id.value}",
+            message=build_tool_start_message(
+                tool_id=tool_id,
+                force_reinstall=force_reinstall,
+            ),
             percent=0,
         )
 
-        result = installer.install(progress_callback=progress_callback)
+        result = installer.install(
+            progress_callback=progress_callback,
+            force_reinstall=force_reinstall,
+        )
 
         if result.is_success:
             self._emit_progress(
@@ -113,3 +120,14 @@ class ToolInstallationService:
                 path=path,
             )
         )
+
+
+def build_tool_start_message(
+    *,
+    tool_id: ToolId,
+    force_reinstall: bool,
+) -> str:
+    if force_reinstall:
+        return f"Начинаем обновление {tool_id.value}"
+
+    return f"Начинаем установку {tool_id.value}"

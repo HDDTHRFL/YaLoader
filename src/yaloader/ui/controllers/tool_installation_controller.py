@@ -26,7 +26,14 @@ class ToolInstallationUseCase(Protocol):
         *,
         tool_id: ToolId,
         progress_callback: ToolInstallationProgressCallback | None = None,
+        force_reinstall: bool = False,
     ) -> ToolInstallationResult: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ToolInstallationWorkerResult:
+    results: tuple[ToolInstallationResult, ...]
+    force_reinstall: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +52,7 @@ class ToolInstallationController:
             max_workers=TOOL_INSTALLATION_WORKERS_COUNT,
             thread_name_prefix="yaloader-tool-install",
         )
-        self._active_future: Future[tuple[ToolInstallationResult, ...]] | None = None
+        self._active_future: Future[ToolInstallationWorkerResult] | None = None
 
     @property
     def is_active(self) -> bool:
@@ -55,18 +62,17 @@ class ToolInstallationController:
         self._executor.shutdown(wait=False, cancel_futures=True)
 
     def start_required_tools_installation(self) -> ToolInstallationControllerUpdate:
-        if self.is_active:
-            return ToolInstallationControllerUpdate(
-                status_message="Подготовка системы уже выполняется",
-            )
-
-        self._active_future = self._executor.submit(
-            self._install_tools_worker,
-            REQUIRED_TOOL_IDS,
+        return self._start_required_tools_operation(
+            force_reinstall=False,
+            start_message="Подготовка системы запущена",
+            active_message="Подготовка системы уже выполняется",
         )
 
-        return ToolInstallationControllerUpdate(
-            status_message="Подготовка системы запущена",
+    def start_required_tools_update(self) -> ToolInstallationControllerUpdate:
+        return self._start_required_tools_operation(
+            force_reinstall=True,
+            start_message="Обновление инструментов запущено",
+            active_message="Подготовка или обновление системы уже выполняется",
         )
 
     def poll(self) -> ToolInstallationControllerUpdate:
@@ -82,7 +88,7 @@ class ToolInstallationController:
         self._active_future = None
 
         try:
-            results = future.result()
+            worker_result = future.result()
         except Exception as error:
             return ToolInstallationControllerUpdate(
                 status_message=f"Подготовка системы завершилась ошибкой: {error}",
@@ -91,26 +97,52 @@ class ToolInstallationController:
             )
 
         return ToolInstallationControllerUpdate(
-            status_message=build_tool_installation_summary(results=results),
+            status_message=build_tool_installation_summary(
+                results=worker_result.results,
+                force_reinstall=worker_result.force_reinstall,
+            ),
             progress_events=progress_events,
-            results=results,
+            results=worker_result.results,
             should_refresh_environment_status=True,
         )
+
+    def _start_required_tools_operation(
+        self,
+        *,
+        force_reinstall: bool,
+        start_message: str,
+        active_message: str,
+    ) -> ToolInstallationControllerUpdate:
+        if self.is_active:
+            return ToolInstallationControllerUpdate(status_message=active_message)
+
+        self._active_future = self._executor.submit(
+            self._install_tools_worker,
+            REQUIRED_TOOL_IDS,
+            force_reinstall,
+        )
+
+        return ToolInstallationControllerUpdate(status_message=start_message)
 
     def _install_tools_worker(
         self,
         tool_ids: tuple[ToolId, ...],
-    ) -> tuple[ToolInstallationResult, ...]:
+        force_reinstall: bool,
+    ) -> ToolInstallationWorkerResult:
         results: list[ToolInstallationResult] = []
 
         for tool_id in tool_ids:
             result = self._service.install_tool(
                 tool_id=tool_id,
                 progress_callback=self._handle_progress,
+                force_reinstall=force_reinstall,
             )
             results.append(result)
 
-        return tuple(results)
+        return ToolInstallationWorkerResult(
+            results=tuple(results),
+            force_reinstall=force_reinstall,
+        )
 
     def _handle_progress(self, progress: ToolInstallationProgress) -> None:
         self._progress_events.put(progress)
@@ -128,6 +160,7 @@ class ToolInstallationController:
 def build_tool_installation_summary(
     *,
     results: tuple[ToolInstallationResult, ...],
+    force_reinstall: bool = False,
 ) -> str:
     if not results:
         return "Подготовка системы не выполнялась"
@@ -135,9 +168,13 @@ def build_tool_installation_summary(
     failed_results = tuple(result for result in results if not result.is_success)
 
     if failed_results:
-        return "Подготовка системы завершилась с ошибками: " + "; ".join(
+        operation_title = "Обновление инструментов" if force_reinstall else "Подготовка системы"
+        return f"{operation_title} завершилось с ошибками: " + "; ".join(
             result.message for result in failed_results
         )
+
+    if force_reinstall:
+        return "Системные инструменты обновлены"
 
     installed_results = tuple(
         result for result in results if result.status is ToolInstallationStatus.INSTALLED

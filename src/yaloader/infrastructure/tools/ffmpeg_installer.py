@@ -62,8 +62,9 @@ class FfmpegPortableInstaller:
     def install(
         self,
         progress_callback: ToolInstallationProgressCallback | None = None,
+        force_reinstall: bool = False,
     ) -> ToolInstallationResult:
-        if self.paths.ffmpeg_executable.is_file():
+        if self.paths.ffmpeg_executable.is_file() and not force_reinstall:
             self._emit_progress(
                 progress_callback=progress_callback,
                 message="FFmpeg уже установлен в папке YaLoader",

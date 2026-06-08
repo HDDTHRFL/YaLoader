@@ -26,13 +26,16 @@ class FakeToolInstaller:
     tool_id: ToolId
     result: ToolInstallationResult
     install_calls: int = 0
+    force_reinstall_values: list[bool] = field(default_factory=list)
     progress_events: list[ToolInstallationProgress] = field(default_factory=list)
 
     def install(
         self,
         progress_callback: ToolInstallationProgressCallback | None = None,
+        force_reinstall: bool = False,
     ) -> ToolInstallationResult:
         self.install_calls += 1
+        self.force_reinstall_values.append(force_reinstall)
 
         if progress_callback is not None:
             progress = ToolInstallationProgress(
@@ -94,6 +97,38 @@ def test_install_tool_skips_installer_when_tool_is_already_available() -> None:
     assert installer.install_calls == 0
 
 
+def test_install_tool_force_reinstall_uses_installer_when_tool_is_already_available() -> None:
+    ffmpeg_path = Path("C:/Tools/ffmpeg.exe")
+    app_ffmpeg_path = Path("C:/App/ffmpeg.exe")
+    installer = FakeToolInstaller(
+        tool_id=ToolId.FFMPEG,
+        result=ToolInstallationResult.installed(
+            tool_id=ToolId.FFMPEG,
+            executable_path=app_ffmpeg_path,
+        ),
+    )
+    progress_events: list[ToolInstallationProgress] = []
+    service = ToolInstallationService(
+        process_runner=FakeProcessRunner(executables={"ffmpeg": ffmpeg_path}),
+        installers={ToolId.FFMPEG: installer},
+    )
+
+    result = service.install_tool(
+        tool_id=ToolId.FFMPEG,
+        progress_callback=progress_events.append,
+        force_reinstall=True,
+    )
+
+    assert result.status is ToolInstallationStatus.INSTALLED
+    assert result.executable_path == app_ffmpeg_path
+    assert installer.install_calls == 1
+    assert installer.force_reinstall_values == [True]
+    assert len(progress_events) == 3
+    assert progress_events[0].message == "Начинаем обновление ffmpeg"
+    assert progress_events[0].percent == 0
+    assert progress_events[-1].percent == 100
+
+
 def test_install_tool_returns_not_configured_when_installer_is_missing() -> None:
     progress_events: list[ToolInstallationProgress] = []
     service = ToolInstallationService(
@@ -136,6 +171,7 @@ def test_install_tool_uses_registered_installer_when_tool_is_missing() -> None:
     assert result.status is ToolInstallationStatus.INSTALLED
     assert result.executable_path == deno_path
     assert installer.install_calls == 1
+    assert installer.force_reinstall_values == [False]
     assert len(progress_events) == 3
     assert progress_events[0].percent == 0
     assert progress_events[1].percent == 50

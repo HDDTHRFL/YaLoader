@@ -19,4 +19,5 @@ class ToolInstaller(Protocol):
     def install(
         self,
         progress_callback: ToolInstallationProgressCallback | None = None,
+        force_reinstall: bool = False,
     ) -> ToolInstallationResult: ...

@@ -56,8 +56,9 @@ class DenoPortableInstaller:
     def install(
         self,
         progress_callback: ToolInstallationProgressCallback | None = None,
+        force_reinstall: bool = False,
     ) -> ToolInstallationResult:
-        if self.paths.deno_executable.is_file():
+        if self.paths.deno_executable.is_file() and not force_reinstall:
             self._emit_progress(
                 progress_callback=progress_callback,
                 message="Deno уже установлен в папке YaLoader",
