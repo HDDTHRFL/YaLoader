@@ -16,7 +16,10 @@ from yaloader.application.dto.browser_cookies import (
 from yaloader.application.ports.browser_cookies_exporter import (
     BrowserCookiesExportProgressCallback,
 )
-from yaloader.application.services.cookies_file_service import validate_cookies_file
+from yaloader.application.services.cookies_file_service import (
+    compact_cookies_file_in_place,
+    validate_cookies_file,
+)
 
 TEMPORARY_COOKIES_FILE_SUFFIX = ".tmp"
 
@@ -120,6 +123,8 @@ class YtDlpBrowserCookiesExporter:
                     downloader=downloader,
                     cookie_file=temporary_file,
                 )
+
+            compact_cookies_file_in_place(file_path=temporary_file)
 
             self._emit_progress(
                 progress_callback=progress_callback,

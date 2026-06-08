@@ -9,7 +9,12 @@ from loguru import logger
 
 from yaloader.application.dto.environment_status import EnvironmentItemStatus, EnvironmentStatus
 from yaloader.application.ports.process_runner import ProcessRunner
-from yaloader.application.services.cookies_file_service import COOKIES_HEADER_PREFIXES
+from yaloader.application.services.cookies_file_service import (
+    CookiesFileImportError,
+    format_cookies_file_size,
+    is_large_cookies_file,
+    validate_cookies_file,
+)
 from yaloader.config.paths import AppPaths
 
 
@@ -97,27 +102,37 @@ class EnvironmentCheckService:
             )
 
         try:
-            first_line = cookies_file.read_text(encoding="utf-8", errors="replace").splitlines()[0]
-        except (OSError, IndexError):
+            size_bytes = cookies_file.stat().st_size
+        except OSError as error:
             return EnvironmentItemStatus(
                 title="cookies.txt",
                 is_ok=False,
-                message="пустой или недоступен",
+                message=f"недоступен: {error}",
                 path=cookies_file,
             )
 
-        if not first_line.startswith(COOKIES_HEADER_PREFIXES):
+        try:
+            if is_large_cookies_file(source_file=cookies_file):
+                return EnvironmentItemStatus(
+                    title="cookies.txt",
+                    is_ok=False,
+                    message=f"слишком большой: {format_cookies_file_size(size_bytes=size_bytes)}",
+                    path=cookies_file,
+                )
+
+            validate_cookies_file(source_file=cookies_file)
+        except CookiesFileImportError as error:
             return EnvironmentItemStatus(
                 title="cookies.txt",
                 is_ok=False,
-                message="подозрительный формат",
+                message=str(error),
                 path=cookies_file,
             )
 
         return EnvironmentItemStatus(
             title="cookies.txt",
             is_ok=True,
-            message=f"{cookies_file.stat().st_size} байт",
+            message=format_cookies_file_size(size_bytes=size_bytes),
             path=cookies_file,
         )
 
