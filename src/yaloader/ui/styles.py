@@ -312,7 +312,7 @@ QPushButton#IconButton {
     max-width: 34px;
     min-height: 34px;
     max-height: 34px;
-    padding: 0;
+    padding: 0 0 0px 0;
     background-color: transparent;
     color: #8B949E;
     border: 1px solid #30363D;
@@ -918,5 +918,138 @@ QProgressBar#ToolInstallationProgressBar::chunk {
     border-radius: 5px;
 }
 
+
+
+QLabel#DownloadsDirClickableLabel {
+    color: #8B949E;
+}
+
+QLabel#DownloadsDirClickableLabel:hover {
+    color: #58A6FF;
+}
+
+
+
+QMenu#CookiesActionsMenu {
+    background-color: #171A21;
+    color: #E8EAED;
+    border: 1px solid #30363D;
+    border-radius: 8px;
+    padding: 6px;
+}
+
+QMenu#CookiesActionsMenu::item {
+    padding: 7px 22px 7px 10px;
+    border-radius: 6px;
+}
+
+QMenu#CookiesActionsMenu::item:selected {
+    background-color: #1F6FEB;
+    color: #FFFFFF;
+}
+
+
+/* YaLoader environment toolbar fine tuning start */
+QPushButton#RefreshIconButton {
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0 0 2px 0; /* padding-bottom поднимает символ, padding-top опускает */
+    background-color: transparent;
+    color: #8B949E;
+    border: none;
+    border-radius: 14px;
+    font-family: "Segoe UI Symbol", "Segoe UI Emoji", "Segoe UI";
+    font-size: 13pt;
+    font-weight: 700;
+}
+
+QPushButton#RefreshIconButton:hover {
+    background-color: transparent;
+    color: #FFFFFF;
+    border: none;
+}
+
+QPushButton#RefreshIconButton:pressed {
+    background-color: transparent;
+    color: #58A6FF;
+    border: none;
+}
+
+QPushButton#RefreshIconButton:disabled,
+QPushButton#RefreshIconButton:disabled:hover {
+    background-color: transparent;
+    color: #4B5563;
+    border: none;
+}
+
+QMenu#CookiesActionsMenu {
+    background-color: #171A21;
+    color: #C9D1D9;
+    border: 1px solid #30363D;
+    border-radius: 7px;
+    padding: 3px;
+    font-size: 9pt;
+}
+
+QMenu#CookiesActionsMenu::item {
+    min-height: 18px;
+    padding: 4px 14px 4px 10px;
+    border-radius: 5px;
+    background-color: transparent;
+}
+
+QMenu#CookiesActionsMenu::item:selected {
+    padding: 4px 12px 4px 12px;
+    background-color: #1B2028;
+    color: #FFFFFF;
+}
+
+QMenu#CookiesActionsMenu::item:pressed {
+    background-color: #0D1117;
+    color: #58A6FF;
+}
+/* YaLoader environment toolbar fine tuning end */
+
+/* YaLoader final environment polish start */
+QLabel#DownloadsDirClickableLabel:hover {
+    color: #FFFFFF;
+}
+
+QPushButton#RefreshIconButton {
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0;
+    background-color: transparent;
+    color: #8B949E;
+    border: none;
+    border-radius: 0;
+    font-family: "Segoe UI Symbol", "Segoe UI Emoji", "Segoe UI";
+    font-size: 15pt;
+    font-weight: 700;
+}
+
+QPushButton#RefreshIconButton:hover {
+    background-color: transparent;
+    color: #FFFFFF;
+    border: none;
+}
+
+QPushButton#RefreshIconButton:pressed {
+    background-color: transparent;
+    color: #8B949E;
+    border: none;
+}
+
+QPushButton#RefreshIconButton:disabled,
+QPushButton#RefreshIconButton:disabled:hover {
+    background-color: transparent;
+    color: #4B5563;
+    border: none;
+}
+/* YaLoader final environment polish end */
 
 """

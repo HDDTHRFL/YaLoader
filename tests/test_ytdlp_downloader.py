@@ -60,9 +60,27 @@ class FailingYtDlpBackend:
     def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
         raise RuntimeError("download failed")
 
+    def download_prepared(
+        self,
+        *,
+        prepared_download: PreparedDownload,
+        options: YtDlpOptions,
+    ) -> None:
+        raise RuntimeError("download failed")
+
 
 class BotCheckYtDlpBackend:
     def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
+        raise RuntimeError(
+            "\x1b[0;31mERROR:\x1b[0m [youtube] test: Sign in to confirm you're not a bot."
+        )
+
+    def download_prepared(
+        self,
+        *,
+        prepared_download: PreparedDownload,
+        options: YtDlpOptions,
+    ) -> None:
         raise RuntimeError(
             "\x1b[0;31mERROR:\x1b[0m [youtube] test: Sign in to confirm you're not a bot."
         )

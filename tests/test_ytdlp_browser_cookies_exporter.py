@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
-from typing import Self
+from typing import Self, cast
 
 from yaloader.application.dto.browser_cookies import BrowserCookiesExportStatus, BrowserId
 from yaloader.infrastructure.ytdlp.browser_cookies_exporter import (
     YtDlpBrowserCookiesExporter,
+    YtDlpBrowserCookiesFactory,
     YtDlpBrowserCookiesOptions,
     build_temporary_cookies_file,
     build_ytdlp_browser_cookie_options,
@@ -90,6 +91,12 @@ class FakeYoutubeDLFactory:
         return runtime
 
 
+def as_youtube_dl_factory(
+    factory: FakeYoutubeDLFactory,
+) -> YtDlpBrowserCookiesFactory:
+    return cast(YtDlpBrowserCookiesFactory, factory)
+
+
 def test_build_ytdlp_browser_cookie_options_uses_firefox_and_cookie_file(
     tmp_path: Path,
 ) -> None:
@@ -116,7 +123,7 @@ def test_ytdlp_browser_cookies_exporter_exports_firefox_cookies(tmp_path: Path) 
     factory = FakeYoutubeDLFactory()
     progress_events = []
 
-    exporter = YtDlpBrowserCookiesExporter(youtube_dl_factory=factory)
+    exporter = YtDlpBrowserCookiesExporter(youtube_dl_factory=as_youtube_dl_factory(factory))
 
     result = exporter.export(
         browser_id=BrowserId.FIREFOX,
@@ -147,7 +154,9 @@ def test_ytdlp_browser_cookies_exporter_replaces_existing_file(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    exporter = YtDlpBrowserCookiesExporter(youtube_dl_factory=FakeYoutubeDLFactory())
+    exporter = YtDlpBrowserCookiesExporter(
+        youtube_dl_factory=as_youtube_dl_factory(FakeYoutubeDLFactory())
+    )
 
     result = exporter.export(
         browser_id=BrowserId.FIREFOX,
@@ -164,7 +173,9 @@ def test_ytdlp_browser_cookies_exporter_reports_failure_when_cookie_file_was_not
 ) -> None:
     target_file = tmp_path / "cookies.txt"
     exporter = YtDlpBrowserCookiesExporter(
-        youtube_dl_factory=FakeYoutubeDLFactory(should_write_cookie_file=False),
+        youtube_dl_factory=as_youtube_dl_factory(
+            FakeYoutubeDLFactory(should_write_cookie_file=False),
+        ),
     )
 
     result = exporter.export(

@@ -23,6 +23,7 @@ from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.download_speed_limit import format_download_speed_limit_label
 from yaloader.domain.enums import DownloadStatus, VideoQuality
+from yaloader.infrastructure.windows.explorer import reveal_path_in_file_manager
 from yaloader.services.app_container import AppContainer
 from yaloader.ui.controllers.browser_cookies_controller import (
     BrowserCookiesController,
@@ -58,7 +59,10 @@ from yaloader.ui.status_messages import (
     is_primary_download_status_message,
 )
 from yaloader.ui.widgets.app_header import AppHeader
-from yaloader.ui.widgets.common.confirmation_dialogs import confirm_dangerous_action
+from yaloader.ui.widgets.common.confirmation_dialogs import (
+    confirm_dangerous_action,
+    confirm_informational_action,
+)
 from yaloader.ui.widgets.download_input_panel import DownloadInputPanel
 from yaloader.ui.widgets.download_queue.panel import DownloadQueuePanel
 from yaloader.ui.widgets.environment_panel import EnvironmentPanel
@@ -106,6 +110,15 @@ REPLACE_COOKIES_CONFIRMATION_DETAILS = (
     "Не импортируйте чужие cookies."
 )
 REPLACE_COOKIES_CONFIRMATION_BUTTON = "Заменить cookies.txt"
+
+FIREFOX_COOKIES_INFO_TITLE = "Создание cookies.txt из Firefox"
+FIREFOX_COOKIES_INFO_TEXT = "Перед созданием cookies.txt откройте Firefox и войдите в YouTube."
+FIREFOX_COOKIES_INFO_DETAILS = (
+    "YaLoader возьмёт cookies из вашего локального профиля Firefox. "
+    "Если вход в YouTube не выполнен, файл может создаться, но YouTube всё равно "
+    "может запрашивать подтверждение или ограничивать загрузку."
+)
+FIREFOX_COOKIES_INFO_BUTTON = "Продолжить"
 
 CLEAR_HISTORY_CONFIRMATION_TITLE = "Очистить историю?"
 CLEAR_HISTORY_CONFIRMATION_TEXT = "История загрузок будет полностью очищена."
@@ -287,6 +300,9 @@ class MainWindow(QMainWindow):
         self._settings_panel.choose_downloads_dir_button.clicked.connect(
             self._handle_choose_downloads_dir_clicked
         )
+        self._settings_panel.set_downloads_dir_clicked_callback(
+            self._handle_open_downloads_dir_clicked
+        )
 
         self._header.settings_button.clicked.connect(self._handle_speed_settings_button_clicked)
         self._speed_settings_dialog.download_speed_limit_changed.connect(
@@ -299,10 +315,10 @@ class MainWindow(QMainWindow):
         self._environment_panel.update_tools_button.clicked.connect(
             self._handle_update_tools_clicked
         )
-        self._environment_panel.import_cookies_button.clicked.connect(
+        self._environment_panel.import_cookies_action.triggered.connect(
             self._handle_import_cookies_clicked
         )
-        self._environment_panel.export_firefox_cookies_button.clicked.connect(
+        self._environment_panel.export_firefox_cookies_action.triggered.connect(
             self._handle_export_firefox_cookies_clicked
         )
         self._environment_panel.delete_cookies_button.clicked.connect(
@@ -729,6 +745,9 @@ class MainWindow(QMainWindow):
         )
 
     def _handle_export_firefox_cookies_clicked(self) -> None:
+        if not self._confirm_firefox_youtube_login():
+            return
+
         if self._container.paths.cookies_file.is_file() and not self._confirm_replace_cookies():
             return
 
@@ -1037,6 +1056,15 @@ class MainWindow(QMainWindow):
             confirm_button_text=DELETE_COOKIES_CONFIRMATION_BUTTON,
         )
 
+    def _confirm_firefox_youtube_login(self) -> bool:
+        return confirm_informational_action(
+            parent=self,
+            title=FIREFOX_COOKIES_INFO_TITLE,
+            text=FIREFOX_COOKIES_INFO_TEXT,
+            informative_text=FIREFOX_COOKIES_INFO_DETAILS,
+            confirm_button_text=FIREFOX_COOKIES_INFO_BUTTON,
+        )
+
     def _confirm_replace_cookies(self) -> bool:
         return confirm_dangerous_action(
             parent=self,
@@ -1056,6 +1084,9 @@ class MainWindow(QMainWindow):
         )
 
     def _open_directory(self, *, directory: Path) -> None:
+        if reveal_path_in_file_manager(path=directory):
+            return
+
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
 
     def _update_settings_panel(self) -> None:
@@ -1283,8 +1314,7 @@ class MainWindow(QMainWindow):
         self._settings_panel.choose_downloads_dir_button.setEnabled(not has_blocking_operation)
         self._environment_panel.prepare_system_button.setEnabled(not has_blocking_operation)
         self._environment_panel.update_tools_button.setEnabled(not has_blocking_operation)
-        self._environment_panel.import_cookies_button.setEnabled(not has_blocking_operation)
-        self._environment_panel.export_firefox_cookies_button.setEnabled(not has_blocking_operation)
+        self._environment_panel.cookies_actions_button.setEnabled(not has_blocking_operation)
         self._environment_panel.delete_cookies_button.setEnabled(not has_blocking_operation)
         self._environment_panel.refresh_button.setEnabled(not has_blocking_operation)
         self._environment_panel.open_cookies_dir_button.setEnabled(not has_blocking_operation)

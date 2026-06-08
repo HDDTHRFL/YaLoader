@@ -103,7 +103,7 @@ class DownloadInputPanel(QFrame):
         self.url_input.setPlaceholderText(
             "Вставьте ссылку YouTube на видео, Shorts или плейлист 👀"
         )
-        self.url_input.setToolTip("Можно вставить ссылку вручную или перетащить её мышью")
+        self.url_input.setToolTip("Можно вставить ссылку вручную или перетащить её в это поле")
         self.url_input.setClearButtonEnabled(True)
 
         for quality in VideoQuality:

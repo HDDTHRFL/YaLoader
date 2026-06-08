@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QStyle,
     QVBoxLayout,
@@ -15,6 +17,7 @@ from PyQt6.QtWidgets import (
 from yaloader.application.dto.environment_status import EnvironmentItemStatus, EnvironmentStatus
 
 REFRESH_FEEDBACK_DURATION_MS = 160
+REFRESH_ICON_BUTTON_SIZE_PX = 28
 
 
 class StatusChip(QFrame):
@@ -42,7 +45,6 @@ class StatusChip(QFrame):
 
         self._refresh_style(self)
         self._refresh_style(self._marker_label)
-        self._refresh_style(self._text_label)
         self._refresh_style(self._text_label)
 
     def play_refresh_feedback(self) -> None:
@@ -98,8 +100,12 @@ class EnvironmentPanel(QFrame):
         self.refresh_button = QPushButton("⟲", self)
         self.prepare_system_button = QPushButton("Подготовить систему", self)
         self.update_tools_button = QPushButton("Обновить инструменты", self)
-        self.import_cookies_button = QPushButton("Импорт cookies.txt", self)
-        self.export_firefox_cookies_button = QPushButton("Создать cookies из Firefox", self)
+
+        self.cookies_actions_button = QPushButton("Добавить cookies.txt", self)
+        self.import_cookies_action = QAction("Импортировать файл...", self)
+        self.export_firefox_cookies_action = QAction("Создать из Firefox", self)
+        self._cookies_actions_menu = QMenu(self.cookies_actions_button)
+
         self.open_cookies_dir_button = QPushButton("Открыть cookies", self)
         self.delete_cookies_button = QPushButton("Удалить cookies.txt", self)
         self.open_downloads_dir_button = QPushButton("Открыть загрузки", self)
@@ -129,28 +135,37 @@ class EnvironmentPanel(QFrame):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
         self.refresh_button.setObjectName("RefreshIconButton")
+        self.refresh_button.setFixedSize(
+            REFRESH_ICON_BUTTON_SIZE_PX,
+            REFRESH_ICON_BUTTON_SIZE_PX,
+        )
+        self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.prepare_system_button.setObjectName("GhostButton")
         self.update_tools_button.setObjectName("GhostButton")
-        self.import_cookies_button.setObjectName("TinyGhostButton")
-        self.export_firefox_cookies_button.setObjectName("TinyGhostButton")
+
+        self.cookies_actions_button.setObjectName("TinyGhostButton")
+        self.cookies_actions_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._cookies_actions_menu.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._cookies_actions_menu.setObjectName("CookiesActionsMenu")
+        self._cookies_actions_menu.addAction(self.export_firefox_cookies_action)
+        self._cookies_actions_menu.addAction(self.import_cookies_action)
+        self.cookies_actions_button.setMenu(self._cookies_actions_menu)
+
         self.open_cookies_dir_button.setObjectName("TinyGhostButton")
         self.open_downloads_dir_button.setObjectName("TinyGhostButton")
         self.delete_cookies_button.setObjectName("TinyDangerButton")
 
+        self.refresh_button.setToolTip("Повторно проверить состояние системы")
         self.prepare_system_button.setToolTip("Скачать и подключить FFmpeg и Deno в папку YaLoader")
         self.update_tools_button.setToolTip(
             "Принудительно скачать свежие FFmpeg и Deno в папку YaLoader"
         )
-        self.import_cookies_button.setToolTip(
-            "Выбрать cookies.txt и скопировать его в папку YaLoader"
-        )
-        self.export_firefox_cookies_button.setToolTip(
-            "Создать cookies.txt из профиля Firefox через yt-dlp"
+        self.cookies_actions_button.setToolTip(
+            "Импортировать cookies.txt или создать его из Firefox"
         )
         self.open_cookies_dir_button.setToolTip("Открыть папку с cookies.txt")
         self.delete_cookies_button.setToolTip("Безвозвратно удалить cookies.txt")
         self.open_downloads_dir_button.setToolTip("Открыть папку загрузок")
-        self.refresh_button.setToolTip("Повторно проверить состояние системы")
 
     def _build_layout(self) -> None:
         root_layout = QVBoxLayout(self)
@@ -166,11 +181,23 @@ class EnvironmentPanel(QFrame):
         title_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         title_label.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
-        header_layout.addWidget(title_label)
-        header_layout.addWidget(self.refresh_button)
+        header_layout.addWidget(
+            title_label,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
+        header_layout.addWidget(
+            self.refresh_button,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
         header_layout.addStretch(1)
-        header_layout.addWidget(self.prepare_system_button)
-        header_layout.addWidget(self.update_tools_button)
+        header_layout.addWidget(
+            self.prepare_system_button,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
+        header_layout.addWidget(
+            self.update_tools_button,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
 
         chips_layout = QHBoxLayout()
         chips_layout.setContentsMargins(0, 0, 0, 0)
@@ -186,12 +213,11 @@ class EnvironmentPanel(QFrame):
         actions_layout.setHorizontalSpacing(8)
         actions_layout.setVerticalSpacing(6)
 
-        actions_layout.addWidget(self.import_cookies_button, 0, 0)
-        actions_layout.addWidget(self.export_firefox_cookies_button, 0, 1)
-        actions_layout.addWidget(self.open_cookies_dir_button, 0, 2)
-        actions_layout.addWidget(self.open_downloads_dir_button, 0, 3)
+        actions_layout.addWidget(self.cookies_actions_button, 0, 0)
+        actions_layout.addWidget(self.open_cookies_dir_button, 0, 1)
+        actions_layout.addWidget(self.open_downloads_dir_button, 0, 2)
         actions_layout.addWidget(self.delete_cookies_button, 1, 0)
-        actions_layout.setColumnStretch(4, 1)
+        actions_layout.setColumnStretch(3, 1)
 
         root_layout.addLayout(header_layout)
         root_layout.addLayout(chips_layout)

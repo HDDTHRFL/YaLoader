@@ -59,8 +59,14 @@ def test_cancel_pending_selected_task_marks_only_that_task(tmp_path: Path) -> No
     update = controller.cancel_tasks_download(task_ids=(first_task.task_id,))
 
     assert update.status_message == "Выбранная задача отменена"
-    assert queue_service.get_task(task_id=first_task.task_id).status is DownloadStatus.CANCELED
-    assert queue_service.get_task(task_id=second_task.task_id).status is DownloadStatus.PENDING
+    assert (
+        require_task(queue_service=queue_service, task_id=first_task.task_id).status
+        is DownloadStatus.CANCELED
+    )
+    assert (
+        require_task(queue_service=queue_service, task_id=second_task.task_id).status
+        is DownloadStatus.PENDING
+    )
     assert len(history_service.load()) == 1
 
     controller.shutdown()
@@ -97,8 +103,14 @@ def test_cancel_active_selected_task_keeps_following_tasks_queued(tmp_path: Path
         update = controller.cancel_tasks_download(task_ids=(first_task.task_id,))
 
         assert update.status_message == "Отмена выбранной загрузки... Частичные файлы будут удалены"
-        assert queue_service.get_task(task_id=first_task.task_id).status is DownloadStatus.CANCELED
-        assert queue_service.get_task(task_id=second_task.task_id).status is DownloadStatus.PENDING
+        assert (
+            require_task(queue_service=queue_service, task_id=first_task.task_id).status
+            is DownloadStatus.CANCELED
+        )
+        assert (
+            require_task(queue_service=queue_service, task_id=second_task.task_id).status
+            is DownloadStatus.PENDING
+        )
 
         assert wait_until(
             lambda: poll_and_check_active_task(
@@ -137,6 +149,18 @@ def wait_until(
         sleep(0.01)
 
     return False
+
+
+def require_task(
+    *,
+    queue_service: DownloadQueueService,
+    task_id: UUID,
+) -> DownloadTask:
+    task = queue_service.get_task(task_id=task_id)
+
+    assert task is not None
+
+    return task
 
 
 def create_video_request(

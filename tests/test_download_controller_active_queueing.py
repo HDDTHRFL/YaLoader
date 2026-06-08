@@ -69,7 +69,10 @@ def test_start_tasks_while_download_is_active_appends_tasks_to_current_queue(
 
         assert update.status_message == "Добавлено в текущую очередь: 1"
         assert update.prepared_task_ids == (second_task.task_id,)
-        assert queue_service.get_task(task_id=second_task.task_id).status is DownloadStatus.PENDING
+        assert (
+            require_task(queue_service=queue_service, task_id=second_task.task_id).status
+            is DownloadStatus.PENDING
+        )
 
         controller.cancel_tasks_download(task_ids=(first_task.task_id,))
 
@@ -106,6 +109,18 @@ def wait_until(
         sleep(0.01)
 
     return False
+
+
+def require_task(
+    *,
+    queue_service: DownloadQueueService,
+    task_id: UUID,
+) -> DownloadTask:
+    task = queue_service.get_task(task_id=task_id)
+
+    assert task is not None
+
+    return task
 
 
 def create_video_request(

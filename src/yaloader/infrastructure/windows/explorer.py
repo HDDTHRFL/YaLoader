@@ -83,7 +83,28 @@ def reveal_path_in_windows_explorer(*, path: Path) -> bool:
 
         return open_windows_explorer_with_file_selected(file_path=resolved_path)
 
+    if activate_existing_explorer_directory_window(directory_path=resolved_path):
+        return True
+
     return open_windows_explorer_directory(directory_path=resolved_path)
+
+
+def activate_existing_explorer_directory_window(*, directory_path: Path) -> bool:
+    target_directory = directory_path.resolve()
+
+    for shell_window in iter_windows_explorer_windows():
+        window_directory = get_shell_window_directory(shell_window=shell_window)
+
+        if window_directory is None:
+            continue
+
+        if not is_same_windows_path(window_directory, target_directory):
+            continue
+
+        activate_shell_window(shell_window=shell_window)
+        return True
+
+    return False
 
 
 def select_file_in_existing_explorer_window(*, file_path: Path) -> bool:
