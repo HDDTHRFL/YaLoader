@@ -6,6 +6,7 @@ from yaloader.application.dto.app_settings import AppSettings
 from yaloader.application.dto.tool_installation import ToolId
 from yaloader.application.ports.download_preparer import DownloadPreparer
 from yaloader.application.ports.downloader import Downloader
+from yaloader.application.services.browser_cookies_service import BrowserCookiesService
 from yaloader.application.services.download_history_service import DownloadHistoryService
 from yaloader.application.services.download_queue_service import DownloadQueueService
 from yaloader.application.services.download_speed_limit_state import DownloadSpeedLimitState
@@ -18,6 +19,7 @@ from yaloader.config.paths import AppPaths, build_default_app_paths, ensure_app_
 from yaloader.infrastructure.system.tool_locator import ToolLocatorProcessRunner
 from yaloader.infrastructure.tools.deno_installer import DenoPortableInstaller
 from yaloader.infrastructure.tools.ffmpeg_installer import FfmpegPortableInstaller
+from yaloader.infrastructure.ytdlp.browser_cookies_exporter import YtDlpBrowserCookiesExporter
 from yaloader.infrastructure.ytdlp.download_preparer import YtDlpDownloadPreparer
 from yaloader.infrastructure.ytdlp.downloader import YtDlpDownloader
 from yaloader.infrastructure.ytdlp.metadata_extractor import YtDlpMetadataExtractor
@@ -29,6 +31,7 @@ class AppContainer:
     settings: AppSettings
     settings_service: SettingsService
     environment_check_service: EnvironmentCheckService
+    browser_cookies_service: BrowserCookiesService
     tool_installation_service: ToolInstallationService
     download_queue_service: DownloadQueueService
     download_speed_limit_state: DownloadSpeedLimitState
@@ -62,6 +65,10 @@ def build_app_container() -> AppContainer:
         environment_check_service=EnvironmentCheckService(
             paths=paths,
             process_runner=tool_locator,
+        ),
+        browser_cookies_service=BrowserCookiesService(
+            exporter=YtDlpBrowserCookiesExporter(),
+            target_file=paths.cookies_file,
         ),
         tool_installation_service=ToolInstallationService(
             process_runner=tool_locator,

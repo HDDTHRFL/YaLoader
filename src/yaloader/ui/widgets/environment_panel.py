@@ -33,6 +33,7 @@ class StatusChip(QFrame):
         self.setProperty("state", state)
         self.setProperty("refreshing", "false")
         self._marker_label.setProperty("state", state)
+        self._text_label.setProperty("state", state)
         self._text_label.setText(f"{status.title}: {status.message}")
 
         tooltip = str(status.path) if status.path is not None else status.message
@@ -41,6 +42,7 @@ class StatusChip(QFrame):
 
         self._refresh_style(self)
         self._refresh_style(self._marker_label)
+        self._refresh_style(self._text_label)
 
     def play_refresh_feedback(self) -> None:
         self.setProperty("refreshing", "true")
@@ -95,6 +97,7 @@ class EnvironmentPanel(QFrame):
         self.refresh_button = QPushButton("Обновить", self)
         self.prepare_system_button = QPushButton("Подготовить систему", self)
         self.import_cookies_button = QPushButton("Импорт cookies.txt", self)
+        self.export_firefox_cookies_button = QPushButton("Создать cookies из Firefox", self)
         self.open_cookies_dir_button = QPushButton("Открыть cookies", self)
         self.delete_cookies_button = QPushButton("Удалить cookies.txt", self)
         self.open_downloads_dir_button = QPushButton("Открыть загрузки", self)
@@ -126,6 +129,7 @@ class EnvironmentPanel(QFrame):
         self.refresh_button.setObjectName("GhostButton")
         self.prepare_system_button.setObjectName("GhostButton")
         self.import_cookies_button.setObjectName("TinyGhostButton")
+        self.export_firefox_cookies_button.setObjectName("TinyGhostButton")
         self.open_cookies_dir_button.setObjectName("TinyGhostButton")
         self.open_downloads_dir_button.setObjectName("TinyGhostButton")
         self.delete_cookies_button.setObjectName("TinyDangerButton")
@@ -133,6 +137,9 @@ class EnvironmentPanel(QFrame):
         self.prepare_system_button.setToolTip("Скачать и подключить FFmpeg и Deno в папку YaLoader")
         self.import_cookies_button.setToolTip(
             "Выбрать cookies.txt и скопировать его в папку YaLoader"
+        )
+        self.export_firefox_cookies_button.setToolTip(
+            "Создать cookies.txt из профиля Firefox через yt-dlp"
         )
         self.open_cookies_dir_button.setToolTip("Открыть папку с cookies.txt")
         self.delete_cookies_button.setToolTip("Безвозвратно удалить cookies.txt")
@@ -173,10 +180,11 @@ class EnvironmentPanel(QFrame):
         actions_layout.setVerticalSpacing(6)
 
         actions_layout.addWidget(self.import_cookies_button, 0, 0)
-        actions_layout.addWidget(self.open_cookies_dir_button, 0, 1)
-        actions_layout.addWidget(self.open_downloads_dir_button, 0, 2)
+        actions_layout.addWidget(self.export_firefox_cookies_button, 0, 1)
+        actions_layout.addWidget(self.open_cookies_dir_button, 0, 2)
+        actions_layout.addWidget(self.open_downloads_dir_button, 0, 3)
         actions_layout.addWidget(self.delete_cookies_button, 1, 0)
-        actions_layout.setColumnStretch(3, 1)
+        actions_layout.setColumnStretch(4, 1)
 
         root_layout.addLayout(header_layout)
         root_layout.addLayout(chips_layout)

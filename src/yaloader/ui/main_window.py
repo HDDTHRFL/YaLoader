@@ -16,12 +16,17 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from yaloader.application.dto.browser_cookies import BrowserId
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.download_speed_limit import format_download_speed_limit_label
 from yaloader.domain.enums import DownloadStatus, VideoQuality
 from yaloader.services.app_container import AppContainer
+from yaloader.ui.controllers.browser_cookies_controller import (
+    BrowserCookiesController,
+    BrowserCookiesControllerUpdate,
+)
 from yaloader.ui.controllers.download_controller import (
     DownloadController,
     DownloadControllerUpdate,
@@ -159,6 +164,9 @@ class MainWindow(QMainWindow):
             settings_service=container.settings_service,
             environment_check_service=container.environment_check_service,
         )
+        self._browser_cookies_controller = BrowserCookiesController(
+            service=container.browser_cookies_service,
+        )
         self._tool_installation_controller = ToolInstallationController(
             service=container.tool_installation_service,
         )
@@ -179,6 +187,7 @@ class MainWindow(QMainWindow):
         self._history_animation_start_window_width = 0
         self._history_animation_end_window_width = 0
         self._tool_installation_activity_message: str | None = None
+        self._browser_cookies_activity_message: str | None = None
         self._download_poll_timer = self.startTimer(DOWNLOAD_POLL_INTERVAL_MS)
 
         self._configure_window()
@@ -218,6 +227,7 @@ class MainWindow(QMainWindow):
         self.killTimer(self._download_poll_timer)
         self._download_controller.shutdown()
         self._metadata_controller.shutdown()
+        self._browser_cookies_controller.shutdown()
         self._tool_installation_controller.shutdown()
         super().closeEvent(event)
 
@@ -231,6 +241,9 @@ class MainWindow(QMainWindow):
         self._apply_download_update(update=self._download_controller.poll())
         self._apply_tool_installation_update(
             update=self._tool_installation_controller.poll(),
+        )
+        self._apply_browser_cookies_update(
+            update=self._browser_cookies_controller.poll(),
         )
 
     def _configure_window(self) -> None:
@@ -280,6 +293,9 @@ class MainWindow(QMainWindow):
         )
         self._environment_panel.import_cookies_button.clicked.connect(
             self._handle_import_cookies_clicked
+        )
+        self._environment_panel.export_firefox_cookies_button.clicked.connect(
+            self._handle_export_firefox_cookies_clicked
         )
         self._environment_panel.delete_cookies_button.clicked.connect(
             self._handle_delete_cookies_clicked
@@ -673,6 +689,16 @@ class MainWindow(QMainWindow):
             f"{format_download_speed_limit_label(bytes_per_second=bytes_per_second)}"
         )
 
+    def _handle_export_firefox_cookies_clicked(self) -> None:
+        if self._container.paths.cookies_file.is_file() and not self._confirm_replace_cookies():
+            return
+
+        self._apply_browser_cookies_update(
+            update=self._browser_cookies_controller.start_export_from_browser(
+                browser_id=BrowserId.FIREFOX,
+            )
+        )
+
     def _handle_import_cookies_clicked(self) -> None:
         selected_file, _selected_filter = QFileDialog.getOpenFileName(
             self,
@@ -753,6 +779,50 @@ class MainWindow(QMainWindow):
             self._show_transient_status_message(update.status_message)
 
         self._sync_queue_controls_state()
+
+    def _apply_browser_cookies_update(
+        self,
+        *,
+        update: BrowserCookiesControllerUpdate,
+    ) -> None:
+        for progress in update.progress_events:
+            self._show_browser_cookies_activity_message(message=progress.message)
+
+        if update.should_refresh_environment_status:
+            self._apply_environment_update(
+                update=self._environment_controller.load_status(
+                    downloads_dir=self._settings.downloads_dir,
+                )
+            )
+            self._environment_panel.play_refresh_feedback()
+
+        if update.status_message is not None:
+            if not self._browser_cookies_controller.is_active:
+                self._clear_browser_cookies_activity_message()
+
+            self._show_transient_status_message(update.status_message)
+
+        self._sync_queue_controls_state()
+
+    def _show_browser_cookies_activity_message(self, *, message: str) -> None:
+        activity_message = f"Cookies: {message}"
+
+        if self._browser_cookies_activity_message is not None:
+            self._footer_status_presenter.clear_activity(
+                message=self._browser_cookies_activity_message,
+            )
+
+        self._browser_cookies_activity_message = activity_message
+        self._footer_status_presenter.show_activity(message=activity_message)
+
+    def _clear_browser_cookies_activity_message(self) -> None:
+        if self._browser_cookies_activity_message is None:
+            return
+
+        self._footer_status_presenter.clear_activity(
+            message=self._browser_cookies_activity_message,
+        )
+        self._browser_cookies_activity_message = None
 
     def _apply_tool_installation_update(
         self,
@@ -1144,21 +1214,26 @@ class MainWindow(QMainWindow):
         )
         has_active_download = self._download_controller.is_active
         has_active_tool_installation = self._tool_installation_controller.is_active
-        has_blocking_operation = has_active_download or has_active_tool_installation
+        has_active_browser_cookies_export = self._browser_cookies_controller.is_active
+        has_environment_operation = (
+            has_active_tool_installation or has_active_browser_cookies_export
+        )
+        has_blocking_operation = has_active_download or has_environment_operation
 
         self._input_panel.set_add_to_queue_available(
-            is_available=not has_active_tool_installation,
+            is_available=not has_environment_operation,
         )
         self._settings_panel.choose_downloads_dir_button.setEnabled(not has_blocking_operation)
         self._environment_panel.prepare_system_button.setEnabled(not has_blocking_operation)
         self._environment_panel.import_cookies_button.setEnabled(not has_blocking_operation)
+        self._environment_panel.export_firefox_cookies_button.setEnabled(not has_blocking_operation)
         self._environment_panel.delete_cookies_button.setEnabled(not has_blocking_operation)
         self._environment_panel.refresh_button.setEnabled(not has_blocking_operation)
         self._environment_panel.open_cookies_dir_button.setEnabled(not has_blocking_operation)
         self._environment_panel.open_downloads_dir_button.setEnabled(True)
 
         self._start_queue_button.setEnabled(
-            not has_active_tool_installation and (has_active_download or has_downloadable_tasks)
+            not has_environment_operation and (has_active_download or has_downloadable_tasks)
         )
         self._remove_from_queue_button.setEnabled(has_selected_tasks and not has_blocking_operation)
         self._clear_queue_button.setEnabled(has_tasks and not has_blocking_operation)

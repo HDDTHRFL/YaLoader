@@ -138,6 +138,15 @@ QFrame#StatusChipFrame[state="warning"] QLabel#StatusChipText {
     color: #FCD34D;
 }
 
+
+QLabel#StatusChipText[state="ok"] {
+    color: #A7F3D0;
+}
+
+QLabel#StatusChipText[state="warning"] {
+    color: #FCD34D;
+}
+
 QLineEdit {
     min-height: 36px;
     padding: 0 12px;
