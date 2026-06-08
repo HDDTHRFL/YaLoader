@@ -129,6 +129,15 @@ OPERA_COOKIES_INFO_DETAILS = (
 )
 OPERA_COOKIES_INFO_BUTTON = "Продолжить"
 
+CHROME_COOKIES_INFO_TITLE = "Создание cookies.txt из Chrome"
+CHROME_COOKIES_INFO_TEXT = "Перед созданием cookies.txt откройте Chrome и войдите в YouTube."
+CHROME_COOKIES_INFO_DETAILS = (
+    "YaLoader возьмёт cookies из вашего локального профиля Chrome. "
+    "Если Chrome запущен или профиль заблокирован, экспорт может не пройти. "
+    "В таком случае закройте Chrome полностью и повторите попытку."
+)
+CHROME_COOKIES_INFO_BUTTON = "Продолжить"
+
 CLEAR_HISTORY_CONFIRMATION_TITLE = "Очистить историю?"
 CLEAR_HISTORY_CONFIRMATION_TEXT = "История загрузок будет полностью очищена."
 CLEAR_HISTORY_CONFIRMATION_DETAILS = (
@@ -332,6 +341,9 @@ class MainWindow(QMainWindow):
         )
         self._environment_panel.export_opera_cookies_action.triggered.connect(
             self._handle_export_opera_cookies_clicked
+        )
+        self._environment_panel.export_chrome_cookies_action.triggered.connect(
+            self._handle_export_chrome_cookies_clicked
         )
         self._environment_panel.delete_cookies_button.clicked.connect(
             self._handle_delete_cookies_clicked
@@ -782,6 +794,19 @@ class MainWindow(QMainWindow):
             )
         )
 
+    def _handle_export_chrome_cookies_clicked(self) -> None:
+        if not self._confirm_chrome_youtube_login():
+            return
+
+        if self._container.paths.cookies_file.is_file() and not self._confirm_replace_cookies():
+            return
+
+        self._apply_browser_cookies_update(
+            update=self._browser_cookies_controller.start_export_from_browser(
+                browser_id=BrowserId.CHROME,
+            )
+        )
+
     def _handle_import_cookies_clicked(self) -> None:
         selected_file, _selected_filter = QFileDialog.getOpenFileName(
             self,
@@ -1099,6 +1124,15 @@ class MainWindow(QMainWindow):
             confirm_button_text=OPERA_COOKIES_INFO_BUTTON,
         )
 
+    def _confirm_chrome_youtube_login(self) -> bool:
+        return confirm_informational_action(
+            parent=self,
+            title=CHROME_COOKIES_INFO_TITLE,
+            text=CHROME_COOKIES_INFO_TEXT,
+            informative_text=CHROME_COOKIES_INFO_DETAILS,
+            confirm_button_text=CHROME_COOKIES_INFO_BUTTON,
+        )
+
     def _confirm_replace_cookies(self) -> bool:
         return confirm_dangerous_action(
             parent=self,
@@ -1367,7 +1401,7 @@ class MainWindow(QMainWindow):
             self._start_queue_button.setObjectName("DangerButton")
         else:
             self._start_queue_button.setText("Скачать очередь")
-            self._start_queue_button.setObjectName("PrimaryButton")
+            self._start_queue_button.setObjectName("SuccessButton")
 
         style = self._start_queue_button.style()
 

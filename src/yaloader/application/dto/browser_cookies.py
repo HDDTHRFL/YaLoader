@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class BrowserId(StrEnum):
     FIREFOX = "firefox"
     OPERA = "opera"
+    CHROME = "chrome"
 
 
 class BrowserCookiesExportStatus(StrEnum):

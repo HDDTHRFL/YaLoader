@@ -94,6 +94,20 @@ class StatusChip(QFrame):
 
 
 class EnvironmentPanel(QFrame):
+    refresh_button: QPushButton
+    prepare_system_button: QPushButton
+    update_tools_button: QPushButton
+
+    cookies_actions_button: QPushButton
+    import_cookies_action: QAction
+    export_firefox_cookies_action: QAction
+    export_opera_cookies_action: QAction
+    export_chrome_cookies_action: QAction
+
+    open_cookies_dir_button: QPushButton
+    delete_cookies_button: QPushButton
+    open_downloads_dir_button: QPushButton
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
@@ -105,6 +119,7 @@ class EnvironmentPanel(QFrame):
         self.import_cookies_action = QAction("Импортировать файл...", self)
         self.export_firefox_cookies_action = QAction("Создать из Firefox", self)
         self.export_opera_cookies_action = QAction("Создать из Opera", self)
+        self.export_chrome_cookies_action = QAction("Создать из Chrome", self)
         self._cookies_actions_menu = QMenu(self.cookies_actions_button)
 
         self.open_cookies_dir_button = QPushButton("Открыть cookies", self)
@@ -150,6 +165,7 @@ class EnvironmentPanel(QFrame):
         self._cookies_actions_menu.setObjectName("CookiesActionsMenu")
         self._cookies_actions_menu.addAction(self.export_firefox_cookies_action)
         self._cookies_actions_menu.addAction(self.export_opera_cookies_action)
+        self._cookies_actions_menu.addAction(self.export_chrome_cookies_action)
         self._cookies_actions_menu.addAction(self.import_cookies_action)
         self.cookies_actions_button.setMenu(self._cookies_actions_menu)
 

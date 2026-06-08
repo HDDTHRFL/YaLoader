@@ -1052,4 +1052,39 @@ QPushButton#RefreshIconButton:disabled:hover {
 }
 /* YaLoader final environment polish end */
 
+/* YaLoader success action buttons start */
+QPushButton#SuccessButton {
+    min-height: 36px;
+    padding: 0 18px;
+    background-color: #1F6F4A;
+    color: #D1FAE5;
+    border: 1px solid #238636;
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+QPushButton#SuccessButton:hover {
+    background-color: #238636;
+    color: #FFFFFF;
+    border-color: #2EA043;
+}
+
+QPushButton#SuccessButton:pressed {
+    background-color: #1A5A3C;
+    color: #FFFFFF;
+    border-color: #3FB950;
+}
+
+QPushButton#SuccessButton:focus {
+    border-color: #3FB950;
+}
+
+QPushButton#SuccessButton:disabled,
+QPushButton#SuccessButton:disabled:hover {
+    background-color: #1A1F27;
+    color: #5F6875;
+    border: 1px solid #252B35;
+}
+/* YaLoader success action buttons end */
+
 """

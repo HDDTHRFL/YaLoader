@@ -47,7 +47,7 @@ class DownloadQueuePanel(QFrame):
         self.setMinimumHeight(QUEUE_PANEL_MINIMUM_HEIGHT)
         self.queue_table.setMinimumHeight(QUEUE_TABLE_MINIMUM_HEIGHT)
 
-        self.start_queue_button.setObjectName("PrimaryButton")
+        self.start_queue_button.setObjectName("SuccessButton")
         self.remove_from_queue_button.setObjectName("SecondaryButton")
         self.clear_queue_button.setObjectName("SecondaryButton")
 

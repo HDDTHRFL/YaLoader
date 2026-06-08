@@ -99,6 +99,7 @@ class DownloadInputPanel(QFrame):
     def _configure_widgets(self) -> None:
         self.setObjectName("PanelFrame")
         self.setAcceptDrops(True)
+        self.add_to_queue_button.setObjectName("SuccessButton")
 
         self.url_input.setPlaceholderText(
             "Вставьте ссылку YouTube на видео, Shorts или плейлист 👀"
