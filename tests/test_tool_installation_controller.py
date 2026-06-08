@@ -206,7 +206,7 @@ def test_build_tool_installation_summary_reports_already_available_tools() -> No
         )
     )
 
-    assert summary == "Системные компоненты уже были доступны"
+    assert summary == "Системные компоненты уже доступны"
 
 
 def wait_for_finished_update(

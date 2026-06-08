@@ -100,7 +100,9 @@ class DownloadInputPanel(QFrame):
         self.setObjectName("PanelFrame")
         self.setAcceptDrops(True)
 
-        self.url_input.setPlaceholderText("Вставьте ссылку YouTube на видео, Shorts или плейлист")
+        self.url_input.setPlaceholderText(
+            "Вставьте ссылку YouTube на видео, Shorts или плейлист 👀"
+        )
         self.url_input.setToolTip("Можно вставить ссылку вручную или перетащить её мышью")
         self.url_input.setClearButtonEnabled(True)
 

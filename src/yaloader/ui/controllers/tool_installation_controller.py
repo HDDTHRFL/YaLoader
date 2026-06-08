@@ -183,4 +183,4 @@ def build_tool_installation_summary(
     if installed_results:
         return "Системные компоненты подготовлены"
 
-    return "Системные компоненты уже были доступны"
+    return "Системные компоненты уже доступны"

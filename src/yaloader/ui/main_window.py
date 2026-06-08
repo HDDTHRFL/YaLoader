@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QProgressBar,
     QStyle,
     QVBoxLayout,
     QWidget,
@@ -137,8 +138,10 @@ class MainWindow(QMainWindow):
         self._history_toggle_button = self._header.history_toggle_button
 
         self._status_label = QLabel(DEFAULT_STATUS_MESSAGE, self)
+        self._tool_installation_progress_bar = QProgressBar(self)
         self._footer_status_presenter = FooterStatusPresenter(
             label=self._status_label,
+            progress_bar=self._tool_installation_progress_bar,
             parent=self,
         )
 
@@ -250,9 +253,11 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_DISPLAY_NAME)
         self.resize(WINDOW_INITIAL_WIDTH, WINDOW_INITIAL_HEIGHT)
         self.setMinimumSize(WINDOW_MINIMUM_WIDTH, WINDOW_MINIMUM_HEIGHT)
+        self._set_history_adjusted_minimum_width(history_panel_width=0)
 
     def _configure_widgets(self) -> None:
         self._status_label.setObjectName("StatusLabel")
+        self._tool_installation_progress_bar.setObjectName("ToolInstallationProgressBar")
 
         self._queue_table.set_context_menu_callbacks(
             on_download_tasks=self._start_tasks_download,
@@ -356,11 +361,20 @@ class MainWindow(QMainWindow):
 
     def _build_footer(self) -> QWidget:
         footer = QWidget(self)
-        layout = QHBoxLayout(footer)
-        layout.setContentsMargins(0, 0, 0, 0)
+        footer.setObjectName("FooterWidget")
 
-        layout.addWidget(self._status_label)
-        layout.addStretch(1)
+        root_layout = QVBoxLayout(footer)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(6)
+
+        status_layout = QHBoxLayout()
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(0)
+        status_layout.addWidget(self._status_label)
+        status_layout.addStretch(1)
+
+        root_layout.addLayout(status_layout)
+        root_layout.addWidget(self._tool_installation_progress_bar)
 
         return footer
 
@@ -374,6 +388,14 @@ class MainWindow(QMainWindow):
         self._history_panel.set_drawer_width(width=target_width)
         self._history_panel.setVisible(self._is_history_panel_visible)
         self._header.set_history_visible(is_visible=self._is_history_panel_visible)
+        self._set_history_adjusted_minimum_width(history_panel_width=target_width)
+
+    def _set_history_adjusted_minimum_width(self, *, history_panel_width: int) -> None:
+        self.setMinimumWidth(
+            calculate_history_adjusted_window_minimum_width(
+                history_panel_width=history_panel_width,
+            )
+        )
 
     def _animate_history_panel_visibility(self, *, is_visible: bool) -> None:
         current_panel_width = self._history_panel.current_drawer_width()
@@ -394,7 +416,12 @@ class MainWindow(QMainWindow):
                 start_panel_width=current_panel_width,
                 end_panel_width=HISTORY_PANEL_WIDTH,
                 start_window_width=start_window_width,
-                end_window_width=max(self.minimumWidth(), target_window_width),
+                end_window_width=max(
+                    calculate_history_adjusted_window_minimum_width(
+                        history_panel_width=HISTORY_PANEL_WIDTH,
+                    ),
+                    target_window_width,
+                ),
                 hide_after_finish=False,
             )
             return
@@ -407,7 +434,10 @@ class MainWindow(QMainWindow):
             start_panel_width=current_panel_width,
             end_panel_width=0,
             start_window_width=start_window_width,
-            end_window_width=max(self.minimumWidth(), target_window_width),
+            end_window_width=max(
+                calculate_history_adjusted_window_minimum_width(history_panel_width=0),
+                target_window_width,
+            ),
             hide_after_finish=True,
         )
 
@@ -420,6 +450,8 @@ class MainWindow(QMainWindow):
         end_window_width: int,
         hide_after_finish: bool,
     ) -> None:
+        self._set_history_adjusted_minimum_width(history_panel_width=start_panel_width)
+
         self._history_animation_start_panel_width = start_panel_width
         self._history_animation_end_panel_width = end_panel_width
         self._history_animation_start_window_width = start_window_width
@@ -460,15 +492,19 @@ class MainWindow(QMainWindow):
         )
 
         self._history_panel.set_drawer_width(width=panel_width)
+        self._set_history_adjusted_minimum_width(history_panel_width=panel_width)
         self.resize(max(self.minimumWidth(), window_width), self.height())
 
     def _handle_history_panel_width_animation_finished(self, *, hide_after_finish: bool) -> None:
         if hide_after_finish:
-            self._history_panel.set_drawer_width(width=0)
+            final_panel_width = 0
+            self._history_panel.set_drawer_width(width=final_panel_width)
             self._history_panel.setVisible(False)
         else:
-            self._history_panel.set_drawer_width(width=HISTORY_PANEL_WIDTH)
+            final_panel_width = HISTORY_PANEL_WIDTH
+            self._history_panel.set_drawer_width(width=final_panel_width)
 
+        self._set_history_adjusted_minimum_width(history_panel_width=final_panel_width)
         self.resize(
             max(self.minimumWidth(), self._history_animation_end_window_width),
             self.height(),
@@ -838,7 +874,10 @@ class MainWindow(QMainWindow):
         update: ToolInstallationControllerUpdate,
     ) -> None:
         for progress in update.progress_events:
-            self._show_tool_installation_activity_message(message=progress.message)
+            self._show_tool_installation_activity_message(
+                message=progress.message,
+                percent=progress.percent,
+            )
 
         if update.should_refresh_environment_status:
             self._apply_environment_update(
@@ -856,7 +895,12 @@ class MainWindow(QMainWindow):
 
         self._sync_queue_controls_state()
 
-    def _show_tool_installation_activity_message(self, *, message: str) -> None:
+    def _show_tool_installation_activity_message(
+        self,
+        *,
+        message: str,
+        percent: int | None,
+    ) -> None:
         activity_message = f"Инструменты: {message}"
 
         if self._tool_installation_activity_message is not None:
@@ -866,6 +910,10 @@ class MainWindow(QMainWindow):
 
         self._tool_installation_activity_message = activity_message
         self._footer_status_presenter.show_activity(message=activity_message)
+        self._footer_status_presenter.show_progress(
+            message=message,
+            percent=percent,
+        )
 
     def _clear_tool_installation_activity_message(self) -> None:
         if self._tool_installation_activity_message is None:
@@ -874,6 +922,7 @@ class MainWindow(QMainWindow):
         self._footer_status_presenter.clear_activity(
             message=self._tool_installation_activity_message,
         )
+        self._footer_status_presenter.hide_progress()
         self._tool_installation_activity_message = None
 
     def _handle_start_or_cancel_queue_clicked(self) -> None:
@@ -1264,6 +1313,11 @@ class MainWindow(QMainWindow):
 
     def _focus_url_input_later(self) -> None:
         QTimer.singleShot(0, self._input_panel.focus_url_input)
+
+
+def calculate_history_adjusted_window_minimum_width(*, history_panel_width: int) -> int:
+    safe_history_panel_width = max(0, history_panel_width)
+    return WINDOW_MINIMUM_WIDTH + safe_history_panel_width
 
 
 def is_same_filesystem_path(*, left_path: Path, right_path: Path) -> bool:

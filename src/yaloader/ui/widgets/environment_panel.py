@@ -95,7 +95,7 @@ class EnvironmentPanel(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.refresh_button = QPushButton("Обновить", self)
+        self.refresh_button = QPushButton("⟲", self)
         self.prepare_system_button = QPushButton("Подготовить систему", self)
         self.update_tools_button = QPushButton("Обновить инструменты", self)
         self.import_cookies_button = QPushButton("Импорт cookies.txt", self)
@@ -128,7 +128,7 @@ class EnvironmentPanel(QFrame):
         self.setObjectName("EnvironmentPanelFrame")
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
-        self.refresh_button.setObjectName("GhostButton")
+        self.refresh_button.setObjectName("RefreshIconButton")
         self.prepare_system_button.setObjectName("GhostButton")
         self.update_tools_button.setObjectName("GhostButton")
         self.import_cookies_button.setObjectName("TinyGhostButton")
@@ -167,10 +167,10 @@ class EnvironmentPanel(QFrame):
         title_label.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
         header_layout.addWidget(title_label)
+        header_layout.addWidget(self.refresh_button)
         header_layout.addStretch(1)
         header_layout.addWidget(self.prepare_system_button)
         header_layout.addWidget(self.update_tools_button)
-        header_layout.addWidget(self.refresh_button)
 
         chips_layout = QHBoxLayout()
         chips_layout.setContentsMargins(0, 0, 0, 0)

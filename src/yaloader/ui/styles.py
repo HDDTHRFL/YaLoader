@@ -866,4 +866,57 @@ QLabel#HistoryErrorLabel {
     color: #FCA5A5;
     font-size: 8pt;
 }
+
+QPushButton#RefreshIconButton {
+    min-width: 26px;
+    max-width: 26px;
+    min-height: 26px;
+    max-height: 26px;
+    padding: 0;
+    background-color: transparent;
+    color: #8B949E;
+    border: none;
+    border-radius: 13px;
+    font-family: "Segoe UI Symbol", "Segoe UI Emoji", "Segoe UI";
+    font-size: 15pt;
+    font-weight: 700;
+}
+
+QPushButton#RefreshIconButton:hover {
+    background-color: transparent;
+    color: #FFFFFF;
+    border: none;
+}
+
+QPushButton#RefreshIconButton:pressed {
+    background-color: transparent;
+    color: #58A6FF;
+    border: none;
+}
+
+QPushButton#RefreshIconButton:disabled,
+QPushButton#RefreshIconButton:disabled:hover {
+    background-color: transparent;
+    color: #4B5563;
+    border: none;
+}
+
+QProgressBar#ToolInstallationProgressBar {
+    min-height: 12px;
+    max-height: 12px;
+    background-color: #0D1117;
+    color: #9AA4B2;
+    border: 1px solid #30363D;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 8pt;
+    font-weight: 600;
+}
+
+QProgressBar#ToolInstallationProgressBar::chunk {
+    background-color: #2F81F7;
+    border-radius: 5px;
+}
+
+
 """
