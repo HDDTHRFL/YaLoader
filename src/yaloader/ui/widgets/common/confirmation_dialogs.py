@@ -8,7 +8,6 @@ __all__ = (
     "confirm_informational_action",
 )
 
-
 CONFIRMATION_DIALOG_STYLE_SHEET = """
 QMessageBox {
     background-color: #171A21;

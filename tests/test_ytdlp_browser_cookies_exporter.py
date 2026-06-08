@@ -112,6 +112,21 @@ def test_build_ytdlp_browser_cookie_options_uses_firefox_and_cookie_file(
     assert options["simulate"] is True
 
 
+def test_build_ytdlp_browser_cookie_options_uses_opera_and_cookie_file(
+    tmp_path: Path,
+) -> None:
+    cookie_file = tmp_path / "cookies.txt"
+
+    options = build_ytdlp_browser_cookie_options(
+        browser_id=BrowserId.OPERA,
+        cookie_file=cookie_file,
+    )
+
+    assert options["cookiesfrombrowser"] == ("opera", None, None, None)
+    assert options["cookiefile"] == str(cookie_file)
+    assert options["simulate"] is True
+
+
 def test_build_temporary_cookies_file_adds_tmp_suffix(tmp_path: Path) -> None:
     assert build_temporary_cookies_file(target_file=tmp_path / "cookies.txt") == (
         tmp_path / "cookies.txt.tmp"

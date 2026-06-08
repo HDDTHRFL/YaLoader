@@ -104,6 +104,7 @@ class EnvironmentPanel(QFrame):
         self.cookies_actions_button = QPushButton("Добавить cookies.txt", self)
         self.import_cookies_action = QAction("Импортировать файл...", self)
         self.export_firefox_cookies_action = QAction("Создать из Firefox", self)
+        self.export_opera_cookies_action = QAction("Создать из Opera", self)
         self._cookies_actions_menu = QMenu(self.cookies_actions_button)
 
         self.open_cookies_dir_button = QPushButton("Открыть cookies", self)
@@ -148,6 +149,7 @@ class EnvironmentPanel(QFrame):
         self._cookies_actions_menu.setCursor(Qt.CursorShape.PointingHandCursor)
         self._cookies_actions_menu.setObjectName("CookiesActionsMenu")
         self._cookies_actions_menu.addAction(self.export_firefox_cookies_action)
+        self._cookies_actions_menu.addAction(self.export_opera_cookies_action)
         self._cookies_actions_menu.addAction(self.import_cookies_action)
         self.cookies_actions_button.setMenu(self._cookies_actions_menu)
 

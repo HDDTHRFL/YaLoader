@@ -120,6 +120,15 @@ FIREFOX_COOKIES_INFO_DETAILS = (
 )
 FIREFOX_COOKIES_INFO_BUTTON = "Продолжить"
 
+OPERA_COOKIES_INFO_TITLE = "Создание cookies.txt из Opera"
+OPERA_COOKIES_INFO_TEXT = "Перед созданием cookies.txt откройте Opera и войдите в YouTube."
+OPERA_COOKIES_INFO_DETAILS = (
+    "YaLoader возьмёт cookies из вашего локального профиля Opera. "
+    "Если вход в YouTube не выполнен, файл может создаться, но YouTube всё равно "
+    "может запрашивать подтверждение или ограничивать загрузку."
+)
+OPERA_COOKIES_INFO_BUTTON = "Продолжить"
+
 CLEAR_HISTORY_CONFIRMATION_TITLE = "Очистить историю?"
 CLEAR_HISTORY_CONFIRMATION_TEXT = "История загрузок будет полностью очищена."
 CLEAR_HISTORY_CONFIRMATION_DETAILS = (
@@ -320,6 +329,9 @@ class MainWindow(QMainWindow):
         )
         self._environment_panel.export_firefox_cookies_action.triggered.connect(
             self._handle_export_firefox_cookies_clicked
+        )
+        self._environment_panel.export_opera_cookies_action.triggered.connect(
+            self._handle_export_opera_cookies_clicked
         )
         self._environment_panel.delete_cookies_button.clicked.connect(
             self._handle_delete_cookies_clicked
@@ -757,6 +769,19 @@ class MainWindow(QMainWindow):
             )
         )
 
+    def _handle_export_opera_cookies_clicked(self) -> None:
+        if not self._confirm_opera_youtube_login():
+            return
+
+        if self._container.paths.cookies_file.is_file() and not self._confirm_replace_cookies():
+            return
+
+        self._apply_browser_cookies_update(
+            update=self._browser_cookies_controller.start_export_from_browser(
+                browser_id=BrowserId.OPERA,
+            )
+        )
+
     def _handle_import_cookies_clicked(self) -> None:
         selected_file, _selected_filter = QFileDialog.getOpenFileName(
             self,
@@ -1063,6 +1088,15 @@ class MainWindow(QMainWindow):
             text=FIREFOX_COOKIES_INFO_TEXT,
             informative_text=FIREFOX_COOKIES_INFO_DETAILS,
             confirm_button_text=FIREFOX_COOKIES_INFO_BUTTON,
+        )
+
+    def _confirm_opera_youtube_login(self) -> bool:
+        return confirm_informational_action(
+            parent=self,
+            title=OPERA_COOKIES_INFO_TITLE,
+            text=OPERA_COOKIES_INFO_TEXT,
+            informative_text=OPERA_COOKIES_INFO_DETAILS,
+            confirm_button_text=OPERA_COOKIES_INFO_BUTTON,
         )
 
     def _confirm_replace_cookies(self) -> bool:
