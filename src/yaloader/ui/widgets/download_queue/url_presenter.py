@@ -18,7 +18,7 @@ from yaloader.ui.widgets.download_queue.delegate import (
 )
 from yaloader.ui.widgets.download_queue.row_state import QueueTableRowState
 
-METADATA_RESOLUTION_FAILED_TEXT = "Ссылку не удалось определить..."
+METADATA_RESOLUTION_FAILED_TEXT = "Название не удалось определить..."
 
 
 class DownloadQueueUrlPresenter:

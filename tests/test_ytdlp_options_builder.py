@@ -19,11 +19,27 @@ def test_build_video_mp4_best_options(tmp_path: Path) -> None:
 
     options = builder.build(request=request)
 
-    assert options["format"] == "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
+    assert options["format"] == "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b"
     assert options["merge_output_format"] == "mp4"
     assert options["noplaylist"] is True
     assert options["remote_components"] == ["ejs:github"]
     assert str(tmp_path) in str(options["outtmpl"])
+
+
+def test_build_video_mp4_360p_keeps_universal_fallback(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        mode=DownloadMode.VIDEO,
+        output_format=OutputFormat.MP4,
+        video_quality=VideoQuality.P360,
+    )
+    builder = YtDlpOptionsBuilder()
+
+    options = builder.build(request=request)
+
+    assert "[height<=360]" in str(options["format"])
+    assert str(options["format"]).endswith("/bv*+ba/b")
 
 
 def test_build_video_webm_1080p_options(tmp_path: Path) -> None:

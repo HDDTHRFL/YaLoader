@@ -20,11 +20,17 @@ from yaloader.application.ports.downloader import CancellationToken, ProgressCal
 from yaloader.application.ports.process_runner import ProcessRunner
 from yaloader.application.services.prepared_download_cache import PreparedDownloadCache
 from yaloader.domain.entities.download_task import DownloadTask
-from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
+from yaloader.domain.enums import DownloadMode
+from yaloader.infrastructure.ytdlp.options_builder import (
+    VIDEO_FORMAT_UNAVAILABLE_FALLBACK_SELECTOR,
+    YtDlpOptions,
+    YtDlpOptionsBuilder,
+)
 from yaloader.infrastructure.ytdlp.output_naming import build_unique_output_template
 
 ANSI_ESCAPE_SEQUENCE_RE = re.compile(r"\x1b\[[0-9;]*m")
 YOUTUBE_BOT_CHECK_MARKER = "Sign in to confirm"
+REQUESTED_FORMAT_UNAVAILABLE_MARKER = "Requested format is not available"
 
 YTDLP_STATUS_DOWNLOADING = "downloading"
 YTDLP_STATUS_FINISHED = "finished"
@@ -307,13 +313,12 @@ class YtDlpDownloader:
         )
 
         try:
-            if prepared_download is not None and prepared_download.raw_info:
-                self.backend.download_prepared(
-                    prepared_download=prepared_download,
-                    options=options,
-                )
-            else:
-                self.backend.download(urls=(task.url.value,), options=options)
+            self._download_with_optional_format_fallback(
+                request=request,
+                task=task,
+                prepared_download=prepared_download,
+                options=options,
+            )
         except DownloadCancelledError:
             removed_files_count = cleanup_created_files(
                 download_dir=task.target_dir,
@@ -380,6 +385,77 @@ class YtDlpDownloader:
             task_id=task.task_id,
             output_path=output_path,
         )
+
+    def _download_with_optional_format_fallback(
+        self,
+        *,
+        request: DownloadRequest,
+        task: DownloadTask,
+        prepared_download: PreparedDownload | None,
+        options: YtDlpOptions,
+    ) -> None:
+        try:
+            self._run_backend_download(
+                task=task,
+                prepared_download=prepared_download,
+                options=options,
+            )
+        except DownloadCancelledError:
+            raise
+        except Exception as error:
+            if not self._can_retry_with_format_unavailable_fallback(
+                request=request,
+                options=options,
+                error=error,
+            ):
+                raise
+
+            fallback_options = build_format_unavailable_fallback_options(options=options)
+
+            logger.warning(
+                "Requested yt-dlp format is unavailable. Retrying with fallback format. "
+                "task_id={} previous_format={} fallback_format={}",
+                task.task_id,
+                options.get("format"),
+                fallback_options.get("format"),
+            )
+
+            self._run_backend_download(
+                task=task,
+                prepared_download=prepared_download,
+                options=fallback_options,
+            )
+
+    def _run_backend_download(
+        self,
+        *,
+        task: DownloadTask,
+        prepared_download: PreparedDownload | None,
+        options: YtDlpOptions,
+    ) -> None:
+        if prepared_download is not None and prepared_download.raw_info:
+            self.backend.download_prepared(
+                prepared_download=prepared_download,
+                options=options,
+            )
+            return
+
+        self.backend.download(urls=(task.url.value,), options=options)
+
+    def _can_retry_with_format_unavailable_fallback(
+        self,
+        *,
+        request: DownloadRequest,
+        options: YtDlpOptions,
+        error: Exception,
+    ) -> bool:
+        if request.mode is not DownloadMode.VIDEO:
+            return False
+
+        if not is_requested_format_unavailable_error(error=error):
+            return False
+
+        return options.get("format") != VIDEO_FORMAT_UNAVAILABLE_FALLBACK_SELECTOR
 
     def _get_prepared_download(self, *, task: DownloadTask) -> PreparedDownload | None:
         if self.prepared_download_cache is None:
@@ -460,7 +536,27 @@ class YtDlpDownloader:
                 "После этого повторите загрузку."
             )
 
+        if is_requested_format_unavailable_error(error=error):
+            return (
+                "YouTube не отдал подходящий видео/аудио поток. "
+                "YaLoader уже попробовал резервный формат, но скачать всё равно не удалось. "
+                "Проверьте, что cookies.txt создан из браузера с активным входом в YouTube, "
+                "или попробуйте другой формат/качество."
+            )
+
         return error_message
+
+
+def build_format_unavailable_fallback_options(*, options: YtDlpOptions) -> YtDlpOptions:
+    fallback_options = dict(options)
+    fallback_options["format"] = VIDEO_FORMAT_UNAVAILABLE_FALLBACK_SELECTOR
+
+    return fallback_options
+
+
+def is_requested_format_unavailable_error(*, error: Exception) -> bool:
+    normalized_message = strip_ansi_escape_sequences(text=str(error)).casefold()
+    return REQUESTED_FORMAT_UNAVAILABLE_MARKER.casefold() in normalized_message
 
 
 def apply_prepared_output_template(

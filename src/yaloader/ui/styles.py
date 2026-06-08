@@ -871,7 +871,7 @@ QPushButton#RefreshIconButton {
     max-width: 26px;
     min-height: 26px;
     max-height: 26px;
-    padding: 0;
+    padding: 0 10px 0 0;
     background-color: transparent;
     color: #8B949E;
     border: none;

@@ -18,6 +18,12 @@ OUTPUT_TEMPLATE = "%(title).200B.%(ext)s"
 REMOTE_COMPONENTS: Final[list[str]] = ["ejs:github"]
 FFMPEG_EXECUTABLE_NAME: Final = "ffmpeg"
 
+VIDEO_FORMAT_UNAVAILABLE_FALLBACK_SELECTOR: Final = "bv*+ba/b"
+VIDEO_FORMAT_UNAVAILABLE_FALLBACKS: Final[tuple[str, ...]] = (
+    "bv*+ba",
+    "b",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class YtDlpOptionsBuilder:
@@ -87,9 +93,10 @@ class YtDlpOptionsBuilder:
             return self._join_format_fallbacks(
                 [
                     f"bv*[ext=mp4]{height_filter}+ba[ext=m4a]",
-                    f"b[ext=mp4]{height_filter}",
                     f"bv*{height_filter}+ba",
+                    f"b[ext=mp4]{height_filter}",
                     f"b{height_filter}",
+                    *VIDEO_FORMAT_UNAVAILABLE_FALLBACKS,
                 ]
             )
 
@@ -97,9 +104,10 @@ class YtDlpOptionsBuilder:
             return self._join_format_fallbacks(
                 [
                     f"bv*[ext=webm]{height_filter}+ba[ext=webm]",
-                    f"b[ext=webm]{height_filter}",
                     f"bv*{height_filter}+ba",
+                    f"b[ext=webm]{height_filter}",
                     f"b{height_filter}",
+                    *VIDEO_FORMAT_UNAVAILABLE_FALLBACKS,
                 ]
             )
 
@@ -107,7 +115,18 @@ class YtDlpOptionsBuilder:
         raise ValueError(message)
 
     def _join_format_fallbacks(self, format_fallbacks: list[str]) -> str:
-        return "/".join(format_fallbacks)
+        unique_format_fallbacks: list[str] = []
+
+        for format_fallback in format_fallbacks:
+            if not format_fallback:
+                continue
+
+            if format_fallback in unique_format_fallbacks:
+                continue
+
+            unique_format_fallbacks.append(format_fallback)
+
+        return "/".join(unique_format_fallbacks)
 
     def _build_audio_format_selector(self, output_format: OutputFormat) -> str:
         if output_format is OutputFormat.MP3:

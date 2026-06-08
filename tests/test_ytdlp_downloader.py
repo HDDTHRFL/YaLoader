@@ -15,7 +15,11 @@ from yaloader.infrastructure.ytdlp.downloader import (
     calculate_percent,
     strip_ansi_escape_sequences,
 )
-from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
+from yaloader.infrastructure.ytdlp.options_builder import (
+    VIDEO_FORMAT_UNAVAILABLE_FALLBACK_SELECTOR,
+    YtDlpOptions,
+    YtDlpOptionsBuilder,
+)
 
 
 class RecordingYtDlpBackend:
@@ -67,6 +71,53 @@ class FailingYtDlpBackend:
         options: YtDlpOptions,
     ) -> None:
         raise RuntimeError("download failed")
+
+
+class FormatUnavailableOnceYtDlpBackend:
+    def __init__(self) -> None:
+        self.options_history: list[YtDlpOptions] = []
+
+    def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
+        self.options_history.append(dict(options))
+
+        if len(self.options_history) == 1:
+            raise RuntimeError(
+                "ERROR: [youtube] test: Requested format is not available. "
+                "Use --list-formats for a list of available formats"
+            )
+
+    def download_prepared(
+        self,
+        *,
+        prepared_download: PreparedDownload,
+        options: YtDlpOptions,
+    ) -> None:
+        self.options_history.append(dict(options))
+
+        if len(self.options_history) == 1:
+            raise RuntimeError(
+                "ERROR: [youtube] test: Requested format is not available. "
+                "Use --list-formats for a list of available formats"
+            )
+
+
+class AlwaysFormatUnavailableYtDlpBackend:
+    def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
+        raise RuntimeError(
+            "ERROR: [youtube] test: Requested format is not available. "
+            "Use --list-formats for a list of available formats"
+        )
+
+    def download_prepared(
+        self,
+        *,
+        prepared_download: PreparedDownload,
+        options: YtDlpOptions,
+    ) -> None:
+        raise RuntimeError(
+            "ERROR: [youtube] test: Requested format is not available. "
+            "Use --list-formats for a list of available formats"
+        )
 
 
 class BotCheckYtDlpBackend:
@@ -239,6 +290,42 @@ def test_ytdlp_downloader_removes_generated_id_suffix_from_prepared_output_templ
     output_template = str(backend.options["outtmpl"])
     assert output_template.endswith("Wanderbelle.%(ext)s")
     assert "TedhnnoEqiz" not in output_template
+
+
+def test_ytdlp_downloader_retries_with_fallback_format_when_requested_format_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    backend = FormatUnavailableOnceYtDlpBackend()
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(),
+        backend=backend,
+    )
+    task = create_video_task(target_dir=tmp_path)
+
+    result = downloader.download(task=task)
+
+    assert result.status == DownloadStatus.COMPLETED
+    assert len(backend.options_history) == 2
+    assert backend.options_history[0]["format"] != VIDEO_FORMAT_UNAVAILABLE_FALLBACK_SELECTOR
+    assert backend.options_history[1]["format"] == VIDEO_FORMAT_UNAVAILABLE_FALLBACK_SELECTOR
+    assert backend.options_history[1]["merge_output_format"] == "mp4"
+
+
+def test_ytdlp_downloader_returns_friendly_format_unavailable_error(
+    tmp_path: Path,
+) -> None:
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(),
+        backend=AlwaysFormatUnavailableYtDlpBackend(),
+    )
+    task = create_video_task(target_dir=tmp_path)
+
+    result = downloader.download(task=task)
+
+    assert result.status == DownloadStatus.FAILED
+    assert result.error_message is not None
+    assert "YouTube не отдал подходящий видео/аудио поток" in result.error_message
+    assert "cookies.txt" in result.error_message
 
 
 def test_ytdlp_downloader_returns_failed_result_on_backend_error(tmp_path: Path) -> None:
