@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import importlib
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
-from typing import Protocol, Self, cast
+from typing import Final, Protocol, Self, cast
 
 from yaloader.application.dto.browser_cookies import (
     BrowserCookiesExportResult,
@@ -17,6 +19,18 @@ from yaloader.application.ports.browser_cookies_exporter import (
 from yaloader.application.services.cookies_file_service import validate_cookies_file
 
 TEMPORARY_COOKIES_FILE_SUFFIX = ".tmp"
+
+CHROMIUM_BROWSER_ID = "chrome"
+YANDEX_BROWSER_PROFILE_RELATIVE_PATH = Path("Yandex") / "YandexBrowser" / "User Data" / "Default"
+
+CHROME_COOKIE_DATABASE_COPY_ERROR_MARKER: Final = "Could not copy Chrome cookie database"
+
+BROWSER_DISPLAY_NAMES: Final[Mapping[BrowserId, str]] = {
+    BrowserId.FIREFOX: "Firefox",
+    BrowserId.OPERA: "Opera",
+    BrowserId.CHROME: "Chrome",
+    BrowserId.YANDEX: "Яндекс Браузера",
+}
 
 EXPORT_START_PERCENT = 0
 EXPORT_BROWSER_READ_PERCENT = 20
@@ -168,7 +182,7 @@ def build_ytdlp_browser_cookie_options(
     cookie_file: Path,
 ) -> YtDlpBrowserCookiesOptions:
     return {
-        "cookiesfrombrowser": (browser_id.value, None, None, None),
+        "cookiesfrombrowser": build_ytdlp_browser_cookie_source(browser_id=browser_id),
         "cookiefile": str(cookie_file),
         "quiet": True,
         "no_warnings": True,
@@ -176,6 +190,30 @@ def build_ytdlp_browser_cookie_options(
         "simulate": True,
         "noprogress": True,
     }
+
+
+def build_ytdlp_browser_cookie_source(
+    *,
+    browser_id: BrowserId,
+) -> tuple[str, str | None, None, None]:
+    if browser_id is BrowserId.YANDEX:
+        return (
+            CHROMIUM_BROWSER_ID,
+            str(get_default_yandex_browser_profile_dir()),
+            None,
+            None,
+        )
+
+    return (browser_id.value, None, None, None)
+
+
+def get_default_yandex_browser_profile_dir() -> Path:
+    local_appdata = os.getenv("LOCALAPPDATA")
+
+    if local_appdata is not None:
+        return Path(local_appdata) / YANDEX_BROWSER_PROFILE_RELATIVE_PATH
+
+    return Path.home() / "AppData" / "Local" / YANDEX_BROWSER_PROFILE_RELATIVE_PATH
 
 
 def save_ytdlp_browser_cookie_file(
@@ -206,12 +244,45 @@ def build_browser_cookies_export_error_message(
     browser_id: BrowserId,
     error: Exception,
 ) -> str:
-    error_message = str(error).strip()
+    error_message = normalize_error_message(text=str(error))
+    browser_name = format_browser_display_name(browser_id=browser_id)
 
     if not error_message:
-        return f"Не удалось создать cookies.txt из {browser_id.value}"
+        return f"Не удалось создать cookies.txt из {browser_name}"
 
-    return f"Не удалось создать cookies.txt из {browser_id.value}: {error_message}"
+    if is_chrome_cookie_database_copy_error(error_message=error_message):
+        return build_chromium_cookie_database_copy_error_message(
+            browser_id=browser_id,
+        )
+
+    return f"Не удалось создать cookies.txt из {browser_name}: {error_message}"
+
+
+def normalize_error_message(*, text: str) -> str:
+    normalized_message = text.strip()
+
+    while normalized_message.startswith("ERROR: "):
+        normalized_message = normalized_message.removeprefix("ERROR: ").strip()
+
+    return normalized_message
+
+
+def is_chrome_cookie_database_copy_error(*, error_message: str) -> bool:
+    return CHROME_COOKIE_DATABASE_COPY_ERROR_MARKER.casefold() in error_message.casefold()
+
+
+def build_chromium_cookie_database_copy_error_message(*, browser_id: BrowserId) -> str:
+    browser_name = format_browser_display_name(browser_id=browser_id)
+    return (
+        f"Не удалось создать cookies.txt из {browser_name}: браузер заблокировал базу cookies. "
+        "Полностью закройте Chrome/Яндекс Браузер, включая фоновые процессы в трее "
+        "или через Диспетчер задач, затем повторите попытку. "
+        "Если ошибка повторяется, используйте Firefox или Opera."
+    )
+
+
+def format_browser_display_name(*, browser_id: BrowserId) -> str:
+    return BROWSER_DISPLAY_NAMES.get(browser_id, browser_id.value)
 
 
 def load_youtube_dl_browser_cookies_factory() -> YtDlpBrowserCookiesFactory:

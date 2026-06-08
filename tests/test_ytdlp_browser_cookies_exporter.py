@@ -5,11 +5,14 @@ from pathlib import Path
 from types import TracebackType
 from typing import Self, cast
 
+import pytest
+
 from yaloader.application.dto.browser_cookies import BrowserCookiesExportStatus, BrowserId
 from yaloader.infrastructure.ytdlp.browser_cookies_exporter import (
     YtDlpBrowserCookiesExporter,
     YtDlpBrowserCookiesFactory,
     YtDlpBrowserCookiesOptions,
+    build_browser_cookies_export_error_message,
     build_temporary_cookies_file,
     build_ytdlp_browser_cookie_options,
 )
@@ -142,6 +145,31 @@ def test_build_ytdlp_browser_cookie_options_uses_chrome_and_cookie_file(
     assert options["simulate"] is True
 
 
+def test_build_ytdlp_browser_cookie_options_uses_yandex_profile_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local_appdata = tmp_path / "LocalAppData"
+    cookie_file = tmp_path / "cookies.txt"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+
+    options = build_ytdlp_browser_cookie_options(
+        browser_id=BrowserId.YANDEX,
+        cookie_file=cookie_file,
+    )
+
+    expected_profile_dir = local_appdata / "Yandex" / "YandexBrowser" / "User Data" / "Default"
+
+    assert options["cookiesfrombrowser"] == (
+        "chrome",
+        str(expected_profile_dir),
+        None,
+        None,
+    )
+    assert options["cookiefile"] == str(cookie_file)
+    assert options["simulate"] is True
+
+
 def test_build_temporary_cookies_file_adds_tmp_suffix(tmp_path: Path) -> None:
     assert build_temporary_cookies_file(target_file=tmp_path / "cookies.txt") == (
         tmp_path / "cookies.txt.tmp"
@@ -215,5 +243,19 @@ def test_ytdlp_browser_cookies_exporter_reports_failure_when_cookie_file_was_not
 
     assert result.status is BrowserCookiesExportStatus.FAILED
     assert result.cookies_file is None
-    assert "Не удалось создать cookies.txt из firefox" in result.message
+    assert "Не удалось создать cookies.txt из Firefox" in result.message
     assert not target_file.exists()
+
+
+def test_build_browser_cookies_export_error_message_explains_chrome_database_lock() -> None:
+    message = build_browser_cookies_export_error_message(
+        browser_id=BrowserId.CHROME,
+        error=RuntimeError(
+            "ERROR: ERROR: Could not copy Chrome cookie database. "
+            "See https://github.com/yt-dlp/yt-dlp/issues/7271 for more info"
+        ),
+    )
+
+    assert "браузер заблокировал базу cookies" in message
+    assert "Полностью закройте Chrome/Яндекс Браузер" in message
+    assert "Firefox или Opera" in message

@@ -28,7 +28,6 @@ QFrame#EnvironmentPanelFrame {
 }
 
 QLabel#TitleLabel {
-    font-family: "Death Stars", "Segoe UI Black", "Arial Black";
     font-size: 40pt;
     font-weight: 400;
     color: #FFFFFF;

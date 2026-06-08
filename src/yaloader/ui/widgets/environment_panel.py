@@ -103,6 +103,7 @@ class EnvironmentPanel(QFrame):
     export_firefox_cookies_action: QAction
     export_opera_cookies_action: QAction
     export_chrome_cookies_action: QAction
+    export_yandex_cookies_action: QAction
 
     open_cookies_dir_button: QPushButton
     delete_cookies_button: QPushButton
@@ -120,6 +121,7 @@ class EnvironmentPanel(QFrame):
         self.export_firefox_cookies_action = QAction("Создать из Firefox", self)
         self.export_opera_cookies_action = QAction("Создать из Opera", self)
         self.export_chrome_cookies_action = QAction("Создать из Chrome", self)
+        self.export_yandex_cookies_action = QAction("Создать из Яндекс Браузера", self)
         self._cookies_actions_menu = QMenu(self.cookies_actions_button)
 
         self.open_cookies_dir_button = QPushButton("Открыть cookies", self)
@@ -166,6 +168,7 @@ class EnvironmentPanel(QFrame):
         self._cookies_actions_menu.addAction(self.export_firefox_cookies_action)
         self._cookies_actions_menu.addAction(self.export_opera_cookies_action)
         self._cookies_actions_menu.addAction(self.export_chrome_cookies_action)
+        self._cookies_actions_menu.addAction(self.export_yandex_cookies_action)
         self._cookies_actions_menu.addAction(self.import_cookies_action)
         self.cookies_actions_button.setMenu(self._cookies_actions_menu)
 

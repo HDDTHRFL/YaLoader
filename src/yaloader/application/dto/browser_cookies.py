@@ -10,6 +10,7 @@ class BrowserId(StrEnum):
     FIREFOX = "firefox"
     OPERA = "opera"
     CHROME = "chrome"
+    YANDEX = "yandex"
 
 
 class BrowserCookiesExportStatus(StrEnum):
