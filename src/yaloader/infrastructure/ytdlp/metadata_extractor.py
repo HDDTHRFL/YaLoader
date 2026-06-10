@@ -11,7 +11,9 @@ from loguru import logger
 
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.media_metadata import MediaMetadataProbe
+from yaloader.application.ports.process_runner import ProcessRunner
 from yaloader.infrastructure.ytdlp.options_builder import REMOTE_COMPONENTS, YtDlpOptions
+from yaloader.infrastructure.ytdlp.runtime_environment import YtDlpRuntimeEnvironment
 
 
 class YoutubeDLMetadataRuntime(Protocol):
@@ -35,12 +37,19 @@ class YoutubeDLMetadataFactory(Protocol):
 class YtDlpMetadataExtractor:
     youtube_dl_factory: YoutubeDLMetadataFactory
     cookies_file: Path | None = None
+    process_runner: ProcessRunner | None = None
 
     @classmethod
-    def create_default(cls, *, cookies_file: Path | None = None) -> YtDlpMetadataExtractor:
+    def create_default(
+        cls,
+        *,
+        cookies_file: Path | None = None,
+        process_runner: ProcessRunner | None = None,
+    ) -> YtDlpMetadataExtractor:
         return cls(
             youtube_dl_factory=load_youtube_dl_metadata_factory(),
             cookies_file=cookies_file,
+            process_runner=process_runner,
         )
 
     def extract(self, request: DownloadRequest) -> MediaMetadataProbe:
@@ -53,7 +62,9 @@ class YtDlpMetadataExtractor:
             "cookiefile" in options,
         )
 
-        with self.youtube_dl_factory(options) as downloader:
+        runtime_environment = YtDlpRuntimeEnvironment(process_runner=self.process_runner)
+
+        with runtime_environment.apply(), self.youtube_dl_factory(options) as downloader:
             raw_info = downloader.extract_info(request.url, download=False)
 
         media_info = select_metadata_info(

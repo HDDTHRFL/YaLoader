@@ -20,6 +20,7 @@ from yaloader.infrastructure.ytdlp.metadata_extractor import (
     select_metadata_info,
 )
 from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
+from yaloader.infrastructure.ytdlp.runtime_environment import YtDlpRuntimeEnvironment
 
 
 class DownloadPreparationCancelledError(RuntimeError):
@@ -47,6 +48,7 @@ class YoutubeDLPreparationFactory(Protocol):
 class YtDlpDownloadPreparer:
     youtube_dl_factory: YoutubeDLPreparationFactory
     options_builder: YtDlpOptionsBuilder
+    process_runner: ProcessRunner | None = None
 
     @classmethod
     def create_default(
@@ -61,6 +63,7 @@ class YtDlpDownloadPreparer:
                 cookies_file=cookies_file,
                 process_runner=process_runner,
             ),
+            process_runner=process_runner,
         )
 
     def prepare(
@@ -80,7 +83,12 @@ class YtDlpDownloadPreparer:
             task.include_playlist,
         )
 
-        with self.youtube_dl_factory(options) as downloader:
+        runtime_environment = YtDlpRuntimeEnvironment(process_runner=self.process_runner)
+
+        with (
+            runtime_environment.apply(),
+            self.youtube_dl_factory(options) as downloader,
+        ):
             raw_info = downloader.extract_info(task.url.value, download=False)
 
         self._raise_if_cancel_requested(cancellation_token=cancellation_token)

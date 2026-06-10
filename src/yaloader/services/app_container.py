@@ -82,7 +82,10 @@ def build_app_container() -> AppContainer:
         download_history_service=DownloadHistoryService(history_file=paths.history_file),
         prepared_download_cache=prepared_download_cache,
         media_metadata_service=MediaMetadataService(
-            extractor=YtDlpMetadataExtractor.create_default(cookies_file=paths.cookies_file),
+            extractor=YtDlpMetadataExtractor.create_default(
+                cookies_file=paths.cookies_file,
+                process_runner=tool_locator,
+            ),
         ),
         download_preparer=YtDlpDownloadPreparer.create_default(
             cookies_file=paths.cookies_file,

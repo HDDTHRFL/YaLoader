@@ -27,6 +27,7 @@ from yaloader.infrastructure.ytdlp.options_builder import (
     YtDlpOptionsBuilder,
 )
 from yaloader.infrastructure.ytdlp.output_naming import build_unique_output_template
+from yaloader.infrastructure.ytdlp.runtime_environment import YtDlpRuntimeEnvironment
 
 ANSI_ESCAPE_SEQUENCE_RE = re.compile(r"\x1b\[[0-9;]*m")
 YOUTUBE_BOT_CHECK_MARKER = "Sign in to confirm"
@@ -433,14 +434,19 @@ class YtDlpDownloader:
         prepared_download: PreparedDownload | None,
         options: YtDlpOptions,
     ) -> None:
-        if prepared_download is not None and prepared_download.raw_info:
-            self.backend.download_prepared(
-                prepared_download=prepared_download,
-                options=options,
-            )
-            return
+        runtime_environment = YtDlpRuntimeEnvironment(
+            process_runner=self.options_builder.process_runner,
+        )
 
-        self.backend.download(urls=(task.url.value,), options=options)
+        with runtime_environment.apply():
+            if prepared_download is not None and prepared_download.raw_info:
+                self.backend.download_prepared(
+                    prepared_download=prepared_download,
+                    options=options,
+                )
+                return
+
+            self.backend.download(urls=(task.url.value,), options=options)
 
     def _can_retry_with_format_unavailable_fallback(
         self,
