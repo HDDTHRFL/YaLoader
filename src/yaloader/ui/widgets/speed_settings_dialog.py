@@ -14,6 +14,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import QEnterEvent, QMouseEvent
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -25,6 +26,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from yaloader.application.dto.app_settings import AppSettings
 from yaloader.domain.download_speed_limit import (
     MAX_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB,
     MIN_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB,
@@ -32,9 +34,9 @@ from yaloader.domain.download_speed_limit import (
     convert_download_speed_limit_to_megabytes,
 )
 
-POPUP_WIDTH = 320
+POPUP_WIDTH = 410
 POPUP_SHOW_ANIMATION_DURATION_MS = 145
-POPUP_RIGHT_EDGE_SHIFT_LEFT = 52
+POPUP_RIGHT_EDGE_SHIFT_LEFT = -15
 RESET_BUTTON_SIZE = 28
 WINDOW_MAXIMUM_HEIGHT = 16_777_215
 
@@ -97,6 +99,9 @@ class SpeedLimitSlider(QSlider):
 
 class SpeedSettingsDialog(QDialog):
     download_speed_limit_changed = pyqtSignal(object)
+    show_history_on_startup_changed = pyqtSignal(bool)
+    open_downloads_dir_after_queue_completed_changed = pyqtSignal(bool)
+    confirm_clear_queue_changed = pyqtSignal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -104,6 +109,18 @@ class SpeedSettingsDialog(QDialog):
         self._slider = SpeedLimitSlider(self)
         self._spin_box = QSpinBox(self)
         self._reset_button = QPushButton("↻", self)
+        self._show_history_on_startup_checkbox = QCheckBox(
+            "Показывать историю при запуске",
+            self,
+        )
+        self._open_downloads_dir_after_queue_completed_checkbox = QCheckBox(
+            "Открывать папку загрузок после завершения очереди",
+            self,
+        )
+        self._confirm_clear_queue_checkbox = QCheckBox(
+            "Спрашивать подтверждение перед очисткой очереди",
+            self,
+        )
         self._show_animation: QParallelAnimationGroup | None = None
         self._final_popup_height = 0
 
@@ -116,12 +133,14 @@ class SpeedSettingsDialog(QDialog):
         *,
         anchor_widget: QWidget,
         bytes_per_second: int | None,
+        settings: AppSettings,
     ) -> None:
         if self.isVisible():
             self.close()
             return
 
         self.set_download_speed_limit(bytes_per_second=bytes_per_second)
+        self.set_preferences(settings=settings)
         self._show_near_anchor(anchor_widget=anchor_widget)
 
     def set_download_speed_limit(self, *, bytes_per_second: int | None) -> None:
@@ -129,6 +148,22 @@ class SpeedSettingsDialog(QDialog):
             bytes_per_second=bytes_per_second,
         )
         self._set_value_without_signal(megabytes_per_second=megabytes_per_second)
+
+    def set_preferences(self, *, settings: AppSettings) -> None:
+        blockers = (
+            QSignalBlocker(self._show_history_on_startup_checkbox),
+            QSignalBlocker(self._open_downloads_dir_after_queue_completed_checkbox),
+            QSignalBlocker(self._confirm_clear_queue_checkbox),
+        )
+
+        try:
+            self._show_history_on_startup_checkbox.setChecked(settings.show_history_on_startup)
+            self._open_downloads_dir_after_queue_completed_checkbox.setChecked(
+                settings.open_downloads_dir_after_queue_completed,
+            )
+            self._confirm_clear_queue_checkbox.setChecked(settings.confirm_clear_queue)
+        finally:
+            del blockers
 
     def _configure_widgets(self) -> None:
         self.setObjectName("SpeedSettingsDialog")
@@ -161,6 +196,14 @@ class SpeedSettingsDialog(QDialog):
         self._reset_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._reset_button.setToolTip("Сбросить ограничение скорости")
 
+        for checkbox in (
+            self._show_history_on_startup_checkbox,
+            self._open_downloads_dir_after_queue_completed_checkbox,
+            self._confirm_clear_queue_checkbox,
+        ):
+            checkbox.setObjectName("SettingsCheckBox")
+            checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
+
     def _connect_signals(self) -> None:
         self._slider.valueChanged.connect(self._handle_slider_value_changed)
         self._slider.interaction_state_changed.connect(
@@ -168,6 +211,16 @@ class SpeedSettingsDialog(QDialog):
         )
         self._spin_box.valueChanged.connect(self._handle_spin_box_value_changed)
         self._reset_button.clicked.connect(self._handle_reset_button_clicked)
+
+        self._show_history_on_startup_checkbox.toggled.connect(
+            self.show_history_on_startup_changed.emit,
+        )
+        self._open_downloads_dir_after_queue_completed_checkbox.toggled.connect(
+            self.open_downloads_dir_after_queue_completed_changed.emit,
+        )
+        self._confirm_clear_queue_checkbox.toggled.connect(
+            self.confirm_clear_queue_changed.emit,
+        )
 
     def _build_layout(self) -> None:
         root_layout = QVBoxLayout(self)
@@ -181,6 +234,9 @@ class SpeedSettingsDialog(QDialog):
         title_label = QLabel("Ограничение скорости загрузки", self)
         title_label.setObjectName("SpeedSettingsPopupTitle")
 
+        behavior_title_label = QLabel("Поведение приложения", self)
+        behavior_title_label.setObjectName("SmallSectionTitleLabel")
+
         title_layout.addWidget(title_label)
         title_layout.addStretch(1)
         title_layout.addWidget(self._reset_button)
@@ -188,6 +244,10 @@ class SpeedSettingsDialog(QDialog):
         root_layout.addLayout(title_layout)
         root_layout.addWidget(self._slider)
         root_layout.addWidget(self._spin_box)
+        root_layout.addWidget(behavior_title_label)
+        root_layout.addWidget(self._show_history_on_startup_checkbox)
+        root_layout.addWidget(self._open_downloads_dir_after_queue_completed_checkbox)
+        root_layout.addWidget(self._confirm_clear_queue_checkbox)
 
     def _show_near_anchor(self, *, anchor_widget: QWidget) -> None:
         self.setMinimumHeight(0)

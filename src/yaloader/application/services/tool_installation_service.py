@@ -8,6 +8,8 @@ from typing import Final
 from yaloader.application.dto.tool_installation import (
     ToolId,
     ToolInstallationResult,
+    ToolInstallationStatus,
+    ToolUpdateCheckResult,
     build_tool_installation_progress,
 )
 from yaloader.application.ports.process_runner import ProcessRunner
@@ -15,6 +17,7 @@ from yaloader.application.ports.tool_installer import (
     ToolInstallationProgressCallback,
     ToolInstaller,
 )
+from yaloader.infrastructure.tools.version_detection import is_version_newer
 
 TOOL_EXECUTABLE_NAMES: Final[Mapping[ToolId, str]] = {
     ToolId.FFMPEG: "ffmpeg",
@@ -39,6 +42,64 @@ class ToolInstallationService:
             tool_id=tool_id,
             executable_path=executable_path,
         )
+
+    def check_tool_update(self, *, tool_id: ToolId) -> ToolUpdateCheckResult:
+        current_result = self.check_tool(tool_id=tool_id)
+
+        if current_result.status is ToolInstallationStatus.MISSING:
+            return ToolUpdateCheckResult.missing(tool_id=tool_id)
+
+        installer = self.installers.get(tool_id)
+
+        if installer is None:
+            return ToolUpdateCheckResult.check_failed(
+                tool_id=tool_id,
+                message=f"{tool_id.value}: проверка обновления не настроена",
+                executable_path=current_result.executable_path,
+            )
+
+        if current_result.executable_path is None:
+            return ToolUpdateCheckResult.check_failed(
+                tool_id=tool_id,
+                message=f"{tool_id.value}: не удалось определить путь к исполняемому файлу",
+            )
+
+        try:
+            current_version = installer.get_installed_version(
+                executable_path=current_result.executable_path,
+            )
+            latest_version = installer.get_latest_version()
+        except Exception as error:
+            return ToolUpdateCheckResult.check_failed(
+                tool_id=tool_id,
+                message=f"{tool_id.value}: не удалось проверить обновление: {error}",
+                executable_path=current_result.executable_path,
+            )
+
+        if is_version_newer(
+            candidate_version=latest_version,
+            current_version=current_version,
+        ):
+            return ToolUpdateCheckResult.update_available(
+                tool_id=tool_id,
+                current_version=current_version,
+                latest_version=latest_version,
+                executable_path=current_result.executable_path,
+            )
+
+        return ToolUpdateCheckResult.up_to_date(
+            tool_id=tool_id,
+            current_version=current_version,
+            latest_version=latest_version,
+            executable_path=current_result.executable_path,
+        )
+
+    def check_tool_updates(
+        self,
+        *,
+        tool_ids: tuple[ToolId, ...],
+    ) -> tuple[ToolUpdateCheckResult, ...]:
+        return tuple(self.check_tool_update(tool_id=tool_id) for tool_id in tool_ids)
 
     def install_tool(
         self,
@@ -128,6 +189,6 @@ def build_tool_start_message(
     force_reinstall: bool,
 ) -> str:
     if force_reinstall:
-        return f"Начинаем обновление {tool_id.value}"
+        return f"Начинаем переустановку {tool_id.value}"
 
     return f"Начинаем установку {tool_id.value}"

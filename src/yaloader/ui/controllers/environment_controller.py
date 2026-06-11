@@ -98,6 +98,51 @@ class EnvironmentController:
             settings=settings,
         )
 
+    def change_show_history_on_startup(
+        self,
+        *,
+        is_enabled: bool,
+    ) -> EnvironmentControllerUpdate:
+        settings = self._settings_service.update_show_history_on_startup(
+            is_enabled=is_enabled,
+        )
+
+        status = "включено" if is_enabled else "выключено"
+        return EnvironmentControllerUpdate(
+            status_message=f"Открытие истории при запуске: {status}",
+            settings=settings,
+        )
+
+    def change_open_downloads_dir_after_queue_completed(
+        self,
+        *,
+        is_enabled: bool,
+    ) -> EnvironmentControllerUpdate:
+        settings = self._settings_service.update_open_downloads_dir_after_queue_completed(
+            is_enabled=is_enabled,
+        )
+
+        status = "включено" if is_enabled else "выключено"
+        return EnvironmentControllerUpdate(
+            status_message=f"Открытие папки после завершения очереди: {status}",
+            settings=settings,
+        )
+
+    def change_confirm_clear_queue(
+        self,
+        *,
+        is_enabled: bool,
+    ) -> EnvironmentControllerUpdate:
+        settings = self._settings_service.update_confirm_clear_queue(
+            is_enabled=is_enabled,
+        )
+
+        status = "включено" if is_enabled else "выключено"
+        return EnvironmentControllerUpdate(
+            status_message=f"Подтверждение очистки очереди: {status}",
+            settings=settings,
+        )
+
     def import_cookies(
         self,
         *,

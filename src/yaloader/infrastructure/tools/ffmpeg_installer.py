@@ -26,6 +26,10 @@ from yaloader.infrastructure.tools.http_file_downloader import (
     FileDownloadError,
     HttpFileDownloader,
 )
+from yaloader.infrastructure.tools.version_detection import (
+    normalize_tool_version,
+    run_executable_for_text,
+)
 
 FFMPEG_RELEASE_ESSENTIALS_ZIP_URL = (
     "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
@@ -33,6 +37,7 @@ FFMPEG_RELEASE_ESSENTIALS_ZIP_URL = (
 FFMPEG_RELEASE_ESSENTIALS_SHA256_URL = (
     "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256"
 )
+FFMPEG_RELEASE_VERSION_URL = "https://www.gyan.dev/ffmpeg/builds/release-version"
 
 DOWNLOAD_START_PERCENT = 10
 DOWNLOAD_END_PERCENT = 70
@@ -58,6 +63,19 @@ class FfmpegPortableInstaller:
     @property
     def tool_id(self) -> ToolId:
         return ToolId.FFMPEG
+
+    def get_latest_version(self) -> str:
+        return normalize_tool_version(
+            text=self.downloader.download_text(url=FFMPEG_RELEASE_VERSION_URL),
+        )
+
+    def get_installed_version(self, *, executable_path: Path) -> str:
+        return normalize_tool_version(
+            text=run_executable_for_text(
+                executable_path=executable_path,
+                args=("-version",),
+            ),
+        )
 
     def install(
         self,

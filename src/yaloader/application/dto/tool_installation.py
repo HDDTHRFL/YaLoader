@@ -19,6 +19,13 @@ class ToolInstallationStatus(StrEnum):
     FAILED = "failed"
 
 
+class ToolUpdateCheckStatus(StrEnum):
+    UPDATE_AVAILABLE = "update_available"
+    UP_TO_DATE = "up_to_date"
+    MISSING = "missing"
+    CHECK_FAILED = "check_failed"
+
+
 class ToolInstallationProgress(BaseModel):
     model_config = ConfigDict(
         frozen=True,
@@ -101,6 +108,91 @@ class ToolInstallationResult(BaseModel):
             tool_id=tool_id,
             status=ToolInstallationStatus.FAILED,
             message=message,
+        )
+
+
+class ToolUpdateCheckResult(BaseModel):
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        use_enum_values=False,
+    )
+
+    tool_id: ToolId
+    status: ToolUpdateCheckStatus
+    message: str = Field(min_length=1)
+    current_version: str | None = None
+    latest_version: str | None = None
+    executable_path: Path | None = None
+
+    @property
+    def should_update(self) -> bool:
+        return self.status is ToolUpdateCheckStatus.UPDATE_AVAILABLE
+
+    @property
+    def is_success(self) -> bool:
+        return self.status in {
+            ToolUpdateCheckStatus.UPDATE_AVAILABLE,
+            ToolUpdateCheckStatus.UP_TO_DATE,
+        }
+
+    @classmethod
+    def update_available(
+        cls,
+        *,
+        tool_id: ToolId,
+        current_version: str,
+        latest_version: str,
+        executable_path: Path,
+    ) -> ToolUpdateCheckResult:
+        return cls(
+            tool_id=tool_id,
+            status=ToolUpdateCheckStatus.UPDATE_AVAILABLE,
+            current_version=current_version,
+            latest_version=latest_version,
+            executable_path=executable_path,
+            message=f"{tool_id.value}: доступна версия {latest_version}",
+        )
+
+    @classmethod
+    def up_to_date(
+        cls,
+        *,
+        tool_id: ToolId,
+        current_version: str,
+        latest_version: str,
+        executable_path: Path,
+    ) -> ToolUpdateCheckResult:
+        return cls(
+            tool_id=tool_id,
+            status=ToolUpdateCheckStatus.UP_TO_DATE,
+            current_version=current_version,
+            latest_version=latest_version,
+            executable_path=executable_path,
+            message=f"{tool_id.value}: актуальная версия {current_version}",
+        )
+
+    @classmethod
+    def missing(cls, *, tool_id: ToolId) -> ToolUpdateCheckResult:
+        return cls(
+            tool_id=tool_id,
+            status=ToolUpdateCheckStatus.MISSING,
+            message=f"{tool_id.value}: не найден",
+        )
+
+    @classmethod
+    def check_failed(
+        cls,
+        *,
+        tool_id: ToolId,
+        message: str,
+        executable_path: Path | None = None,
+    ) -> ToolUpdateCheckResult:
+        return cls(
+            tool_id=tool_id,
+            status=ToolUpdateCheckStatus.CHECK_FAILED,
+            message=message,
+            executable_path=executable_path,
         )
 
 

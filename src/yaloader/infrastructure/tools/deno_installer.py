@@ -21,6 +21,10 @@ from yaloader.infrastructure.tools.http_file_downloader import (
     FileDownloadError,
     HttpFileDownloader,
 )
+from yaloader.infrastructure.tools.version_detection import (
+    normalize_tool_version,
+    run_executable_for_text,
+)
 
 DENO_LATEST_VERSION_URL = "https://dl.deno.land/release-latest.txt"
 DENO_WINDOWS_X64_ZIP_URL_TEMPLATE = (
@@ -125,6 +129,21 @@ class DenoPortableInstaller:
         finally:
             remove_directory_if_exists(directory_path=temporary_root_dir)
             remove_directory_if_empty(directory_path=temporary_root_dir.parent)
+
+    def get_latest_version(self) -> str:
+        return normalize_tool_version(
+            text=self._resolve_latest_version(progress_callback=None),
+            prefix="v",
+        )
+
+    def get_installed_version(self, *, executable_path: Path) -> str:
+        return normalize_tool_version(
+            text=run_executable_for_text(
+                executable_path=executable_path,
+                args=("--version",),
+            ),
+            prefix="v",
+        )
 
     def _resolve_latest_version(
         self,

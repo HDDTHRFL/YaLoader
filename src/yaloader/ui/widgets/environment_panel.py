@@ -17,7 +17,11 @@ from PyQt6.QtWidgets import (
 from yaloader.application.dto.environment_status import EnvironmentItemStatus, EnvironmentStatus
 
 REFRESH_FEEDBACK_DURATION_MS = 160
-REFRESH_ICON_BUTTON_SIZE_PX = 28
+REFRESH_ICON_BUTTON_SIZE_PX = 34
+PREPARE_SYSTEM_BUTTON_TEXT = "Подготовить систему"
+PREPARE_SYSTEM_BUTTON_DEFAULT_TOOLTIP = (
+    "Скачать и подключить недостающие FFmpeg и Deno в папку YaLoader"
+)
 
 
 class StatusChip(QFrame):
@@ -113,7 +117,7 @@ class EnvironmentPanel(QFrame):
         super().__init__(parent)
 
         self.refresh_button = QPushButton("⟲", self)
-        self.prepare_system_button = QPushButton("Подготовить систему", self)
+        self.prepare_system_button = QPushButton(PREPARE_SYSTEM_BUTTON_TEXT, self)
         self.update_tools_button = QPushButton("Обновить инструменты", self)
 
         self.cookies_actions_button = QPushButton("Добавить cookies.txt", self)
@@ -143,6 +147,15 @@ class EnvironmentPanel(QFrame):
         self._ytdlp_status_chip.set_status(status.ytdlp)
         self._cookies_status_chip.set_status(status.cookies)
         self._downloads_dir_status_chip.set_status(status.downloads_dir)
+        self._sync_prepare_system_button_status(status=status)
+
+    def _sync_prepare_system_button_status(self, *, status: EnvironmentStatus) -> None:
+        self.prepare_system_button.setVisible(
+            should_show_prepare_system_button(status=status),
+        )
+        self.prepare_system_button.setToolTip(
+            build_prepare_system_button_tooltip(status=status),
+        )
 
     def play_refresh_feedback(self) -> None:
         for chip in self._status_chips:
@@ -177,7 +190,7 @@ class EnvironmentPanel(QFrame):
         self.delete_cookies_button.setObjectName("TinyDangerButton")
 
         self.refresh_button.setToolTip("Повторно проверить состояние системы")
-        self.prepare_system_button.setToolTip("Скачать и подключить FFmpeg и Deno в папку YaLoader")
+        self.prepare_system_button.setToolTip(PREPARE_SYSTEM_BUTTON_DEFAULT_TOOLTIP)
         self.update_tools_button.setToolTip(
             "Принудительно скачать свежие FFmpeg и Deno в папку YaLoader"
         )
@@ -253,3 +266,29 @@ class EnvironmentPanel(QFrame):
             self._cookies_status_chip,
             self._downloads_dir_status_chip,
         )
+
+
+def should_show_prepare_system_button(*, status: EnvironmentStatus) -> bool:
+    return bool(build_missing_required_tool_names(status=status))
+
+
+def build_prepare_system_button_tooltip(*, status: EnvironmentStatus) -> str:
+    missing_tool_names = build_missing_required_tool_names(status=status)
+
+    if not missing_tool_names:
+        return "FFmpeg и Deno уже доступны. Для замены используйте «Обновить инструменты»."
+
+    missing_tools_text = ", ".join(missing_tool_names)
+    return f"Скачать и подключить недостающие инструменты: {missing_tools_text}"
+
+
+def build_missing_required_tool_names(*, status: EnvironmentStatus) -> tuple[str, ...]:
+    missing_tool_names: list[str] = []
+
+    if not status.ffmpeg.is_ok:
+        missing_tool_names.append("FFmpeg")
+
+    if not status.deno.is_ok:
+        missing_tool_names.append("Deno")
+
+    return tuple(missing_tool_names)

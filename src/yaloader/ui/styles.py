@@ -1086,4 +1086,94 @@ QPushButton#SuccessButton:disabled:hover {
 }
 /* YaLoader success action buttons end */
 
+/* YaLoader user settings and environment alignment start */
+QPushButton#RefreshIconButton {
+    min-width: 34px;
+    max-width: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 0 3px 0;
+    border-radius: 17px;
+    font-size: 14pt;
+}
+
+QCheckBox#SettingsCheckBox {
+    color: #C9D1D9;
+    spacing: 8px;
+}
+
+QCheckBox#SettingsCheckBox:hover {
+    color: #FFFFFF;
+}
+
+QCheckBox#SettingsCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #30363D;
+    border-radius: 5px;
+    background-color: #0D1117;
+}
+
+QCheckBox#SettingsCheckBox::indicator:hover {
+    border-color: #58A6FF;
+}
+
+QCheckBox#SettingsCheckBox::indicator:checked {
+    background-color: #238636;
+    border-color: #2EA043;
+}
+/* YaLoader user settings and environment alignment end */
+
+
+
+/* YaLoader refresh button final alignment start */
+/*
+    Ручная подгонка иконки "Повторно проверить состояние системы":
+
+    padding: 0 0 6px 0;
+
+    Последнее число перед px здесь отвечает за нижний внутренний отступ.
+    Больше нижний отступ -> иконка визуально выше.
+    Меньше нижний отступ -> иконка визуально ниже.
+
+    Например:
+    3px = ниже
+    6px = текущее положение
+    8px = ещё выше
+*/
+QPushButton#RefreshIconButton {
+    min-width: 34px;
+    max-width: 34px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 0 6px 0;
+    background-color: transparent;
+    color: #8B949E;
+    border: none;
+    border-radius: 17px;
+    font-family: "Segoe UI Symbol", "Segoe UI Emoji", "Segoe UI";
+    font-size: 15pt;
+    font-weight: 700;
+}
+
+QPushButton#RefreshIconButton:hover {
+    background-color: transparent;
+    color: #FFFFFF;
+    border: none;
+}
+
+QPushButton#RefreshIconButton:pressed {
+    background-color: transparent;
+    color: #58A6FF;
+    border: none;
+}
+
+QPushButton#RefreshIconButton:disabled,
+QPushButton#RefreshIconButton:disabled:hover {
+    background-color: transparent;
+    color: #4B5563;
+    border: none;
+}
+/* YaLoader refresh button final alignment end */
+
 """

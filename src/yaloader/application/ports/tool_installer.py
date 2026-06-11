@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Protocol
 
 from yaloader.application.dto.tool_installation import (
@@ -21,3 +22,7 @@ class ToolInstaller(Protocol):
         progress_callback: ToolInstallationProgressCallback | None = None,
         force_reinstall: bool = False,
     ) -> ToolInstallationResult: ...
+
+    def get_latest_version(self) -> str: ...
+
+    def get_installed_version(self, *, executable_path: Path) -> str: ...

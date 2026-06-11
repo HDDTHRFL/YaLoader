@@ -16,6 +16,9 @@ class AppSettings(BaseModel):
 
     downloads_dir: Path
     download_speed_limit_bytes_per_second: int | None = None
+    show_history_on_startup: bool = False
+    open_downloads_dir_after_queue_completed: bool = False
+    confirm_clear_queue: bool = True
 
     @field_validator("downloads_dir")
     @classmethod

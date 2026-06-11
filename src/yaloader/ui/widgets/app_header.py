@@ -81,7 +81,7 @@ class AppHeader(QWidget):
             SETTINGS_BUTTON_SIZE,
         )
         self.settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.settings_button.setToolTip("Настройки загрузки")
+        self.settings_button.setToolTip("Показать или скрыть настройки")
 
         self._title_label.setObjectName("TitleLabel")
         self._title_label.setFixedHeight(TITLE_LABEL_FIXED_HEIGHT)

@@ -4,7 +4,14 @@ from pathlib import Path
 from typing import override
 from uuid import UUID
 
-from PyQt6.QtCore import QEasingCurve, QEvent, QTimer, QTimerEvent, QUrl, QVariantAnimation
+from PyQt6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QTimer,
+    QTimerEvent,
+    QUrl,
+    QVariantAnimation,
+)
 from PyQt6.QtGui import QCloseEvent, QDesktopServices, QShowEvent
 from PyQt6.QtWidgets import (
     QFileDialog,
@@ -20,6 +27,7 @@ from PyQt6.QtWidgets import (
 from yaloader.application.dto.browser_cookies import BrowserId
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
 from yaloader.application.dto.download_request import DownloadRequest
+from yaloader.application.dto.tool_installation import ToolUpdateCheckResult
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.download_speed_limit import format_download_speed_limit_label
 from yaloader.domain.enums import DownloadStatus, VideoQuality
@@ -58,6 +66,7 @@ from yaloader.ui.status_messages import (
     DEFAULT_STATUS_MESSAGE,
     is_primary_download_status_message,
 )
+from yaloader.ui.tool_update_confirmation import build_tool_update_confirmation_text
 from yaloader.ui.widgets.app_header import AppHeader
 from yaloader.ui.widgets.common.confirmation_dialogs import (
     confirm_dangerous_action,
@@ -149,6 +158,7 @@ YANDEX_COOKIES_INFO_DETAILS = (
 )
 YANDEX_COOKIES_INFO_BUTTON = "Продолжить"
 
+
 CLEAR_HISTORY_CONFIRMATION_TITLE = "Очистить историю?"
 CLEAR_HISTORY_CONFIRMATION_TEXT = "История загрузок будет полностью очищена."
 CLEAR_HISTORY_CONFIRMATION_DETAILS = (
@@ -216,7 +226,7 @@ class MainWindow(QMainWindow):
             service=container.tool_installation_service,
         )
 
-        self._is_history_panel_visible = False
+        self._is_history_panel_visible = self._settings.show_history_on_startup
         self._history_animation: QVariantAnimation | None = None
         self._speed_limit_indicator_animation: QVariantAnimation | None = None
         self._speed_limit_indicator_animation_should_hide = False
@@ -331,6 +341,16 @@ class MainWindow(QMainWindow):
         )
         self._settings_panel.set_downloads_dir_clicked_callback(
             self._handle_open_downloads_dir_clicked
+        )
+
+        self._speed_settings_dialog.show_history_on_startup_changed.connect(
+            self._handle_show_history_on_startup_changed
+        )
+        self._speed_settings_dialog.open_downloads_dir_after_queue_completed_changed.connect(
+            self._handle_open_downloads_dir_after_queue_completed_changed
+        )
+        self._speed_settings_dialog.confirm_clear_queue_changed.connect(
+            self._handle_confirm_clear_queue_changed
         )
 
         self._header.settings_button.clicked.connect(self._handle_speed_settings_button_clicked)
@@ -743,6 +763,7 @@ class MainWindow(QMainWindow):
         self._speed_settings_dialog.toggle_near_anchor(
             anchor_widget=self._header.settings_button,
             bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
+            settings=self._settings,
         )
 
     def _handle_download_speed_limit_signal_changed(self, value: object) -> None:
@@ -864,9 +885,43 @@ class MainWindow(QMainWindow):
             )
         )
 
+    def _handle_show_history_on_startup_changed(self, is_checked: bool) -> None:
+        self._apply_environment_update(
+            update=self._environment_controller.change_show_history_on_startup(
+                is_enabled=is_checked,
+            )
+        )
+
+        if self._is_history_panel_visible == is_checked:
+            return
+
+        if self.isVisible():
+            self._animate_history_panel_visibility(is_visible=is_checked)
+            return
+
+        self._is_history_panel_visible = is_checked
+        self._sync_history_panel_visibility()
+
+    def _handle_open_downloads_dir_after_queue_completed_changed(
+        self,
+        is_checked: bool,
+    ) -> None:
+        self._apply_environment_update(
+            update=self._environment_controller.change_open_downloads_dir_after_queue_completed(
+                is_enabled=is_checked,
+            )
+        )
+
+    def _handle_confirm_clear_queue_changed(self, is_checked: bool) -> None:
+        self._apply_environment_update(
+            update=self._environment_controller.change_confirm_clear_queue(
+                is_enabled=is_checked,
+            )
+        )
+
     def _handle_update_tools_clicked(self) -> None:
         self._apply_tool_installation_update(
-            update=self._tool_installation_controller.start_required_tools_update(),
+            update=self._tool_installation_controller.check_required_tools_updates(),
         )
 
     def _handle_prepare_system_clicked(self) -> None:
@@ -975,6 +1030,11 @@ class MainWindow(QMainWindow):
                 percent=progress.percent,
             )
 
+        if update.update_checks:
+            self._handle_tool_update_checks(update_checks=update.update_checks)
+            self._sync_queue_controls_state()
+            return
+
         if update.should_refresh_environment_status:
             self._apply_environment_update(
                 update=self._environment_controller.load_status(
@@ -990,6 +1050,29 @@ class MainWindow(QMainWindow):
             self._show_transient_status_message(update.status_message)
 
         self._sync_queue_controls_state()
+
+    def _handle_tool_update_checks(
+        self,
+        *,
+        update_checks: tuple[ToolUpdateCheckResult, ...],
+    ) -> None:
+        confirmation_text = build_tool_update_confirmation_text(update_checks=update_checks)
+
+        if not confirm_informational_action(
+            parent=self,
+            title=confirmation_text.title,
+            text=confirmation_text.text,
+            informative_text=confirmation_text.informative_text,
+            confirm_button_text=confirmation_text.confirm_button_text,
+        ):
+            self._show_transient_status_message(confirmation_text.canceled_status_message)
+            return
+
+        self._apply_tool_installation_update(
+            update=self._tool_installation_controller.start_required_tools_update(
+                start_message=confirmation_text.started_status_message,
+            ),
+        )
 
     def _show_tool_installation_activity_message(
         self,
@@ -1039,7 +1122,11 @@ class MainWindow(QMainWindow):
         self._remove_tasks_from_queue(task_ids=selected_task_ids)
 
     def _handle_clear_queue_clicked(self) -> None:
-        if self._queue_table.has_tasks() and not self._confirm_clear_queue():
+        should_confirm_clear_queue = (
+            self._settings.confirm_clear_queue and self._queue_table.has_tasks()
+        )
+
+        if should_confirm_clear_queue and not self._confirm_clear_queue():
             return
 
         self._apply_download_update(update=self._download_controller.clear_queue())
@@ -1083,10 +1170,26 @@ class MainWindow(QMainWindow):
         if update.should_reload_history:
             self._reload_history_panel()
 
+        if self._should_open_downloads_dir_after_queue_completed(update=update):
+            self._open_directory(directory=self._settings.downloads_dir)
+
         if update.status_message is not None:
             self._apply_download_status_message(message=update.status_message)
 
         self._sync_queue_controls_state()
+
+    def _should_open_downloads_dir_after_queue_completed(
+        self,
+        *,
+        update: DownloadControllerUpdate,
+    ) -> bool:
+        if not self._settings.open_downloads_dir_after_queue_completed:
+            return False
+
+        if update.status_message != "Очередь загрузок завершена":
+            return False
+
+        return any(task.status is DownloadStatus.COMPLETED for task in update.updated_tasks)
 
     def _apply_download_status_message(self, *, message: str) -> None:
         if is_primary_download_status_message(message=message):
@@ -1365,10 +1468,7 @@ class MainWindow(QMainWindow):
         if self._speed_limit_indicator_frozen_widget_limits:
             return
 
-        frozen_widgets = (
-            self._queue_panel,
-            self._settings_panel,
-        )
+        frozen_widgets = (self._queue_panel,)
         self._speed_limit_indicator_frozen_widget_limits = tuple(
             (widget, widget.minimumHeight(), widget.maximumHeight()) for widget in frozen_widgets
         )

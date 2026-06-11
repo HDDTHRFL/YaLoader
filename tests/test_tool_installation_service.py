@@ -124,7 +124,7 @@ def test_install_tool_force_reinstall_uses_installer_when_tool_is_already_availa
     assert installer.install_calls == 1
     assert installer.force_reinstall_values == [True]
     assert len(progress_events) == 3
-    assert progress_events[0].message == "Начинаем обновление ffmpeg"
+    assert progress_events[0].message == "Начинаем переустановку ffmpeg"
     assert progress_events[0].percent == 0
     assert progress_events[-1].percent == 100
 
