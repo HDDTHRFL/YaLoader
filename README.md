@@ -1,96 +1,119 @@
 # YaLoader
 
-YaLoader is a modern Windows desktop application for downloading video and audio using yt-dlp and FFmpeg.
+YaLoader is a Windows desktop application that helps download video and audio from YouTube and other platforms supported by yt-dlp.
 
-## User setup
+The main workflow is handled directly in the app interface. Add a link to the queue, choose the format and quality, and the app will check the required download components and download the selected files.
 
-YaLoader uses yt-dlp to download media. For YouTube, some videos may require:
+## Features
 
-- FFmpeg for merging video and audio streams
-- Deno for JavaScript challenge solving
-- yt-dlp for downloading media
-- cookies.txt for authenticated YouTube access
+YaLoader can:
 
-### 1. Install FFmpeg
+- download video;
+- download audio;
+- select video quality;
+- select output format;
+- download YouTube Shorts;
+- work with playlists;
+- add multiple links to a queue;
+- limit download speed;
+- cancel downloads;
+- show download history;
+- open the folder with the downloaded file;
+- use `cookies.txt` for content that requires account access;
+- check whether the required download tools are available.
 
-Install FFmpeg and make sure it is available in PATH.
+## Installation
 
-```powershell
-winget install -e --id Gyan.FFmpeg
-```
+1. Download the latest YaLoader version from the project releases page.
+2. Run `YaLoader.exe`.
+3. On first launch, check the “System status” block.
+4. If the application says that FFmpeg or Deno is missing, click “Prepare system”.
+5. Choose a downloads folder if the default folder does not suit you.
 
-If the command works, FFmpeg is available.
+Windows may show a SmartScreen warning because the application may not be signed with a digital certificate. Run the application only if you downloaded it from a trusted source.
 
-### 2. Install Deno
+## Initial `cookies.txt` setup
 
-Install Deno:
+For regular public videos, `cookies.txt` is usually not required.
 
-```powershell
-winget install DenoLand.Deno
-```
+Cookies may be needed if YouTube or another service asks you to confirm your account, restricts access to a video, shows an “are you a bot” check, or does not provide some formats.
 
-Close and reopen the terminal, then check:
+In YaLoader, you can add `cookies.txt` through the application interface. The most stable option is extracting cookies from Firefox or Opera. Extraction from Chrome, Edge, and some other browsers may fail because of browser restrictions, a locked cookies database, or yt-dlp behavior.
 
-```powershell
-deno --version
-```
+If cookies extraction fails:
 
-Deno is used by yt-dlp for YouTube JavaScript challenge solving.
+1. Fully close the browser.
+2. Make sure it is not still running in the system tray or background processes.
+3. Try again.
+4. If the error repeats, use Firefox or Opera.
 
-### 3. Install yt-dlp
+## Never send your `cookies.txt` to anyone
 
-Install yt-dlp:
+The `cookies.txt` file may contain active browser session data. If you send it to another person, they may potentially gain access to your accounts or perform actions on your behalf.
 
-```powershell
-winget install -e --id yt-dlp.yt-dlp
-```
+Any transfer, storage, or use of `cookies.txt` outside YaLoader is done at your own risk.
 
-### 4. Prepare cookies.txt
+## How to use
 
-YaLoader automatically looks for cookies here:
+1. Copy a link to a video, Shorts, or playlist.
+2. Paste the link into the YaLoader input field.
+3. Select the download mode: video or audio.
+4. Select format and quality.
+5. Click “Add to queue”, then start the download.
+6. Wait for the download to finish.
+7. Open the file from history or from the downloads folder.
 
-```text
-%APPDATA%\yaloader\cookies.txt
-```
+If the link points to a YouTube playlist, the application may process it as a playlist without a separate toggle.
 
-Usually this expands to:
+## Troubleshooting
 
-```text
-C:\Users\<UserName>\AppData\Roaming\yaloader\cookies.txt
-```
+### YouTube asks you to confirm that you are not a bot
 
-Create the folder if it does not exist:
+Add an up-to-date `cookies.txt` from a browser where you are signed in to YouTube. Firefox or Opera is recommended.
 
-```powershell
-mkdir "$env:APPDATA\yaloader" -Force
-```
+### `cookies.txt` cannot be created from Chrome, Edge, or another browser
 
-Download Mozilla.Firefox if you don't have it:
+Fully close the browser and try again. If that does not help, use Firefox or Opera. These browsers are usually more stable for cookies extraction through yt-dlp.
 
-```powershell
-winget install Mozilla.Firefox
-```
+### The video does not download, or the application says that the format is unavailable
 
-Log in to YouTube in Firefox, then export cookies from Firefox:
+Try the following:
 
-```powershell
-yt-dlp --cookies-from-browser firefox --cookies "$env:APPDATA\yaloader\cookies.txt"
-```
+- update tools through the application;
+- add an up-to-date `cookies.txt`;
+- select another quality;
+- select another format;
+- try again later.
 
-### You can also use a browser extension or other methods to export cookies, but using yt-dlp is more straightforward and ensures the correct format.
+Sometimes YouTube temporarily changes available formats or restricts access to individual videos.
 
-The generated file must start with something like:
+### FFmpeg or Deno is missing
 
-```text
-# Netscape HTTP Cookie File
-```
+In the “System status” block, click “Prepare system”. The application will try to install the required portable tools.
 
-# DO NOT SHARE `cookies.txt` WITH ANYONE. It may contain active Google or YouTube session cookies.
+### The file did not appear in the downloads folder
+
+Check the download history and the selected downloads folder. Also make sure that antivirus software or Windows SmartScreen did not block the application.
+
+### Download speed is too slow
+
+Check the speed limit in the application settings. If the limit is enabled, disable it or choose a higher value.
 
 ## License
 
-This project is source-available for personal, educational, evaluation, and other non-commercial use only.
+The project is distributed as source-available software for personal, educational, evaluation, and other non-commercial use.
 
-Commercial use, resale, sublicensing, publication of modified versions, distribution of modified builds, and removal of copyright or license notices are prohibited without prior written permission.
+The following are prohibited without prior written permission:
 
-See the `LICENSE` file for details.
+- commercial use;
+- sale;
+- sublicensing;
+- publication of modified versions;
+- distribution of modified builds;
+- removal of copyright notice or license notice.
+
+Full terms are provided in the `LICENSE` file.
+
+## For developers
+
+Technical information, architecture, check commands, and development rules are available in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
