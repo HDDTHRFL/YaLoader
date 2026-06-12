@@ -98,6 +98,10 @@ PLACEHOLDER_VALUE_MARKERS: Final[tuple[str, ...]] = (
     "replace_me",
 )
 
+CODE_REFERENCE_VALUE_RE: Final[Pattern[str]] = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$"
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ContentRule:
@@ -168,7 +172,9 @@ GENERIC_SECRET_ASSIGNMENT_RE: Final[Pattern[str]] = re.compile(
     r")"
     r"[a-z0-9_-]*"
     r")"
-    r"\b\s*[:=]\s*"
+    r"\b"
+    r"(?:\s*:\s*[^:=#,\n]+)?"
+    r"\s*(?P<operator>[:=])\s*"
     r"(?P<quote>['\"]?)"
     r"(?P<value>[A-Za-z0-9_./+=-]{12,})"
     r"(?P=quote)"
@@ -358,7 +364,12 @@ def scan_line_for_generic_secret_assignment(
     for match in GENERIC_SECRET_ASSIGNMENT_RE.finditer(line):
         secret_value = match.group("value")
 
-        if is_placeholder_secret_value(value=secret_value):
+        if should_ignore_generic_secret_assignment(
+            relative_path=relative_path,
+            operator=match.group("operator"),
+            quote=match.group("quote"),
+            value=secret_value,
+        ):
             continue
 
         findings.append(
@@ -373,6 +384,35 @@ def scan_line_for_generic_secret_assignment(
         )
 
     return tuple(findings)
+
+
+def should_ignore_generic_secret_assignment(
+    *,
+    relative_path: Path,
+    operator: str,
+    quote: str,
+    value: str,
+) -> bool:
+    if is_placeholder_secret_value(value=value):
+        return True
+
+    if is_python_type_annotation(relative_path=relative_path, operator=operator):
+        return True
+
+    return not quote and is_code_reference_value(value=value)
+
+
+def is_python_type_annotation(*, relative_path: Path, operator: str) -> bool:
+    return relative_path.suffix.casefold() == ".py" and operator == ":"
+
+
+def is_code_reference_value(*, value: str) -> bool:
+    normalized_value = value.strip()
+
+    if CODE_REFERENCE_VALUE_RE.fullmatch(normalized_value) is None:
+        return False
+
+    return not any(character.isdigit() for character in normalized_value)
 
 
 def is_placeholder_secret_value(*, value: str) -> bool:

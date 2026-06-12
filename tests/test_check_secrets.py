@@ -57,7 +57,7 @@ def test_check_project_secrets_detects_private_key(tmp_path: Path) -> None:
 
 
 def test_check_project_secrets_detects_generic_secret_assignment(tmp_path: Path) -> None:
-    sensitive_value = "productionTokenValue12345"
+    sensitive_value = build_sensitive_value()
     (tmp_path / "settings.py").write_text(
         f'SERVICE_TOKEN = "{sensitive_value}"\n',
         encoding="utf-8",
@@ -71,6 +71,58 @@ def test_check_project_secrets_detects_generic_secret_assignment(tmp_path: Path)
     assert "<redacted>" in findings[0].preview
 
 
+def test_check_project_secrets_detects_typed_generic_secret_assignment(tmp_path: Path) -> None:
+    sensitive_value = build_sensitive_value()
+    (tmp_path / "settings.py").write_text(
+        f'SERVICE_TOKEN: str = "{sensitive_value}"\n',
+        encoding="utf-8",
+    )
+
+    findings = check_project_secrets(project_root=tmp_path)
+
+    assert len(findings) == 1
+    assert findings[0].rule_id == "generic-secret-assignment"
+    assert sensitive_value not in findings[0].preview
+
+
+def test_check_project_secrets_ignores_python_cancellation_token_annotations(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "downloader.py").write_text(
+        "\n".join(
+            (
+                "from __future__ import annotations",
+                "",
+                "def download(",
+                "    *,",
+                "    cancellation_token: CancellationToken | None = None,",
+                ") -> None:",
+                "    cancellation_token = DownloadCancellationToken()",
+                "    run(cancellation_token=cancellation_token)",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    assert check_project_secrets(project_root=tmp_path) == ()
+
+
+def test_check_project_secrets_ignores_python_code_references(tmp_path: Path) -> None:
+    (tmp_path / "test_module.py").write_text(
+        "\n".join(
+            (
+                "check_secrets_module = load_check_secrets_module()",
+                "check_project_secrets = check_secrets_module.check_project_secrets",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    assert check_project_secrets(project_root=tmp_path) == ()
+
+
 def test_check_project_secrets_ignores_placeholder_values(tmp_path: Path) -> None:
     (tmp_path / "settings.py").write_text(
         'SERVICE_TOKEN = "your_token_here"\n',
@@ -81,8 +133,9 @@ def test_check_project_secrets_ignores_placeholder_values(tmp_path: Path) -> Non
 
 
 def test_check_project_secrets_ignores_allowed_secret_test_line(tmp_path: Path) -> None:
+    sensitive_value = build_sensitive_value()
     (tmp_path / "settings.py").write_text(
-        'SERVICE_TOKEN = "productionTokenValue12345"  # pragma: allow-secret\n',
+        f'SERVICE_TOKEN = "{sensitive_value}"  # pragma: allow-secret\n',
         encoding="utf-8",
     )
 
@@ -98,7 +151,7 @@ def test_check_project_secrets_ignores_excluded_directories(tmp_path: Path) -> N
 
 
 def test_format_finding_uses_relative_path(tmp_path: Path) -> None:
-    sensitive_value = "productionTokenValue12345"
+    sensitive_value = build_sensitive_value()
     file_path = tmp_path / "settings.py"
     file_path.write_text(f'SERVICE_TOKEN = "{sensitive_value}"\n', encoding="utf-8")
     findings = check_project_secrets(project_root=tmp_path)
@@ -107,6 +160,10 @@ def test_format_finding_uses_relative_path(tmp_path: Path) -> None:
 
     assert formatted_finding.startswith("settings.py:1:")
     assert sensitive_value not in formatted_finding
+
+
+def build_sensitive_value() -> str:
+    return "production" + "TokenValue12345"
 
 
 def build_private_key_fixture() -> str:
