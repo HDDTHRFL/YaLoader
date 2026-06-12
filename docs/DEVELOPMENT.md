@@ -258,6 +258,27 @@ uv run pytest
 .\tools\check_secrets.bat
 ```
 
+
+## GitHub Actions CI
+
+The repository contains a GitHub Actions workflow:
+
+```text
+.github/workflows/ci.yml
+```
+
+The workflow runs on `push`, `pull_request`, and manual `workflow_dispatch`.
+
+It checks:
+
+- formatting with `ruff format --check`;
+- linting with `ruff check`;
+- typing with `mypy`;
+- tests with `pytest`;
+- local secret scanning with `tools/check_secrets.bat`.
+
+CI should stay aligned with the local pre-commit check commands.
+
 ## Running the application
 
 ```powershell
