@@ -48,6 +48,7 @@ class BundleConfig:
             ".gitattributes",
             ".gitignore",
             ".python-version",
+            "LICENSE",
         }
     )
     included_suffixes: frozenset[str] = frozenset(

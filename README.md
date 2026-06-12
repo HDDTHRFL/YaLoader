@@ -86,3 +86,11 @@ The generated file must start with something like:
 ```
 
 # DO NOT SHARE `cookies.txt` WITH ANYONE. It may contain active Google or YouTube session cookies.
+
+## License
+
+This project is source-available for personal, educational, evaluation, and other non-commercial use only.
+
+Commercial use, resale, sublicensing, publication of modified versions, distribution of modified builds, and removal of copyright or license notices are prohibited without prior written permission.
+
+See the `LICENSE` file for details.

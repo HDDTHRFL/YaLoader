@@ -54,6 +54,7 @@ TEXT_FILE_NAMES: Final[frozenset[str]] = frozenset(
         ".gitattributes",
         ".gitignore",
         ".python-version",
+        "LICENSE",
     }
 )
 
