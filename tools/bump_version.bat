@@ -4,7 +4,7 @@ setlocal EnableExtensions
 cd /d "%~dp0.."
 
 if "%~1"=="" (
-    echo Usage: tools\bump_version.bat 0.2.0
+    echo [HELP] Usage: tools\bump_version.bat 0.0.0
     exit /b 1
 )
 
