@@ -1,0 +1,49 @@
+name: Feature request
+description: Suggest an improvement for YaLoader.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Suggest a feature that would improve YaLoader for normal desktop use.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What problem should this feature solve?
+      placeholder: "I want to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: Describe how the feature should work.
+      placeholder: "Add a setting that..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Describe other ways to solve the same problem.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Downloads
+        - Queue
+        - History
+        - Cookies
+        - Tools and setup
+        - UI
+        - Settings
+        - Packaging
+        - Other
+    validations:
+      required: true

@@ -1,0 +1,82 @@
+name: Bug report
+description: Report a reproducible YaLoader problem.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem.
+
+        Do not attach or paste `cookies.txt`, browser cookies, tokens, private keys, or other private data.
+
+  - type: input
+    id: yaloader-version
+    attributes:
+      label: YaLoader version
+      description: Use the version shown in the application or the release name.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+      placeholder: "Windows 10 / Windows 11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe what happened.
+      placeholder: "The download fails when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Write the exact steps needed to reproduce the problem.
+      placeholder: |
+        1. Open YaLoader.
+        2. Add a link.
+        3. Select format and quality.
+        4. Start download.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-result
+    attributes:
+      label: Expected result
+      placeholder: "The file should be downloaded successfully."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-result
+    attributes:
+      label: Actual result
+      placeholder: "The application shows..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error text
+      description: Paste only safe logs. Remove private paths, usernames, cookies, tokens, and URLs if needed.
+      render: text
+
+  - type: checkboxes
+    id: safety-checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I did not attach or paste `cookies.txt`.
+          required: true
+        - label: I removed private tokens, cookies, and account data from logs.
+          required: true
