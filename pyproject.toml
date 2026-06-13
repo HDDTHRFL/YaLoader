@@ -1,6 +1,6 @@
 [project]
 name = "yaloader"
-version = "0.1.0"
+version = "1.0.0"
 description = "Modern desktop video and audio downloader based on yt-dlp."
 readme = "README.md"
 requires-python = ">=3.13"

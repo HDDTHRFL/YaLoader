@@ -1,10 +1,10 @@
-﻿# -*- mode: python ; coding: utf-8 -*-
+# -*- mode: python ; coding: utf-8 -*-
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 SPEC_DIR = Path(SPECPATH).resolve()
 PROJECT_ROOT = SPEC_DIR.parent
@@ -14,10 +14,12 @@ ASSETS_DIR = PACKAGE_DIR / "ui" / "assets"
 APP_ICON_PATH = ASSETS_DIR / "app_icon.ico"
 
 yt_dlp_datas, yt_dlp_binaries, yt_dlp_hiddenimports = collect_all("yt_dlp")
+yaloader_metadata = copy_metadata("yaloader")
 
 datas = [
     (str(ASSETS_DIR), "yaloader/ui/assets"),
     *yt_dlp_datas,
+    *yaloader_metadata,
 ]
 
 binaries = [

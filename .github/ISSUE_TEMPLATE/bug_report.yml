@@ -14,7 +14,7 @@ body:
     attributes:
       label: YaLoader version
       description: Use the version shown in the application or the release name.
-      placeholder: "0.1.0"
+      placeholder: "0.1.0 / 0.2.0"
     validations:
       required: true
 
