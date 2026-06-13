@@ -38,6 +38,12 @@ QLabel#SubtitleLabel {
     color: #9AA4B2;
 }
 
+QLabel#VersionLabel {
+    font-size: 8pt;
+    font-weight: 600;
+    color: #6E7681;
+}
+
 QLabel#SectionTitleLabel {
     font-size: 13pt;
     font-weight: 600;

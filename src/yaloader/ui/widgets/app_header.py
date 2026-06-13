@@ -1,41 +1,45 @@
 from __future__ import annotations
 
-from typing import override
+from typing import Final, override
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QResizeEvent
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from yaloader.config.app_info import APP_DISPLAY_NAME
+from yaloader.config.app_info import APP_DISPLAY_NAME, APP_VERSION
 from yaloader.ui.font_loading import FALLBACK_TITLE_FONT_FAMILY
 
-HISTORY_TOGGLE_BUTTON_SIZE = 36
-SETTINGS_BUTTON_SIZE = 42
+HISTORY_TOGGLE_BUTTON_SIZE: Final = 36
+SETTINGS_BUTTON_SIZE: Final = 42
 
-TITLE_FONT_POINT_SIZE = 40
-TITLE_LETTER_SPACING_PERCENT = 112.0
-TITLE_LABEL_FIXED_HEIGHT = 54
+TITLE_FONT_POINT_SIZE: Final = 40
+TITLE_LETTER_SPACING_PERCENT: Final = 112.0
+TITLE_LABEL_FIXED_HEIGHT: Final = 54
 
-HEADER_TOP_MARGIN = 10
-TITLE_TO_SUBTITLE_SPACING = 8
-HEADER_BOTTOM_MARGIN = 8
+HEADER_TOP_MARGIN: Final = 10
+TITLE_TO_SUBTITLE_SPACING: Final = 8
+HEADER_BOTTOM_MARGIN: Final = 8
 
-TITLE_ROW_SPACING = 0
-SUBTITLE_ROW_SPACING = 0
+TITLE_ROW_SPACING: Final = 8
+SUBTITLE_ROW_SPACING: Final = 0
 
-HISTORY_BUTTON_RIGHT_RESERVED_WIDTH = HISTORY_TOGGLE_BUTTON_SIZE
-HISTORY_BUTTON_TITLE_CENTER_OFFSET = -6
+HISTORY_BUTTON_RIGHT_RESERVED_WIDTH: Final = HISTORY_TOGGLE_BUTTON_SIZE
+HISTORY_BUTTON_TITLE_CENTER_OFFSET: Final = -6
 
-SETTINGS_BUTTON_RIGHT_RESERVED_WIDTH = SETTINGS_BUTTON_SIZE
-SETTINGS_BUTTON_SUBTITLE_BOTTOM_OFFSET = 0
+SETTINGS_BUTTON_RIGHT_RESERVED_WIDTH: Final = SETTINGS_BUTTON_SIZE
+SETTINGS_BUTTON_SUBTITLE_BOTTOM_OFFSET: Final = 0
 
-TITLE_FONT_FALLBACKS = (
+VERSION_LABEL_PREFIX: Final = "_ "
+VERSION_FONT_POINT_SIZE: Final = 8
+VERSION_LETTER_SPACING_PERCENT: Final = 108.0
+
+TITLE_FONT_FALLBACKS: Final = (
     "Death Stars",
     "Segoe UI Black",
     "Arial Black",
 )
 
-SUBTITLE_TEXT = "Загрузка видео и аудио в максимальном доступном качестве"
+SUBTITLE_TEXT: Final = "Загрузка видео и аудио в максимальном доступном качестве"
 
 
 class AppHeader(QWidget):
@@ -52,6 +56,7 @@ class AppHeader(QWidget):
         self.history_toggle_button = QPushButton("›", self)
         self.settings_button = QPushButton("🛠", self)
         self._title_label = QLabel(APP_DISPLAY_NAME, self)
+        self._version_label = QLabel(format_app_version_label(version=APP_VERSION), self)
         self._subtitle_label = QLabel(SUBTITLE_TEXT, self)
 
         self._configure_widgets()
@@ -93,6 +98,15 @@ class AppHeader(QWidget):
             build_title_label_style_sheet(title_font_family=self._title_font_family)
         )
 
+        self._version_label.setObjectName("VersionLabel")
+        self._version_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+        )
+        self._version_label.setFont(self._build_version_font())
+        self._version_label.setStyleSheet(
+            build_version_label_style_sheet(title_font_family=self._title_font_family)
+        )
+
         self._subtitle_label.setObjectName("SubtitleLabel")
 
     def _build_layout(self) -> None:
@@ -120,9 +134,15 @@ class AppHeader(QWidget):
 
         title_row_layout.addWidget(
             self._title_label,
-            stretch=1,
+            stretch=0,
             alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
         )
+        title_row_layout.addWidget(
+            self._version_label,
+            stretch=0,
+            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+        )
+        title_row_layout.addStretch(1)
 
         subtitle_row_layout.addWidget(
             self._subtitle_label,
@@ -149,6 +169,17 @@ class AppHeader(QWidget):
 
         return title_font
 
+    def _build_version_font(self) -> QFont:
+        version_font = QFont(self._title_font_family)
+        version_font.setPointSize(VERSION_FONT_POINT_SIZE)
+        version_font.setWeight(QFont.Weight.Normal)
+        version_font.setLetterSpacing(
+            QFont.SpacingType.PercentageSpacing,
+            VERSION_LETTER_SPACING_PERCENT,
+        )
+
+        return version_font
+
     def _position_history_toggle_button(self) -> None:
         title_geometry = self._title_label.geometry()
         title_center_y = title_geometry.y() + title_geometry.height() // 2
@@ -174,11 +205,31 @@ class AppHeader(QWidget):
         self.settings_button.move(x, y)
 
 
+def format_app_version_label(*, version: str) -> str:
+    normalized_version = version.strip()
+
+    if not normalized_version:
+        return VERSION_LABEL_PREFIX
+
+    return f"{VERSION_LABEL_PREFIX}{normalized_version}"
+
+
 def build_title_label_style_sheet(*, title_font_family: str) -> str:
     return (
         "QLabel#TitleLabel {"
         f"font-family: {build_title_font_family_stack(title_font_family=title_font_family)};"
         "color: #FFFFFF;"
+        "}"
+    )
+
+
+def build_version_label_style_sheet(*, title_font_family: str) -> str:
+    return (
+        "QLabel#VersionLabel {"
+        f"font-family: {build_title_font_family_stack(title_font_family=title_font_family)};"
+        f"font-size: {VERSION_FONT_POINT_SIZE}pt;"
+        "font-weight: 400;"
+        "color: #6E7681;"
         "}"
     )
 
