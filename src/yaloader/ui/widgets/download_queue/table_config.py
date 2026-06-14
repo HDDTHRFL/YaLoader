@@ -28,10 +28,9 @@ def configure_download_queue_table(*, table: QTableWidget) -> None:
         [
             "Режим",
             "Ссылка",
-            "Качество",
-            "Файл",
+            "Параметры",
             "Состояние",
-            "Папка",
+            "Директория сохранения",
         ]
     )
     table.setItemDelegate(DownloadQueueItemDelegate(table))

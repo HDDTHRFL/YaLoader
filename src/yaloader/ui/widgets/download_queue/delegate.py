@@ -25,6 +25,7 @@ URL_TITLE_VERTICAL_SPACING = 0
 
 CELL_TEXT_HORIZONTAL_PADDING = 8
 MODE_ICON_SIZE = 18
+MODE_ICON_TEXT_SPACING = 6
 
 SELECTED_ROW_BACKGROUND = QColor("#182D46")
 SELECTED_ROW_HOVER_BACKGROUND = QColor("#203A59")
@@ -175,14 +176,15 @@ class DownloadQueueItemDelegate(QStyledItemDelegate):
         platform_icon = self._get_mode_icon(index=index)
         is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
         lines = display_text.splitlines() or [""]
+        primary_text = lines[0] if lines else ""
         secondary_text = lines[1] if len(lines) > 1 else ""
         has_secondary_text = bool(secondary_text.strip())
 
         secondary_font = self._build_title_font(base_font=option.font)
         secondary_font_metrics = QFontMetrics(secondary_font)
-        icon_height = MODE_ICON_SIZE
+        primary_height = max(MODE_ICON_SIZE, option.fontMetrics.height())
         secondary_height = secondary_font_metrics.height() if has_secondary_text else 0
-        total_content_height = icon_height
+        total_content_height = primary_height
 
         if has_secondary_text:
             total_content_height += URL_TITLE_VERTICAL_SPACING + secondary_height
@@ -197,9 +199,9 @@ class DownloadQueueItemDelegate(QStyledItemDelegate):
             URL_CELL_VERTICAL_PADDING,
             (option.rect.height() - total_content_height) // 2,
         )
-        icon_line_rect = QRect(content_rect)
-        icon_line_rect.setTop(top_position)
-        icon_line_rect.setHeight(icon_height)
+        primary_line_rect = QRect(content_rect)
+        primary_line_rect.setTop(top_position)
+        primary_line_rect.setHeight(primary_height)
 
         painter.save()
         painter.setClipRect(option.rect)
@@ -209,22 +211,44 @@ class DownloadQueueItemDelegate(QStyledItemDelegate):
         )
 
         icon_rect = QRect(0, 0, MODE_ICON_SIZE, MODE_ICON_SIZE)
-        icon_rect.moveCenter(icon_line_rect.center())
+        icon_rect.moveLeft(primary_line_rect.left())
+        icon_rect.moveTop(top_position + (total_content_height - MODE_ICON_SIZE) // 2)
         platform_icon.paint(
             painter,
             icon_rect,
             Qt.AlignmentFlag.AlignCenter,
         )
 
+        primary_text_rect = QRect(content_rect)
+        primary_text_rect.setLeft(icon_rect.right() + MODE_ICON_TEXT_SPACING + 1)
+        primary_text_rect.setTop(primary_line_rect.top())
+        primary_text_rect.setHeight(primary_height)
+
+        painter.setFont(option.font)
+        painter.setPen(SELECTED_ROW_TEXT if is_selected else URL_TEXT)
+        painter.drawText(
+            primary_text_rect,
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            option.fontMetrics.elidedText(
+                primary_text,
+                Qt.TextElideMode.ElideRight,
+                primary_text_rect.width(),
+            ),
+        )
+
         if has_secondary_text:
             secondary_rect = QRect(content_rect)
-            secondary_rect.setTop(icon_line_rect.top() + icon_height + URL_TITLE_VERTICAL_SPACING)
+            secondary_rect.setLeft(primary_text_rect.left())
+            secondary_rect.setTop(
+                primary_line_rect.top() + primary_height + URL_TITLE_VERTICAL_SPACING
+            )
             secondary_rect.setHeight(secondary_height)
+
             painter.setFont(secondary_font)
             painter.setPen(SELECTED_ROW_SECONDARY_TEXT if is_selected else URL_TITLE_TEXT)
             painter.drawText(
                 secondary_rect,
-                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
                 secondary_font_metrics.elidedText(
                     secondary_text,
                     Qt.TextElideMode.ElideRight,

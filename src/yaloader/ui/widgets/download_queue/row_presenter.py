@@ -3,8 +3,8 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem
 
 from yaloader.domain.source_platform import detect_source_platform
+from yaloader.ui.platform_icons import build_source_platform_icon
 from yaloader.ui.widgets.download_queue.columns import (
-    FILE_COLUMN_INDEX,
     FOLDER_COLUMN_INDEX,
     MODE_COLUMN_INDEX,
     QUALITY_COLUMN_INDEX,
@@ -12,10 +12,8 @@ from yaloader.ui.widgets.download_queue.columns import (
     URL_COLUMN_INDEX,
 )
 from yaloader.ui.widgets.download_queue.delegate import MODE_PLATFORM_ICON_ROLE
-from yaloader.ui.widgets.download_queue.platform_icons import build_source_platform_icon
 from yaloader.ui.widgets.download_queue.quality_presenter import DownloadQueueQualityPresenter
 from yaloader.ui.widgets.download_queue.row_cell_text import (
-    build_file_cell_text,
     build_mode_cell_text,
     build_quality_cell_text,
 )
@@ -42,10 +40,6 @@ class DownloadQueueRowPresenter:
             MODE_COLUMN_INDEX: build_mode_cell_text(task=task),
             URL_COLUMN_INDEX: task.url.value,
             QUALITY_COLUMN_INDEX: build_quality_cell_text(
-                task=task,
-                is_metadata_pending=is_metadata_pending,
-            ),
-            FILE_COLUMN_INDEX: build_file_cell_text(
                 task=task,
                 is_metadata_pending=is_metadata_pending,
             ),

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import override
 
-from PyQt6.QtCore import QEvent, QObject, QPoint, Qt
+from PyQt6.QtCore import QEvent, QObject, QPoint, QSize, Qt
 from PyQt6.QtGui import QClipboard, QContextMenuEvent, QGuiApplication
 from PyQt6.QtWidgets import (
     QFrame,
@@ -15,6 +15,8 @@ from PyQt6.QtWidgets import (
 )
 
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
+from yaloader.domain.source_platform import detect_source_platform
+from yaloader.ui.platform_icons import build_source_platform_icon
 from yaloader.ui.widgets.common.context_menu_actions import (
     add_menu_action,
     add_menu_button_action,
@@ -27,6 +29,9 @@ from yaloader.ui.widgets.history.formatting import (
     format_history_title,
 )
 from yaloader.ui.widgets.history.labels import ClickablePathLabel, ClickableUrlLabel
+
+HISTORY_PLATFORM_ICON_SIZE = 18
+HISTORY_META_ICON_SPACING = 6
 
 
 class HistoryRecordCard(QFrame):
@@ -100,16 +105,7 @@ class HistoryRecordCard(QFrame):
 
         title_label = self._build_title_label()
         url_label = ClickableUrlLabel(url=self._record.url, parent=self)
-
-        meta_label = QLabel(
-            (
-                f"{self._record.mode.value} · "
-                f"{self._record.output_format.value} · "
-                f"{format_history_quality(record=self._record)}"
-            ),
-            self,
-        )
-        meta_label.setObjectName("MutedLabel")
+        meta_row = self._build_meta_row()
 
         output_path = self._record.output_path or self._record.target_dir
         path_label = ClickablePathLabel(
@@ -118,13 +114,13 @@ class HistoryRecordCard(QFrame):
         )
 
         self._configure_compressible_label(url_label)
-        self._configure_compressible_label(meta_label)
+        self._configure_compressible_container(meta_row)
         self._configure_compressible_label(path_label)
 
         self._install_context_menu_filter(status_label)
         self._install_context_menu_filter(time_label)
         self._install_context_menu_filter(url_label)
-        self._install_context_menu_filter(meta_label)
+        self._install_context_menu_filter(meta_row)
         self._install_context_menu_filter(path_label)
 
         if title_label is not None:
@@ -137,7 +133,7 @@ class HistoryRecordCard(QFrame):
             layout.addWidget(title_label)
 
         layout.addWidget(url_label)
-        layout.addWidget(meta_label)
+        layout.addWidget(meta_row)
         layout.addWidget(path_label)
 
         if self._record.error_message:
@@ -163,9 +159,65 @@ class HistoryRecordCard(QFrame):
 
         return title_label
 
+    def _build_meta_row(self) -> QWidget:
+        meta_row = QWidget(self)
+        meta_row.setObjectName("HistoryMetaRow")
+
+        meta_layout = QHBoxLayout(meta_row)
+        meta_layout.setContentsMargins(0, 0, 0, 0)
+        meta_layout.setSpacing(HISTORY_META_ICON_SPACING)
+
+        platform_icon_label = self._build_platform_icon_label()
+        meta_label = QLabel(
+            (
+                f"{self._record.mode.value} · "
+                f"{self._record.output_format.value} · "
+                f"{format_history_quality(record=self._record)}"
+            ),
+            meta_row,
+        )
+        meta_label.setObjectName("MutedLabel")
+        self._configure_compressible_label(meta_label)
+        self._install_context_menu_filter(meta_label)
+
+        if platform_icon_label is not None:
+            self._install_context_menu_filter(platform_icon_label)
+            meta_layout.addWidget(
+                platform_icon_label,
+                0,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            )
+
+        meta_layout.addWidget(meta_label, 1)
+
+        return meta_row
+
+    def _build_platform_icon_label(self) -> QLabel | None:
+        platform = detect_source_platform(url=self._record.url)
+        platform_icon = build_source_platform_icon(platform=platform)
+
+        if platform_icon.isNull():
+            return None
+
+        platform_icon_label = QLabel(self)
+        platform_icon_label.setObjectName("HistoryPlatformIconLabel")
+        platform_icon_label.setFixedSize(
+            QSize(HISTORY_PLATFORM_ICON_SIZE, HISTORY_PLATFORM_ICON_SIZE)
+        )
+        platform_icon_label.setPixmap(
+            platform_icon.pixmap(QSize(HISTORY_PLATFORM_ICON_SIZE, HISTORY_PLATFORM_ICON_SIZE))
+        )
+        platform_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        return platform_icon_label
+
     def _configure_compressible_label(self, label: QLabel) -> None:
         label.setMinimumWidth(0)
         label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def _configure_compressible_container(self, widget: QWidget) -> None:
+        widget.setMinimumWidth(0)
+        widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
     def _install_context_menu_filter(self, widget: QWidget) -> None:
         widget.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
