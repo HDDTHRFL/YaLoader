@@ -15,6 +15,8 @@ class MediaMetadataProbe(BaseModel):
     title: str | None = None
     available_video_heights: tuple[int, ...] = ()
     playlist_count: int | None = None
+    duration_seconds: int | None = Field(default=None, ge=0)
+    estimated_file_size_bytes: int | None = Field(default=None, ge=0)
 
 
 class MediaMetadata(BaseModel):
@@ -30,3 +32,5 @@ class MediaMetadata(BaseModel):
     requested_video_quality: VideoQuality
     resolved_video_quality: VideoQuality
     playlist_count: int | None = None
+    duration_seconds: int | None = Field(default=None, ge=0)
+    estimated_file_size_bytes: int | None = Field(default=None, ge=0)

@@ -15,6 +15,8 @@ from yaloader.application.ports.downloader import CancellationToken
 from yaloader.application.ports.process_runner import ProcessRunner
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.infrastructure.ytdlp.metadata_extractor import (
+    extract_duration_seconds,
+    extract_estimated_file_size_bytes,
     extract_playlist_count,
     extract_title,
     select_metadata_info,
@@ -153,6 +155,14 @@ def build_prepared_download(
         title=extract_title(media_info=media_info),
         playlist_count=(
             extract_playlist_count(media_info=media_info) if task.include_playlist else None
+        ),
+        duration_seconds=(
+            None if task.include_playlist else extract_duration_seconds(media_info=media_info)
+        ),
+        estimated_file_size_bytes=(
+            None
+            if task.include_playlist
+            else extract_estimated_file_size_bytes(media_info=media_info)
         ),
         raw_info=copy_string_key_mapping(value=raw_info),
     )

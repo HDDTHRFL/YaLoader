@@ -267,7 +267,9 @@ class DownloadQueueTable(QTableWidget):
         self._row_by_task_id[task.task_id] = row_index
         self._row_states_by_task_id[task.task_id] = QueueTableRowState.create(task=task)
 
-        self._row_presenter.set_task_row_values(row_index=row_index, task=task)
+        self._row_presenter.set_task_row_values(
+            row_index=row_index, row_state=self._row_states_by_task_id[task.task_id]
+        )
         self._progress_presenter.set_text(row_index=row_index, text=EMPTY_PROGRESS_TEXT)
         self.resize_columns_to_viewport()
         self._sync_empty_hint_visibility()
@@ -293,7 +295,9 @@ class DownloadQueueTable(QTableWidget):
         )
 
         self.setRowHeight(row_index, QUEUE_ROW_HEIGHT)
-        self._row_presenter.set_task_row_values(row_index=row_index, task=task)
+        self._row_presenter.set_task_row_values(
+            row_index=row_index, row_state=self._row_states_by_task_id[task.task_id]
+        )
         current_row_state = self._row_states_by_task_id.get(task.task_id)
 
         if current_row_state is not None:
@@ -367,7 +371,7 @@ class DownloadQueueTable(QTableWidget):
             if previous_row_state is None:
                 continue
 
-            if previous_row_state.is_quality_resolution_pending:
+            if previous_row_state.is_metadata_resolution_pending:
                 self.mark_quality_resolution_pending(task_id=task.task_id)
 
             if previous_row_state.is_metadata_resolution_failed:
@@ -401,11 +405,28 @@ class DownloadQueueTable(QTableWidget):
 
         return tuple(task_ids)
 
-    def mark_quality_resolution_pending(self, *, task_id: UUID) -> None:
+    def mark_metadata_resolution_pending(self, *, task_id: UUID) -> None:
         self._quality_presenter.mark_pending(task_id=task_id)
+        self._refresh_task_row(task_id=task_id)
+
+    def mark_quality_resolution_pending(self, *, task_id: UUID) -> None:
+        self.mark_metadata_resolution_pending(task_id=task_id)
+
+    def clear_metadata_resolution_pending(self, *, task_id: UUID) -> None:
+        self._quality_presenter.clear_pending(task_id=task_id)
+        self._refresh_task_row(task_id=task_id)
 
     def clear_quality_resolution_pending(self, *, task_id: UUID) -> None:
-        self._quality_presenter.clear_pending(task_id=task_id)
+        self.clear_metadata_resolution_pending(task_id=task_id)
+
+    def _refresh_task_row(self, *, task_id: UUID) -> None:
+        row_index = self._row_by_task_id.get(task_id)
+        row_state = self._row_states_by_task_id.get(task_id)
+
+        if row_index is None or row_state is None:
+            return
+
+        self._row_presenter.set_task_row_values(row_index=row_index, row_state=row_state)
 
     def mark_metadata_resolution_failed(self, *, task_id: UUID) -> None:
         self._url_presenter.mark_metadata_resolution_failed(task_id=task_id)

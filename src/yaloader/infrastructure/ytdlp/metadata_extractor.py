@@ -80,13 +80,24 @@ class YtDlpMetadataExtractor:
         playlist_count = (
             extract_playlist_count(media_info=media_info) if request.include_playlist else None
         )
+        duration_seconds = (
+            None if request.include_playlist else extract_duration_seconds(media_info=media_info)
+        )
+        estimated_file_size_bytes = (
+            None
+            if request.include_playlist
+            else extract_estimated_file_size_bytes(media_info=media_info)
+        )
 
         logger.debug(
-            "Media metadata extracted. url={} title={} heights={} playlist_count={}",
+            "Media metadata extracted. url={} title={} heights={} playlist_count={} "
+            "duration={} size={}",
             request.url,
             title,
             available_video_heights,
             playlist_count,
+            duration_seconds,
+            estimated_file_size_bytes,
         )
 
         return MediaMetadataProbe(
@@ -94,6 +105,8 @@ class YtDlpMetadataExtractor:
             title=title,
             available_video_heights=available_video_heights,
             playlist_count=playlist_count,
+            duration_seconds=duration_seconds,
+            estimated_file_size_bytes=estimated_file_size_bytes,
         )
 
     def _build_options(self, *, request: DownloadRequest) -> YtDlpOptions:
@@ -193,6 +206,41 @@ def extract_available_video_heights(*, media_info: Mapping[str, object]) -> tupl
             heights.add(normalized_height)
 
     return tuple(sorted(heights, reverse=True))
+
+
+def extract_duration_seconds(*, media_info: Mapping[str, object]) -> int | None:
+    return normalize_positive_int(media_info.get("duration"))
+
+
+def extract_estimated_file_size_bytes(*, media_info: Mapping[str, object]) -> int | None:
+    for key in ("filesize", "filesize_approx"):
+        value = normalize_positive_int(media_info.get(key))
+
+        if value is not None:
+            return value
+
+    formats = media_info.get("formats")
+
+    if not isinstance(formats, list):
+        return None
+
+    sizes: list[int] = []
+
+    for format_item in formats:
+        if not isinstance(format_item, Mapping):
+            continue
+
+        for key in ("filesize", "filesize_approx"):
+            value = normalize_positive_int(format_item.get(key))
+
+            if value is not None:
+                sizes.append(value)
+                break
+
+    if not sizes:
+        return None
+
+    return max(sizes)
 
 
 def normalize_height(value: object) -> int | None:

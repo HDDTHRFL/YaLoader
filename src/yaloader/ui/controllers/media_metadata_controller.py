@@ -10,7 +10,6 @@ from loguru import logger
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.media_metadata import MediaMetadata
 from yaloader.application.services.media_metadata_service import MediaMetadataService
-from yaloader.domain.enums import DownloadMode
 
 METADATA_WORKERS_COUNT = 3
 
@@ -37,9 +36,6 @@ class MediaMetadataController:
         task_id: UUID,
         request: DownloadRequest,
     ) -> bool:
-        if request.mode is not DownloadMode.VIDEO:
-            return False
-
         self._executor.submit(
             self._resolve_worker,
             task_id=task_id,

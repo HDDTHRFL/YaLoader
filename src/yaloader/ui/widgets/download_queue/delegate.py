@@ -84,18 +84,32 @@ class DownloadQueueItemDelegate(QStyledItemDelegate):
             role=Qt.ItemDataRole.DisplayRole,
         )
         is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        lines = display_text.splitlines() or [""]
+        primary_text = lines[0]
+        secondary_text = lines[1] if len(lines) > 1 else ""
+        has_secondary_text = bool(secondary_text.strip())
+        secondary_font = self._build_title_font(base_font=option.font)
+        secondary_font_metrics = QFontMetrics(secondary_font)
+        primary_height = option.fontMetrics.height()
+        secondary_height = secondary_font_metrics.height() if has_secondary_text else 0
+        total_text_height = primary_height
 
-        text_rect = option.rect.adjusted(
+        if has_secondary_text:
+            total_text_height += URL_TITLE_VERTICAL_SPACING + secondary_height
+
+        content_rect = option.rect.adjusted(
             CELL_TEXT_HORIZONTAL_PADDING,
             0,
             -CELL_TEXT_HORIZONTAL_PADDING,
             0,
         )
-        elided_text = option.fontMetrics.elidedText(
-            display_text,
-            Qt.TextElideMode.ElideRight,
-            text_rect.width(),
+        top_position = option.rect.top() + max(
+            URL_CELL_VERTICAL_PADDING,
+            (option.rect.height() - total_text_height) // 2,
         )
+        primary_rect = QRect(content_rect)
+        primary_rect.setTop(top_position)
+        primary_rect.setHeight(primary_height)
 
         painter.save()
         painter.setClipRect(option.rect)
@@ -106,10 +120,31 @@ class DownloadQueueItemDelegate(QStyledItemDelegate):
         painter.setFont(option.font)
         painter.setPen(SELECTED_ROW_TEXT if is_selected else URL_TEXT)
         painter.drawText(
-            text_rect,
+            primary_rect,
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-            elided_text,
+            option.fontMetrics.elidedText(
+                primary_text,
+                Qt.TextElideMode.ElideRight,
+                primary_rect.width(),
+            ),
         )
+
+        if has_secondary_text:
+            secondary_rect = QRect(content_rect)
+            secondary_rect.setTop(primary_rect.top() + primary_height + URL_TITLE_VERTICAL_SPACING)
+            secondary_rect.setHeight(secondary_height)
+            painter.setFont(secondary_font)
+            painter.setPen(SELECTED_ROW_SECONDARY_TEXT if is_selected else URL_TITLE_TEXT)
+            painter.drawText(
+                secondary_rect,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                secondary_font_metrics.elidedText(
+                    secondary_text,
+                    Qt.TextElideMode.ElideRight,
+                    secondary_rect.width(),
+                ),
+            )
+
         painter.restore()
 
     def _paint_url_cell(

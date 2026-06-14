@@ -30,7 +30,7 @@ from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.tool_installation import ToolUpdateCheckResult
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.download_speed_limit import format_download_speed_limit_label
-from yaloader.domain.enums import DownloadStatus, VideoQuality
+from yaloader.domain.enums import DownloadMode, DownloadStatus, VideoQuality
 from yaloader.infrastructure.windows.explorer import reveal_path_in_file_manager
 from yaloader.services.app_container import AppContainer
 from yaloader.ui.controllers.browser_cookies_controller import (
@@ -642,19 +642,19 @@ class MainWindow(QMainWindow):
         )
 
         if is_started:
-            self._queue_table.mark_quality_resolution_pending(task_id=task_id)
+            self._queue_table.mark_metadata_resolution_pending(task_id=task_id)
 
     def _drain_metadata_events(self) -> None:
         for result in self._metadata_controller.drain_results():
             self._apply_metadata_result(result=result)
 
     def _apply_metadata_result(self, *, result: MediaMetadataResolutionResult) -> None:
-        self._queue_table.clear_quality_resolution_pending(task_id=result.task_id)
+        self._queue_table.clear_metadata_resolution_pending(task_id=result.task_id)
 
         if result.metadata is None:
             self._queue_table.mark_metadata_resolution_failed(task_id=result.task_id)
             self._show_transient_status_message(
-                "Не удалось определить качество. yt-dlp выберет доступный вариант при скачивании"
+                "Не удалось определить данные медиа. yt-dlp попробует скачать напрямую"
             )
             return
 
@@ -663,6 +663,8 @@ class MainWindow(QMainWindow):
             title=result.metadata.title,
             video_quality=result.metadata.resolved_video_quality,
             playlist_count=result.metadata.playlist_count,
+            duration_seconds=result.metadata.duration_seconds,
+            estimated_file_size_bytes=result.metadata.estimated_file_size_bytes,
         )
 
         if updated_task is None:
@@ -672,6 +674,10 @@ class MainWindow(QMainWindow):
             return
 
         self._queue_table.update_task(task=updated_task)
+
+        if updated_task.mode is DownloadMode.AUDIO:
+            self._show_transient_status_message("Данные аудио определены")
+            return
 
         if result.metadata.requested_video_quality is VideoQuality.BEST:
             self._show_transient_status_message(

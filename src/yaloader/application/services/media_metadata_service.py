@@ -47,6 +47,8 @@ class MediaMetadataService:
             requested_video_quality=request.video_quality,
             resolved_video_quality=resolved_video_quality,
             playlist_count=probe.playlist_count,
+            duration_seconds=probe.duration_seconds,
+            estimated_file_size_bytes=probe.estimated_file_size_bytes,
         )
 
 

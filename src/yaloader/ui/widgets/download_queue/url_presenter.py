@@ -19,6 +19,7 @@ from yaloader.ui.widgets.download_queue.delegate import (
 from yaloader.ui.widgets.download_queue.row_state import QueueTableRowState
 
 METADATA_RESOLUTION_FAILED_TEXT = "Название не удалось определить..."
+METADATA_RESOLUTION_PENDING_TEXT = "Checking..."
 
 
 class DownloadQueueUrlPresenter:
@@ -48,6 +49,15 @@ class DownloadQueueUrlPresenter:
                 text=METADATA_RESOLUTION_FAILED_TEXT,
                 state=URL_TITLE_STATE_ERROR,
                 tooltip=f"{task.url.value}\n{METADATA_RESOLUTION_FAILED_TEXT}",
+            )
+            return
+
+        if row_state is not None and row_state.is_metadata_resolution_pending:
+            self.set_secondary_text(
+                row_index=row_index,
+                text=METADATA_RESOLUTION_PENDING_TEXT,
+                state=URL_TITLE_STATE_DEFAULT,
+                tooltip=f"{task.url.value}\n{METADATA_RESOLUTION_PENDING_TEXT}",
             )
             return
 

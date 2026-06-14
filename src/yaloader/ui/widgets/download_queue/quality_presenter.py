@@ -11,7 +11,7 @@ from yaloader.ui.widgets.download_queue.columns import QUALITY_COLUMN_INDEX
 from yaloader.ui.widgets.download_queue.row_state import QueueTableRowState
 
 QUALITY_RESOLUTION_ANIMATION_INTERVAL_MS = 420
-QUALITY_RESOLUTION_TOOLTIP = "Определяем доступное качество"
+QUALITY_RESOLUTION_TOOLTIP = "Определяем данные медиа"
 QUALITY_RESOLUTION_TEXT_STATES = (
     "Checking.",
     "Checking..",
@@ -46,7 +46,7 @@ class DownloadQueueQualityPresenter:
         if row_state.task.status is not DownloadStatus.PENDING:
             return
 
-        self._row_states_by_task_id[task_id] = row_state.with_quality_resolution_pending(
+        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_pending(
             is_pending=True
         )
         self.set_cell_text(
@@ -63,8 +63,8 @@ class DownloadQueueQualityPresenter:
         if row_index is None or row_state is None:
             return
 
-        was_pending = row_state.is_quality_resolution_pending
-        self._row_states_by_task_id[task_id] = row_state.with_quality_resolution_pending(
+        was_pending = row_state.is_metadata_resolution_pending
+        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_pending(
             is_pending=False
         )
         self.sync_timer()
@@ -87,7 +87,7 @@ class DownloadQueueQualityPresenter:
         if task.status is DownloadStatus.PENDING:
             return
 
-        self._row_states_by_task_id[task.task_id] = row_state.with_quality_resolution_pending(
+        self._row_states_by_task_id[task.task_id] = row_state.with_metadata_resolution_pending(
             is_pending=False
         )
 
@@ -112,7 +112,7 @@ class DownloadQueueQualityPresenter:
         if row_state is None:
             return False
 
-        return row_state.is_quality_resolution_pending
+        return row_state.is_metadata_resolution_pending
 
     def sync_timer(self) -> None:
         if self._get_pending_task_ids():
@@ -167,7 +167,7 @@ class DownloadQueueQualityPresenter:
         return tuple(
             row_state.task.task_id
             for row_state in self._row_states_by_task_id.values()
-            if row_state.is_quality_resolution_pending
+            if row_state.is_metadata_resolution_pending
         )
 
     def _clear_stale_pending_state(self, *, task_id: UUID) -> None:
@@ -176,6 +176,6 @@ class DownloadQueueQualityPresenter:
         if row_state is None:
             return
 
-        self._row_states_by_task_id[task_id] = row_state.with_quality_resolution_pending(
+        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_pending(
             is_pending=False
         )

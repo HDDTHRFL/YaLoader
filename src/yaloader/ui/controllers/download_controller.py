@@ -610,6 +610,8 @@ class DownloadController:
             title=prepared_download.title,
             video_quality=current_task.video_quality,
             playlist_count=prepared_download.playlist_count,
+            duration_seconds=prepared_download.duration_seconds,
+            estimated_file_size_bytes=prepared_download.estimated_file_size_bytes,
         )
 
     def _download_task_worker(

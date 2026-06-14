@@ -117,6 +117,8 @@ class DownloadQueueService:
         title: str | None,
         video_quality: VideoQuality,
         playlist_count: int | None = None,
+        duration_seconds: int | None = None,
+        estimated_file_size_bytes: int | None = None,
     ) -> DownloadTask | None:
         with self._lock:
             task_index = self._task_index_by_id.get(task_id)
@@ -129,6 +131,8 @@ class DownloadQueueService:
                 title=title,
                 video_quality=video_quality,
                 playlist_count=playlist_count,
+                duration_seconds=duration_seconds,
+                estimated_file_size_bytes=estimated_file_size_bytes,
             )
             self._tasks[task_index] = updated_task
 

@@ -29,7 +29,7 @@ def configure_download_queue_table(*, table: QTableWidget) -> None:
             "Режим",
             "Ссылка",
             "Качество",
-            "Формат",
+            "Файл",
             "Состояние",
             "Папка",
         ]

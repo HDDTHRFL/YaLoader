@@ -8,7 +8,7 @@ from yaloader.domain.entities.download_task import DownloadTask
 @dataclass(frozen=True, slots=True)
 class QueueTableRowState:
     task: DownloadTask
-    is_quality_resolution_pending: bool = False
+    is_metadata_resolution_pending: bool = False
     is_metadata_resolution_failed: bool = False
     is_download_preparation_running: bool = False
     is_download_prepared: bool = False
@@ -18,15 +18,26 @@ class QueueTableRowState:
     def create(cls, *, task: DownloadTask) -> QueueTableRowState:
         return cls(task=task)
 
+    @property
+    def is_quality_resolution_pending(self) -> bool:
+        return self.is_metadata_resolution_pending
+
     def with_task(self, *, task: DownloadTask) -> QueueTableRowState:
         return replace(self, task=task)
+
+    def with_metadata_resolution_pending(
+        self,
+        *,
+        is_pending: bool,
+    ) -> QueueTableRowState:
+        return replace(self, is_metadata_resolution_pending=is_pending)
 
     def with_quality_resolution_pending(
         self,
         *,
         is_pending: bool,
     ) -> QueueTableRowState:
-        return replace(self, is_quality_resolution_pending=is_pending)
+        return self.with_metadata_resolution_pending(is_pending=is_pending)
 
     def with_metadata_resolution_failed(
         self,
