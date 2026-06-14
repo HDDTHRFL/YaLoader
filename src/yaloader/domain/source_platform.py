@@ -35,9 +35,9 @@ SOURCE_PLATFORM_LABELS = {
 }
 
 SOURCE_PLATFORM_QUEUE_LABELS = {
-    SourcePlatform.YOUTUBE: "▶ YouTube",
-    SourcePlatform.RUTUBE: "▣ Rutube",
-    SourcePlatform.UNKNOWN: "? Unknown",
+    SourcePlatform.YOUTUBE: "YouTube",
+    SourcePlatform.RUTUBE: "Rutube",
+    SourcePlatform.UNKNOWN: "Unknown",
 }
 
 

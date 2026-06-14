@@ -665,6 +665,7 @@ class MainWindow(QMainWindow):
             playlist_count=result.metadata.playlist_count,
             duration_seconds=result.metadata.duration_seconds,
             estimated_file_size_bytes=result.metadata.estimated_file_size_bytes,
+            is_file_size_estimated=result.metadata.is_file_size_estimated,
         )
 
         if updated_task is None:

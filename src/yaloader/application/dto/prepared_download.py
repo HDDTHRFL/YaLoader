@@ -17,4 +17,5 @@ class PreparedDownload(BaseModel):
     playlist_count: int | None = Field(default=None, ge=1)
     duration_seconds: int | None = Field(default=None, ge=0)
     estimated_file_size_bytes: int | None = Field(default=None, ge=0)
+    is_file_size_estimated: bool = False
     raw_info: dict[str, object] = Field(default_factory=dict)

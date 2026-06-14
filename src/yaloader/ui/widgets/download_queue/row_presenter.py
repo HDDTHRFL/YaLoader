@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem
 
+from yaloader.domain.source_platform import detect_source_platform
 from yaloader.ui.widgets.download_queue.columns import (
     FILE_COLUMN_INDEX,
     FOLDER_COLUMN_INDEX,
@@ -10,6 +11,8 @@ from yaloader.ui.widgets.download_queue.columns import (
     STATUS_PROGRESS_COLUMN_INDEX,
     URL_COLUMN_INDEX,
 )
+from yaloader.ui.widgets.download_queue.delegate import MODE_PLATFORM_ICON_ROLE
+from yaloader.ui.widgets.download_queue.platform_icons import build_source_platform_icon
 from yaloader.ui.widgets.download_queue.quality_presenter import DownloadQueueQualityPresenter
 from yaloader.ui.widgets.download_queue.row_cell_text import (
     build_file_cell_text,
@@ -58,6 +61,13 @@ class DownloadQueueRowPresenter:
                 self._table.setItem(row_index, column_index, table_item)
             else:
                 table_item.setText(value)
+
+            if column_index == MODE_COLUMN_INDEX:
+                platform = detect_source_platform(url=task.url.value)
+                table_item.setData(
+                    MODE_PLATFORM_ICON_ROLE,
+                    build_source_platform_icon(platform=platform),
+                )
 
             if column_index == URL_COLUMN_INDEX:
                 self._url_presenter.configure_url_item(

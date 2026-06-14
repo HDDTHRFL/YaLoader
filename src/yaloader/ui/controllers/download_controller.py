@@ -612,6 +612,7 @@ class DownloadController:
             playlist_count=prepared_download.playlist_count,
             duration_seconds=prepared_download.duration_seconds,
             estimated_file_size_bytes=prepared_download.estimated_file_size_bytes,
+            is_file_size_estimated=prepared_download.is_file_size_estimated,
         )
 
     def _download_task_worker(

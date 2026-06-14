@@ -3,14 +3,19 @@ from __future__ import annotations
 from typing import override
 
 from PyQt6.QtCore import QModelIndex, QRect, QSize, Qt
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter
 from PyQt6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
-from yaloader.ui.widgets.download_queue.columns import QUEUE_ROW_HEIGHT, URL_COLUMN_INDEX
+from yaloader.ui.widgets.download_queue.columns import (
+    MODE_COLUMN_INDEX,
+    QUEUE_ROW_HEIGHT,
+    URL_COLUMN_INDEX,
+)
 
 URL_TITLE_ROLE = int(Qt.ItemDataRole.UserRole)
 URL_TITLE_STATE_ROLE = URL_TITLE_ROLE + 1
 URL_COPY_FEEDBACK_ROLE = URL_TITLE_ROLE + 2
+MODE_PLATFORM_ICON_ROLE = URL_TITLE_ROLE + 3
 
 URL_TITLE_STATE_DEFAULT = "default"
 URL_TITLE_STATE_ERROR = "error"
@@ -19,6 +24,7 @@ URL_CELL_VERTICAL_PADDING = 4
 URL_TITLE_VERTICAL_SPACING = 0
 
 CELL_TEXT_HORIZONTAL_PADDING = 8
+MODE_ICON_SIZE = 18
 
 SELECTED_ROW_BACKGROUND = QColor("#182D46")
 SELECTED_ROW_HOVER_BACKGROUND = QColor("#203A59")
@@ -51,6 +57,14 @@ class DownloadQueueItemDelegate(QStyledItemDelegate):
 
         if index.column() == URL_COLUMN_INDEX:
             self._paint_url_cell(
+                painter=painter,
+                option=fixed_option,
+                index=index,
+            )
+            return
+
+        if index.column() == MODE_COLUMN_INDEX and self._has_mode_icon(index=index):
+            self._paint_mode_cell(
                 painter=painter,
                 option=fixed_option,
                 index=index,
@@ -138,6 +152,79 @@ class DownloadQueueItemDelegate(QStyledItemDelegate):
             painter.drawText(
                 secondary_rect,
                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                secondary_font_metrics.elidedText(
+                    secondary_text,
+                    Qt.TextElideMode.ElideRight,
+                    secondary_rect.width(),
+                ),
+            )
+
+        painter.restore()
+
+    def _paint_mode_cell(
+        self,
+        *,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex,
+    ) -> None:
+        display_text = self._get_text_data(
+            index=index,
+            role=Qt.ItemDataRole.DisplayRole,
+        )
+        platform_icon = self._get_mode_icon(index=index)
+        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        lines = display_text.splitlines() or [""]
+        secondary_text = lines[1] if len(lines) > 1 else ""
+        has_secondary_text = bool(secondary_text.strip())
+
+        secondary_font = self._build_title_font(base_font=option.font)
+        secondary_font_metrics = QFontMetrics(secondary_font)
+        icon_height = MODE_ICON_SIZE
+        secondary_height = secondary_font_metrics.height() if has_secondary_text else 0
+        total_content_height = icon_height
+
+        if has_secondary_text:
+            total_content_height += URL_TITLE_VERTICAL_SPACING + secondary_height
+
+        content_rect = option.rect.adjusted(
+            CELL_TEXT_HORIZONTAL_PADDING,
+            0,
+            -CELL_TEXT_HORIZONTAL_PADDING,
+            0,
+        )
+        top_position = option.rect.top() + max(
+            URL_CELL_VERTICAL_PADDING,
+            (option.rect.height() - total_content_height) // 2,
+        )
+        icon_line_rect = QRect(content_rect)
+        icon_line_rect.setTop(top_position)
+        icon_line_rect.setHeight(icon_height)
+
+        painter.save()
+        painter.setClipRect(option.rect)
+        painter.fillRect(
+            option.rect,
+            self._resolve_cell_background(option=option),
+        )
+
+        icon_rect = QRect(0, 0, MODE_ICON_SIZE, MODE_ICON_SIZE)
+        icon_rect.moveCenter(icon_line_rect.center())
+        platform_icon.paint(
+            painter,
+            icon_rect,
+            Qt.AlignmentFlag.AlignCenter,
+        )
+
+        if has_secondary_text:
+            secondary_rect = QRect(content_rect)
+            secondary_rect.setTop(icon_line_rect.top() + icon_height + URL_TITLE_VERTICAL_SPACING)
+            secondary_rect.setHeight(secondary_height)
+            painter.setFont(secondary_font)
+            painter.setPen(SELECTED_ROW_SECONDARY_TEXT if is_selected else URL_TITLE_TEXT)
+            painter.drawText(
+                secondary_rect,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter,
                 secondary_font_metrics.elidedText(
                     secondary_text,
                     Qt.TextElideMode.ElideRight,
@@ -278,6 +365,19 @@ class DownloadQueueItemDelegate(QStyledItemDelegate):
             return ""
 
         return value
+
+    def _has_mode_icon(self, *, index: QModelIndex) -> bool:
+        icon = self._get_mode_icon(index=index)
+
+        return not icon.isNull()
+
+    def _get_mode_icon(self, *, index: QModelIndex) -> QIcon:
+        value = index.data(MODE_PLATFORM_ICON_ROLE)
+
+        if isinstance(value, QIcon):
+            return value
+
+        return QIcon()
 
     def _build_title_font(self, *, base_font: QFont) -> QFont:
         title_font = QFont(base_font)

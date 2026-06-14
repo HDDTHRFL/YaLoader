@@ -7,6 +7,7 @@ from yaloader.config.app_info import APP_NAME
 
 APP_ICON_RELATIVE_PATH = Path("ui") / "assets" / "app_icon.ico"
 TITLE_FONT_RELATIVE_PATH = Path("ui") / "assets" / "Death Stars.ttf"
+PLATFORM_ICONS_RELATIVE_DIR = Path("ui") / "assets" / "platforms"
 
 
 def get_package_root() -> Path:
@@ -24,3 +25,11 @@ def get_app_icon_path() -> Path:
 
 def get_title_font_path() -> Path:
     return get_package_root() / TITLE_FONT_RELATIVE_PATH
+
+
+def get_platform_icons_dir_path() -> Path:
+    return get_package_root() / PLATFORM_ICONS_RELATIVE_DIR
+
+
+def get_platform_icon_path(*, file_name: str) -> Path:
+    return get_platform_icons_dir_path() / file_name

@@ -17,6 +17,7 @@ class MediaMetadataProbe(BaseModel):
     playlist_count: int | None = None
     duration_seconds: int | None = Field(default=None, ge=0)
     estimated_file_size_bytes: int | None = Field(default=None, ge=0)
+    is_file_size_estimated: bool = False
 
 
 class MediaMetadata(BaseModel):
@@ -34,3 +35,4 @@ class MediaMetadata(BaseModel):
     playlist_count: int | None = None
     duration_seconds: int | None = Field(default=None, ge=0)
     estimated_file_size_bytes: int | None = Field(default=None, ge=0)
+    is_file_size_estimated: bool = False

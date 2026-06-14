@@ -27,6 +27,7 @@ class DownloadTask:
     playlist_count: int | None = None
     duration_seconds: int | None = None
     estimated_file_size_bytes: int | None = None
+    is_file_size_estimated: bool = False
     download_speed_limit_bytes_per_second: int | None = None
     status: DownloadStatus = DownloadStatus.PENDING
     created_at: datetime = field(default_factory=get_current_utc_datetime)
@@ -85,6 +86,7 @@ class DownloadTask:
         playlist_count: int | None = None,
         duration_seconds: int | None = None,
         estimated_file_size_bytes: int | None = None,
+        is_file_size_estimated: bool = False,
     ) -> DownloadTask:
         return replace(
             self,
@@ -93,6 +95,7 @@ class DownloadTask:
             playlist_count=playlist_count,
             duration_seconds=duration_seconds,
             estimated_file_size_bytes=estimated_file_size_bytes,
+            is_file_size_estimated=is_file_size_estimated,
         )
 
     def with_download_speed_limit(

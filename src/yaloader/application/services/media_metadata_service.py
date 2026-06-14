@@ -49,6 +49,7 @@ class MediaMetadataService:
             playlist_count=probe.playlist_count,
             duration_seconds=probe.duration_seconds,
             estimated_file_size_bytes=probe.estimated_file_size_bytes,
+            is_file_size_estimated=probe.is_file_size_estimated,
         )
 
 

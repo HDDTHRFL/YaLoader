@@ -119,6 +119,7 @@ class DownloadQueueService:
         playlist_count: int | None = None,
         duration_seconds: int | None = None,
         estimated_file_size_bytes: int | None = None,
+        is_file_size_estimated: bool = False,
     ) -> DownloadTask | None:
         with self._lock:
             task_index = self._task_index_by_id.get(task_id)
@@ -133,6 +134,7 @@ class DownloadQueueService:
                 playlist_count=playlist_count,
                 duration_seconds=duration_seconds,
                 estimated_file_size_bytes=estimated_file_size_bytes,
+                is_file_size_estimated=is_file_size_estimated,
             )
             self._tasks[task_index] = updated_task
 

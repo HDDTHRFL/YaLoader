@@ -25,6 +25,7 @@ def build_quality_cell_text(*, task: DownloadTask, is_metadata_pending: bool) ->
         first_line=task.video_quality.value,
         second_line=build_file_size_text(
             size_bytes=task.estimated_file_size_bytes,
+            is_file_size_estimated=task.is_file_size_estimated,
             is_metadata_pending=is_metadata_pending,
         ),
     )
@@ -44,7 +45,15 @@ def build_two_line_cell_text(*, first_line: str, second_line: str) -> str:
     return f"{first_line}\n{second_line}"
 
 
-def build_file_size_text(*, size_bytes: int | None, is_metadata_pending: bool) -> str:
+def build_file_size_text(
+    *,
+    size_bytes: int | None,
+    is_file_size_estimated: bool,
+    is_metadata_pending: bool,
+) -> str:
+    if size_bytes is not None and is_file_size_estimated:
+        return format_estimated_file_size(size_bytes=size_bytes)
+
     if size_bytes is not None:
         return format_file_size(size_bytes=size_bytes)
 
@@ -62,6 +71,10 @@ def build_duration_text(*, duration_seconds: int | None, is_metadata_pending: bo
         return CHECKING_TEXT
 
     return UNKNOWN_TEXT
+
+
+def format_estimated_file_size(*, size_bytes: int) -> str:
+    return f"~{format_file_size(size_bytes=size_bytes)}"
 
 
 def format_file_size(*, size_bytes: int) -> str:
