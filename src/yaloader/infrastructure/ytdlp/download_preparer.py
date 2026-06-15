@@ -17,7 +17,7 @@ from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.infrastructure.ytdlp.metadata_extractor import (
     FileSizeMetadata,
     extract_duration_seconds,
-    extract_file_size_metadata,
+    extract_file_size_metadata_for_download_settings,
     extract_playlist_count,
     extract_title,
     select_metadata_info,
@@ -155,7 +155,12 @@ def build_prepared_download(
     file_size_metadata = (
         FileSizeMetadata()
         if task.include_playlist
-        else extract_file_size_metadata(media_info=media_info)
+        else extract_file_size_metadata_for_download_settings(
+            media_info=media_info,
+            mode=task.mode,
+            output_format=task.output_format,
+            video_quality=task.video_quality,
+        )
     )
 
     return PreparedDownload(

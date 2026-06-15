@@ -62,7 +62,16 @@ def test_preparer_extracts_video_info_without_download(tmp_path: Path) -> None:
     runtime = FakeYoutubeDLPreparationRuntime(
         raw_info={
             "title": "Test video",
-            "formats": [{"height": 1080}],
+            "duration": 100,
+            "formats": [
+                {
+                    "format_id": "url1080",
+                    "ext": "mp4",
+                    "vcodec": "h264",
+                    "acodec": "aac",
+                    "tbr": 1000,
+                }
+            ],
         },
     )
     factory = FakeYoutubeDLPreparationFactory(runtime=runtime)
@@ -79,6 +88,8 @@ def test_preparer_extracts_video_info_without_download(tmp_path: Path) -> None:
     assert prepared_download.title == "Test video"
     assert prepared_download.playlist_count is None
     assert prepared_download.raw_info["title"] == "Test video"
+    assert prepared_download.estimated_file_size_bytes == 12_500_000
+    assert prepared_download.is_file_size_estimated is True
     assert runtime.extract_url == task.url.value
     assert runtime.extract_download is False
 
