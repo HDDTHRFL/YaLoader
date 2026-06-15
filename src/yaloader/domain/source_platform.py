@@ -35,11 +35,22 @@ VK_VIDEO_ALLOWED_HOSTS = frozenset(
     }
 )
 
+TWITCH_ALLOWED_HOSTS = frozenset(
+    {
+        "twitch.tv",
+        "www.twitch.tv",
+        "m.twitch.tv",
+        "clips.twitch.tv",
+        "player.twitch.tv",
+    }
+)
+
 
 class SourcePlatform(StrEnum):
     YOUTUBE = "youtube"
     RUTUBE = "rutube"
     VK_VIDEO = "vkvideo"
+    TWITCH = "twitch"
     UNKNOWN = "unknown"
 
 
@@ -47,6 +58,7 @@ SOURCE_PLATFORM_LABELS = {
     SourcePlatform.YOUTUBE: "YouTube",
     SourcePlatform.RUTUBE: "Rutube",
     SourcePlatform.VK_VIDEO: "VK Video",
+    SourcePlatform.TWITCH: "Twitch",
     SourcePlatform.UNKNOWN: "Unknown",
 }
 
@@ -54,6 +66,7 @@ SOURCE_PLATFORM_QUEUE_LABELS = {
     SourcePlatform.YOUTUBE: "YouTube",
     SourcePlatform.RUTUBE: "Rutube",
     SourcePlatform.VK_VIDEO: "VK Video",
+    SourcePlatform.TWITCH: "Twitch",
     SourcePlatform.UNKNOWN: "Unknown",
 }
 
@@ -76,6 +89,9 @@ def detect_source_platform(*, url: str) -> SourcePlatform:
     if normalized_host in VK_VIDEO_ALLOWED_HOSTS:
         return SourcePlatform.VK_VIDEO
 
+    if normalized_host in TWITCH_ALLOWED_HOSTS:
+        return SourcePlatform.TWITCH
+
     return SourcePlatform.UNKNOWN
 
 
@@ -91,11 +107,16 @@ def is_vk_video_url(url: str) -> bool:
     return detect_source_platform(url=url) is SourcePlatform.VK_VIDEO
 
 
+def is_twitch_url(url: str) -> bool:
+    return detect_source_platform(url=url) is SourcePlatform.TWITCH
+
+
 def is_supported_source_url(url: str) -> bool:
     return detect_source_platform(url=url) in {
         SourcePlatform.YOUTUBE,
         SourcePlatform.RUTUBE,
         SourcePlatform.VK_VIDEO,
+        SourcePlatform.TWITCH,
     }
 
 

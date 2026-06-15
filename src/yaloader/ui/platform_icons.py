@@ -13,6 +13,7 @@ PLATFORM_ICON_FILE_NAMES: Final[Mapping[SourcePlatform, str]] = {
     SourcePlatform.YOUTUBE: "youtube.png",
     SourcePlatform.RUTUBE: "rutube.png",
     SourcePlatform.VK_VIDEO: "vkvideo.png",
+    SourcePlatform.TWITCH: "twitch.png",
 }
 
 

@@ -34,9 +34,27 @@ def test_detect_source_platform_for_vk_video_on_vk_host() -> None:
     )
 
 
+def test_detect_source_platform_for_twitch() -> None:
+    assert (
+        detect_source_platform(url="https://www.twitch.tv/videos/123456789")
+        is SourcePlatform.TWITCH
+    )
+
+
+def test_detect_source_platform_for_twitch_clips() -> None:
+    assert (
+        detect_source_platform(url="https://clips.twitch.tv/ModernClipSlug")
+        is SourcePlatform.TWITCH
+    )
+
+
 def test_rutube_is_supported_source_url() -> None:
     assert is_supported_source_url(url="https://rutube.ru/video/1234567890abcdef/")
 
 
 def test_vk_video_is_supported_source_url() -> None:
     assert is_supported_source_url(url="https://vkvideo.ru/video-123456789_456239017")
+
+
+def test_twitch_is_supported_source_url() -> None:
+    assert is_supported_source_url(url="https://www.twitch.tv/videos/123456789")

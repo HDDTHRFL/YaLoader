@@ -25,6 +25,11 @@ VK_VIDEO_SEGMENT_PREFIX = "video"
 VK_CLIP_SEGMENT_PREFIX = "clip"
 VK_VIDEO_EXT_PATH = "/video_ext.php"
 
+TWITCH_VIDEO_PATH_PREFIX = "videos"
+TWITCH_LEGACY_VIDEO_PATH_PREFIX = "v"
+TWITCH_CLIP_PATH_PREFIX = "clip"
+TWITCH_CLIPS_HOST = "clips.twitch.tv"
+
 
 def build_media_source_key(url: str) -> str:
     media_url = MediaUrl(value=url)
@@ -38,6 +43,9 @@ def build_media_source_key(url: str) -> str:
 
     if platform is SourcePlatform.VK_VIDEO:
         return build_vk_video_source_key(url=media_url.value)
+
+    if platform is SourcePlatform.TWITCH:
+        return build_twitch_source_key(url=media_url.value)
 
     return media_url.value
 
@@ -89,6 +97,38 @@ def build_vk_video_source_key(url: str) -> str:
         return f"vkvideo:video:{video_id}"
 
     return f"vkvideo:url:{url}"
+
+
+def build_twitch_source_key(url: str) -> str:
+    parsed_url = urlparse(url)
+    query_values = parse_qs(parsed_url.query, keep_blank_values=False)
+    host = parsed_url.hostname.casefold() if parsed_url.hostname is not None else ""
+    video_id = extract_twitch_video_id(
+        path=parsed_url.path,
+        query_values=query_values,
+    )
+
+    if video_id is not None:
+        return f"twitch:video:{video_id}"
+
+    clip_slug = extract_twitch_clip_slug(
+        host=host,
+        path=parsed_url.path,
+        query_values=query_values,
+    )
+
+    if clip_slug is not None:
+        return f"twitch:clip:{clip_slug}"
+
+    channel_name = extract_twitch_channel_name(
+        path=parsed_url.path,
+        query_values=query_values,
+    )
+
+    if channel_name is not None:
+        return f"twitch:channel:{channel_name.casefold()}"
+
+    return f"twitch:url:{url}"
 
 
 def extract_youtube_video_id(
@@ -240,6 +280,100 @@ def is_valid_vk_video_id(*, video_id: str) -> bool:
         return False
 
     return owner_id.removeprefix("-").isdigit() and item_id.isdigit()
+
+
+def extract_twitch_video_id(
+    *,
+    path: str,
+    query_values: Mapping[str, list[str]],
+) -> str | None:
+    query_video_id = normalize_twitch_video_id(
+        value=get_first_query_value(query_values=query_values, name="video"),
+    )
+
+    if query_video_id is not None:
+        return query_video_id
+
+    path_parts = tuple(part for part in path.split("/") if part)
+
+    if len(path_parts) >= 2 and path_parts[0].casefold() == TWITCH_VIDEO_PATH_PREFIX:
+        return normalize_twitch_video_id(value=path_parts[1])
+
+    if len(path_parts) >= 3 and path_parts[1].casefold() == TWITCH_LEGACY_VIDEO_PATH_PREFIX:
+        return normalize_twitch_video_id(value=path_parts[2])
+
+    return None
+
+
+def extract_twitch_clip_slug(
+    *,
+    host: str,
+    path: str,
+    query_values: Mapping[str, list[str]],
+) -> str | None:
+    query_clip_slug = normalize_twitch_slug(
+        value=get_first_query_value(query_values=query_values, name="clip"),
+    )
+
+    if query_clip_slug is not None:
+        return query_clip_slug
+
+    path_parts = tuple(part for part in path.split("/") if part)
+
+    if host == TWITCH_CLIPS_HOST and path_parts:
+        return normalize_twitch_slug(value=path_parts[0])
+
+    if len(path_parts) >= 3 and path_parts[1].casefold() == TWITCH_CLIP_PATH_PREFIX:
+        return normalize_twitch_slug(value=path_parts[2])
+
+    return None
+
+
+def extract_twitch_channel_name(
+    *,
+    path: str,
+    query_values: Mapping[str, list[str]],
+) -> str | None:
+    query_channel_name = normalize_twitch_slug(
+        value=get_first_query_value(query_values=query_values, name="channel"),
+    )
+
+    if query_channel_name is not None:
+        return query_channel_name
+
+    path_parts = tuple(part for part in path.split("/") if part)
+
+    if len(path_parts) != 1:
+        return None
+
+    return normalize_twitch_slug(value=path_parts[0])
+
+
+def normalize_twitch_video_id(*, value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    normalized_value = value.strip()
+
+    if normalized_value.startswith("v") and normalized_value.removeprefix("v").isdigit():
+        normalized_value = normalized_value.removeprefix("v")
+
+    if normalized_value.isdigit():
+        return normalized_value
+
+    return None
+
+
+def normalize_twitch_slug(*, value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    normalized_value = value.strip()
+
+    if not normalized_value:
+        return None
+
+    return normalized_value
 
 
 def get_first_query_value(

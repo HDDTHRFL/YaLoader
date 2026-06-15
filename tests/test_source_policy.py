@@ -41,5 +41,5 @@ def test_validate_supported_media_url_returns_valid_youtube_url() -> None:
 
 
 def test_validate_supported_media_url_rejects_unsupported_host() -> None:
-    with pytest.raises(ValueError, match="Only YouTube, Rutube and VK Video URLs"):
+    with pytest.raises(ValueError, match="Only YouTube, Rutube, VK Video and Twitch URLs"):
         validate_supported_media_url(url="https://example.com/video")
