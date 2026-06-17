@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from yaloader.domain.source_platform import SourcePlatform, detect_source_platform
 from yaloader.domain.value_objects.media_url import MediaUrl
@@ -30,6 +30,13 @@ TWITCH_LEGACY_VIDEO_PATH_PREFIX = "v"
 TWITCH_CLIP_PATH_PREFIX = "clip"
 TWITCH_CLIPS_HOST = "clips.twitch.tv"
 
+SOUNDCLOUD_SETS_PATH_PART = "sets"
+SOUNDCLOUD_SHORT_HOSTS = frozenset({"on.soundcloud.com", "snd.sc"})
+SOUNDCLOUD_EMBED_HOST = "w.soundcloud.com"
+SOUNDCLOUD_API_HOST = "api.soundcloud.com"
+SOUNDCLOUD_API_TRACKS_PATH_PART = "tracks"
+SOUNDCLOUD_API_PLAYLISTS_PATH_PART = "playlists"
+
 
 def build_media_source_key(url: str) -> str:
     media_url = MediaUrl(value=url)
@@ -46,6 +53,9 @@ def build_media_source_key(url: str) -> str:
 
     if platform is SourcePlatform.TWITCH:
         return build_twitch_source_key(url=media_url.value)
+
+    if platform is SourcePlatform.SOUNDCLOUD:
+        return build_soundcloud_source_key(url=media_url.value)
 
     return media_url.value
 
@@ -129,6 +139,52 @@ def build_twitch_source_key(url: str) -> str:
         return f"twitch:channel:{channel_name.casefold()}"
 
     return f"twitch:url:{url}"
+
+
+def build_soundcloud_source_key(url: str) -> str:
+    parsed_url = urlparse(url)
+    query_values = parse_qs(parsed_url.query, keep_blank_values=False)
+    host = parsed_url.hostname.casefold() if parsed_url.hostname is not None else ""
+
+    embedded_source_key = extract_soundcloud_embedded_source_key(
+        host=host,
+        query_values=query_values,
+    )
+
+    if embedded_source_key is not None:
+        return embedded_source_key
+
+    if host == SOUNDCLOUD_EMBED_HOST:
+        return f"soundcloud:url:{url}"
+
+    short_slug = extract_soundcloud_short_slug(host=host, path=parsed_url.path)
+
+    if short_slug is not None:
+        return f"soundcloud:short:{short_slug}"
+
+    path_parts = tuple(part for part in parsed_url.path.split("/") if part)
+
+    if len(path_parts) >= 3 and path_parts[1].casefold() == SOUNDCLOUD_SETS_PATH_PART:
+        user_slug = normalize_soundcloud_slug(value=path_parts[0], use_casefold=True)
+        playlist_slug = normalize_soundcloud_slug(value=path_parts[2], use_casefold=True)
+
+        if user_slug is not None and playlist_slug is not None:
+            return f"soundcloud:playlist:{user_slug}:{playlist_slug}"
+
+    if len(path_parts) >= 2:
+        user_slug = normalize_soundcloud_slug(value=path_parts[0], use_casefold=True)
+        track_slug = normalize_soundcloud_slug(value=path_parts[1], use_casefold=True)
+
+        if user_slug is not None and track_slug is not None:
+            return f"soundcloud:track:{user_slug}:{track_slug}"
+
+    if len(path_parts) == 1:
+        user_slug = normalize_soundcloud_slug(value=path_parts[0], use_casefold=True)
+
+        if user_slug is not None:
+            return f"soundcloud:user:{user_slug}"
+
+    return f"soundcloud:url:{url}"
 
 
 def extract_youtube_video_id(
@@ -372,6 +428,79 @@ def normalize_twitch_slug(*, value: str | None) -> str | None:
 
     if not normalized_value:
         return None
+
+    return normalized_value
+
+
+def extract_soundcloud_embedded_source_key(
+    *,
+    host: str,
+    query_values: Mapping[str, list[str]],
+) -> str | None:
+    if host != SOUNDCLOUD_EMBED_HOST:
+        return None
+
+    embedded_url = get_first_query_value(query_values=query_values, name="url")
+
+    if embedded_url is None:
+        return None
+
+    normalized_embedded_url = unquote(embedded_url).strip()
+    parsed_embedded_url = urlparse(normalized_embedded_url)
+    embedded_host = (
+        parsed_embedded_url.hostname.casefold() if parsed_embedded_url.hostname is not None else ""
+    )
+
+    if embedded_host == SOUNDCLOUD_API_HOST:
+        return extract_soundcloud_api_source_key(path=parsed_embedded_url.path)
+
+    if embedded_host in {"soundcloud.com", "www.soundcloud.com", "m.soundcloud.com"}:
+        return build_soundcloud_source_key(url=normalized_embedded_url)
+
+    return None
+
+
+def extract_soundcloud_api_source_key(*, path: str) -> str | None:
+    path_parts = tuple(part for part in path.split("/") if part)
+
+    if len(path_parts) < 2:
+        return None
+
+    source_type = path_parts[0].casefold()
+    source_id = path_parts[1].strip()
+
+    if not source_id.isdigit():
+        return None
+
+    if source_type == SOUNDCLOUD_API_TRACKS_PATH_PART:
+        return f"soundcloud:track-id:{source_id}"
+
+    if source_type == SOUNDCLOUD_API_PLAYLISTS_PATH_PART:
+        return f"soundcloud:playlist-id:{source_id}"
+
+    return None
+
+
+def extract_soundcloud_short_slug(*, host: str, path: str) -> str | None:
+    if host not in SOUNDCLOUD_SHORT_HOSTS:
+        return None
+
+    path_parts = tuple(part for part in path.split("/") if part)
+
+    if not path_parts:
+        return None
+
+    return normalize_soundcloud_slug(value=path_parts[0], use_casefold=False)
+
+
+def normalize_soundcloud_slug(*, value: str, use_casefold: bool) -> str | None:
+    normalized_value = value.strip()
+
+    if not normalized_value:
+        return None
+
+    if use_casefold:
+        return normalized_value.casefold()
 
     return normalized_value
 

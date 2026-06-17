@@ -45,12 +45,24 @@ TWITCH_ALLOWED_HOSTS = frozenset(
     }
 )
 
+SOUNDCLOUD_ALLOWED_HOSTS = frozenset(
+    {
+        "soundcloud.com",
+        "www.soundcloud.com",
+        "m.soundcloud.com",
+        "on.soundcloud.com",
+        "snd.sc",
+        "w.soundcloud.com",
+    }
+)
+
 
 class SourcePlatform(StrEnum):
     YOUTUBE = "youtube"
     RUTUBE = "rutube"
     VK_VIDEO = "vkvideo"
     TWITCH = "twitch"
+    SOUNDCLOUD = "soundcloud"
     UNKNOWN = "unknown"
 
 
@@ -59,6 +71,7 @@ SOURCE_PLATFORM_LABELS = {
     SourcePlatform.RUTUBE: "Rutube",
     SourcePlatform.VK_VIDEO: "VK Video",
     SourcePlatform.TWITCH: "Twitch",
+    SourcePlatform.SOUNDCLOUD: "SoundCloud",
     SourcePlatform.UNKNOWN: "Unknown",
 }
 
@@ -67,6 +80,7 @@ SOURCE_PLATFORM_QUEUE_LABELS = {
     SourcePlatform.RUTUBE: "Rutube",
     SourcePlatform.VK_VIDEO: "VK Video",
     SourcePlatform.TWITCH: "Twitch",
+    SourcePlatform.SOUNDCLOUD: "SoundCloud",
     SourcePlatform.UNKNOWN: "Unknown",
 }
 
@@ -92,6 +106,9 @@ def detect_source_platform(*, url: str) -> SourcePlatform:
     if normalized_host in TWITCH_ALLOWED_HOSTS:
         return SourcePlatform.TWITCH
 
+    if normalized_host in SOUNDCLOUD_ALLOWED_HOSTS:
+        return SourcePlatform.SOUNDCLOUD
+
     return SourcePlatform.UNKNOWN
 
 
@@ -111,12 +128,17 @@ def is_twitch_url(url: str) -> bool:
     return detect_source_platform(url=url) is SourcePlatform.TWITCH
 
 
+def is_soundcloud_url(url: str) -> bool:
+    return detect_source_platform(url=url) is SourcePlatform.SOUNDCLOUD
+
+
 def is_supported_source_url(url: str) -> bool:
     return detect_source_platform(url=url) in {
         SourcePlatform.YOUTUBE,
         SourcePlatform.RUTUBE,
         SourcePlatform.VK_VIDEO,
         SourcePlatform.TWITCH,
+        SourcePlatform.SOUNDCLOUD,
     }
 
 

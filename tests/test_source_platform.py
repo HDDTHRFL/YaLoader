@@ -48,6 +48,19 @@ def test_detect_source_platform_for_twitch_clips() -> None:
     )
 
 
+def test_detect_source_platform_for_soundcloud() -> None:
+    assert (
+        detect_source_platform(url="https://soundcloud.com/artist/track")
+        is SourcePlatform.SOUNDCLOUD
+    )
+
+
+def test_detect_source_platform_for_soundcloud_short_link() -> None:
+    assert (
+        detect_source_platform(url="https://on.soundcloud.com/AbCdE") is SourcePlatform.SOUNDCLOUD
+    )
+
+
 def test_rutube_is_supported_source_url() -> None:
     assert is_supported_source_url(url="https://rutube.ru/video/1234567890abcdef/")
 
@@ -58,3 +71,7 @@ def test_vk_video_is_supported_source_url() -> None:
 
 def test_twitch_is_supported_source_url() -> None:
     assert is_supported_source_url(url="https://www.twitch.tv/videos/123456789")
+
+
+def test_soundcloud_is_supported_source_url() -> None:
+    assert is_supported_source_url(url="https://soundcloud.com/artist/track")
