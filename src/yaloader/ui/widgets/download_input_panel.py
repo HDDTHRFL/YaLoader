@@ -13,7 +13,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from yaloader.domain.enums import OutputFormat, VideoQuality
+from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
+from yaloader.domain.format_rules import get_download_mode_for_output_format
+from yaloader.domain.source_download_defaults import (
+    resolve_default_output_format_for_source_url,
+)
 from yaloader.ui.widgets.common.url_drop_line_edit import (
     UrlDropLineEdit,
     extract_first_supported_media_url_from_drop_event,
@@ -25,6 +29,8 @@ class DownloadInputPanel(QFrame):
         super().__init__(parent)
 
         self._is_add_to_queue_available = True
+        self._is_output_format_auto_selected = False
+        self._is_syncing_output_format_selection = False
 
         self.url_input = UrlDropLineEdit(self)
         self.quality_combo_box = QComboBox(self)
@@ -52,6 +58,26 @@ class DownloadInputPanel(QFrame):
 
     def get_selected_output_format(self) -> OutputFormat:
         return cast(OutputFormat, self.format_combo_box.currentData())
+
+    def set_selected_output_format(
+        self,
+        *,
+        output_format: OutputFormat,
+        is_auto_selection: bool = False,
+    ) -> None:
+        output_format_index = self.format_combo_box.findData(output_format)
+
+        if output_format_index < 0:
+            return
+
+        self._is_syncing_output_format_selection = True
+
+        try:
+            self.format_combo_box.setCurrentIndex(output_format_index)
+        finally:
+            self._is_syncing_output_format_selection = False
+
+        self._is_output_format_auto_selected = is_auto_selection
 
     def set_add_to_queue_available(self, *, is_available: bool) -> None:
         self._is_add_to_queue_available = is_available
@@ -116,6 +142,7 @@ class DownloadInputPanel(QFrame):
     def _connect_signals(self) -> None:
         self.url_input.returnPressed.connect(self._handle_url_input_return_pressed)
         self.url_input.textChanged.connect(self._handle_url_input_text_changed)
+        self.format_combo_box.currentIndexChanged.connect(self._handle_output_format_changed)
 
     def _build_layout(self) -> None:
         layout = QVBoxLayout(self)
@@ -135,8 +162,37 @@ class DownloadInputPanel(QFrame):
         layout.addWidget(url_label)
         layout.addLayout(controls_layout)
 
-    def _handle_url_input_text_changed(self, _text: str) -> None:
+    def _handle_url_input_text_changed(self, text: str) -> None:
+        self._sync_output_format_for_url(url=text)
         self._sync_add_to_queue_button_state()
+
+    def _sync_output_format_for_url(self, *, url: str) -> None:
+        selected_output_format = self.get_selected_output_format()
+        resolved_output_format = resolve_default_output_format_for_source_url(
+            url=url,
+            selected_output_format=selected_output_format,
+        )
+
+        if resolved_output_format is selected_output_format:
+            return
+
+        selected_mode = get_download_mode_for_output_format(
+            output_format=selected_output_format,
+        )
+
+        if selected_mode is DownloadMode.AUDIO and not self._is_output_format_auto_selected:
+            return
+
+        self.set_selected_output_format(
+            output_format=resolved_output_format,
+            is_auto_selection=True,
+        )
+
+    def _handle_output_format_changed(self, _index: int) -> None:
+        if self._is_syncing_output_format_selection:
+            return
+
+        self._is_output_format_auto_selected = False
 
     def _handle_url_input_return_pressed(self) -> None:
         if not self.add_to_queue_button.isEnabled():

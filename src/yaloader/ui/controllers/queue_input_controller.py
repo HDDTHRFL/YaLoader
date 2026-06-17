@@ -11,6 +11,7 @@ from yaloader.domain.download_speed_limit import format_download_speed_limit_lab
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
 from yaloader.domain.format_rules import get_download_mode_for_output_format
+from yaloader.domain.source_download_defaults import resolve_output_format_for_source_url
 from yaloader.domain.source_playlist_policy import should_include_playlist_for_url
 
 
@@ -45,13 +46,17 @@ class QueueInputController:
             )
 
         include_playlist = should_include_playlist_for_url(url=normalized_url)
+        resolved_output_format = resolve_output_format_for_source_url(
+            url=normalized_url,
+            selected_output_format=output_format,
+        )
 
         try:
             request = DownloadRequest(
                 url=normalized_url,
                 target_dir=target_dir,
-                mode=get_download_mode_for_output_format(output_format=output_format),
-                output_format=output_format,
+                mode=get_download_mode_for_output_format(output_format=resolved_output_format),
+                output_format=resolved_output_format,
                 video_quality=video_quality,
                 include_playlist=include_playlist,
                 download_speed_limit_bytes_per_second=download_speed_limit_bytes_per_second,
