@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from yaloader.application.dto.app_settings import AppSettings
+from yaloader.domain.enums import OutputFormat
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,16 @@ class SettingsService:
 
     def update_confirm_clear_queue(self, *, is_enabled: bool) -> AppSettings:
         return self._update_settings({"confirm_clear_queue": is_enabled})
+
+    def update_separate_audio_video_enabled(self, *, is_enabled: bool) -> AppSettings:
+        return self._update_settings({"separate_audio_video_enabled": is_enabled})
+
+    def update_separate_audio_video_audio_format(
+        self,
+        *,
+        audio_format: OutputFormat,
+    ) -> AppSettings:
+        return self._update_settings({"separate_audio_video_audio_format": audio_format})
 
     def _update_settings(self, updates: dict[str, Any]) -> AppSettings:
         current_settings = self.load()

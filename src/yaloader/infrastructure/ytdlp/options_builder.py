@@ -31,8 +31,56 @@ class YtDlpOptionsBuilder:
     process_runner: ProcessRunner | None = None
 
     def build(self, request: DownloadRequest) -> YtDlpOptions:
+        return self._build_options(
+            request=request,
+            format_selector=self._build_format_selector(request=request),
+            should_merge_video=request.mode is DownloadMode.VIDEO,
+            postprocessors=self._build_postprocessors(request=request),
+        )
+
+    def build_video_only(self, request: DownloadRequest) -> YtDlpOptions:
+        if request.mode is not DownloadMode.VIDEO:
+            message = "Video-only options can be built only for video requests."
+            raise ValueError(message)
+
+        return self._build_options(
+            request=request,
+            format_selector=self._build_video_only_format_selector(
+                output_format=request.output_format,
+                video_quality=request.video_quality,
+            ),
+            should_merge_video=False,
+            postprocessors=(),
+        )
+
+    def build_audio_companion(
+        self,
+        *,
+        request: DownloadRequest,
+        audio_format: OutputFormat,
+    ) -> YtDlpOptions:
+        audio_request = DownloadRequest(
+            url=request.url,
+            target_dir=request.target_dir,
+            mode=DownloadMode.AUDIO,
+            output_format=audio_format,
+            video_quality=request.video_quality,
+            include_playlist=request.include_playlist,
+            download_speed_limit_bytes_per_second=(request.download_speed_limit_bytes_per_second),
+        )
+
+        return self.build(request=audio_request)
+
+    def _build_options(
+        self,
+        *,
+        request: DownloadRequest,
+        format_selector: str,
+        should_merge_video: bool,
+        postprocessors: tuple[YtDlpPostProcessorOptions, ...],
+    ) -> YtDlpOptions:
         options: YtDlpOptions = {
-            "format": self._build_format_selector(request=request),
+            "format": format_selector,
             "outtmpl": self._build_output_template(target_dir=request.target_dir),
             "noplaylist": not request.include_playlist,
             "windowsfilenames": True,
@@ -45,7 +93,7 @@ class YtDlpOptionsBuilder:
             "remote_components": REMOTE_COMPONENTS,
         }
 
-        if request.mode is DownloadMode.VIDEO:
+        if should_merge_video:
             options["merge_output_format"] = request.output_format.value
 
         if self.cookies_file is not None and self.cookies_file.is_file():
@@ -56,10 +104,8 @@ class YtDlpOptionsBuilder:
         if ffmpeg_location is not None:
             options["ffmpeg_location"] = str(ffmpeg_location)
 
-        postprocessors = self._build_postprocessors(request=request)
-
         if postprocessors:
-            options["postprocessors"] = postprocessors
+            options["postprocessors"] = list(postprocessors)
 
         return options
 
@@ -114,6 +160,41 @@ class YtDlpOptionsBuilder:
         message = f"Unsupported video output format: {output_format}"
         raise ValueError(message)
 
+    def _build_video_only_format_selector(
+        self,
+        *,
+        output_format: OutputFormat,
+        video_quality: VideoQuality,
+    ) -> str:
+        height_filter = self._build_height_filter(video_quality=video_quality)
+
+        if output_format is OutputFormat.MP4:
+            return self._join_format_fallbacks(
+                [
+                    f"bv*[ext=mp4]{height_filter}",
+                    f"bv*{height_filter}",
+                    "bv*",
+                    f"b[ext=mp4]{height_filter}",
+                    f"b{height_filter}",
+                    "b",
+                ]
+            )
+
+        if output_format is OutputFormat.WEBM:
+            return self._join_format_fallbacks(
+                [
+                    f"bv*[ext=webm]{height_filter}",
+                    f"bv*{height_filter}",
+                    "bv*",
+                    f"b[ext=webm]{height_filter}",
+                    f"b{height_filter}",
+                    "b",
+                ]
+            )
+
+        message = f"Unsupported video-only output format: {output_format}"
+        raise ValueError(message)
+
     def _join_format_fallbacks(self, format_fallbacks: list[str]) -> str:
         unique_format_fallbacks: list[str] = []
 
@@ -128,7 +209,13 @@ class YtDlpOptionsBuilder:
 
         return "/".join(unique_format_fallbacks)
 
-    def _build_audio_format_selector(self, output_format: OutputFormat) -> str:
+    def _build_height_filter(self, *, video_quality: VideoQuality) -> str:
+        if video_quality is VideoQuality.BEST:
+            return ""
+
+        return f"[height<={video_quality.value.removesuffix('p')}]"
+
+    def _build_audio_format_selector(self, *, output_format: OutputFormat) -> str:
         if output_format is OutputFormat.MP3:
             return "ba/b"
 
@@ -138,55 +225,29 @@ class YtDlpOptionsBuilder:
         message = f"Unsupported audio output format: {output_format}"
         raise ValueError(message)
 
-    def _build_height_filter(self, video_quality: VideoQuality) -> str:
-        height_limit = self._get_height_limit(video_quality=video_quality)
-
-        if height_limit is None:
-            return ""
-
-        return f"[height<={height_limit}]"
-
-    def _get_height_limit(self, video_quality: VideoQuality) -> int | None:
-        match video_quality:
-            case VideoQuality.BEST:
-                return None
-            case VideoQuality.P2160:
-                return 2160
-            case VideoQuality.P1440:
-                return 1440
-            case VideoQuality.P1080:
-                return 1080
-            case VideoQuality.P720:
-                return 720
-            case VideoQuality.P480:
-                return 480
-            case VideoQuality.P360:
-                return 360
-
     def _build_postprocessors(
         self,
+        *,
         request: DownloadRequest,
-    ) -> list[YtDlpPostProcessorOptions]:
-        if request.mode is not DownloadMode.AUDIO:
-            return []
-
-        preferred_codec = self._get_audio_preferred_codec(output_format=request.output_format)
-        postprocessor: YtDlpPostProcessorOptions = {
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": preferred_codec,
-        }
+    ) -> tuple[YtDlpPostProcessorOptions, ...]:
+        if request.mode is DownloadMode.VIDEO:
+            return ()
 
         if request.output_format is OutputFormat.MP3:
-            postprocessor["preferredquality"] = DEFAULT_AUDIO_QUALITY
+            return (
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": DEFAULT_AUDIO_QUALITY,
+                },
+            )
 
-        return [postprocessor]
+        if request.output_format is OutputFormat.M4A:
+            return (
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "m4a",
+                },
+            )
 
-    def _get_audio_preferred_codec(self, output_format: OutputFormat) -> str:
-        if output_format is OutputFormat.MP3:
-            return "mp3"
-
-        if output_format is OutputFormat.M4A:
-            return "m4a"
-
-        message = f"Unsupported audio output format: {output_format}"
-        raise ValueError(message)
+        return ()

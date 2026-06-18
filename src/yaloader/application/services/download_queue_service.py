@@ -51,6 +51,8 @@ class DownloadQueueService:
             output_format=request.output_format,
             video_quality=request.video_quality,
             include_playlist=request.include_playlist,
+            separate_audio_video_enabled=request.separate_audio_video_enabled,
+            separate_audio_format=request.separate_audio_format,
             download_speed_limit_bytes_per_second=request.download_speed_limit_bytes_per_second,
         )
 

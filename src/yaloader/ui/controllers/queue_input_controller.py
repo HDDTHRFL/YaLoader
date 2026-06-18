@@ -35,6 +35,8 @@ class QueueInputController:
         target_dir: Path,
         output_format: OutputFormat,
         video_quality: VideoQuality,
+        separate_audio_video_enabled: bool = False,
+        separate_audio_format: OutputFormat = OutputFormat.MP3,
         download_speed_limit_bytes_per_second: int | None = None,
     ) -> QueueInputControllerUpdate:
         normalized_url = url.strip()
@@ -52,13 +54,20 @@ class QueueInputController:
         )
 
         try:
+            resolved_mode = get_download_mode_for_output_format(
+                output_format=resolved_output_format,
+            )
             request = DownloadRequest(
                 url=normalized_url,
                 target_dir=target_dir,
-                mode=get_download_mode_for_output_format(output_format=resolved_output_format),
+                mode=resolved_mode,
                 output_format=resolved_output_format,
                 video_quality=video_quality,
                 include_playlist=include_playlist,
+                separate_audio_video_enabled=(
+                    separate_audio_video_enabled and resolved_mode is DownloadMode.VIDEO
+                ),
+                separate_audio_format=separate_audio_format,
                 download_speed_limit_bytes_per_second=download_speed_limit_bytes_per_second,
             )
         except ValidationError as error:

@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from yaloader.domain.download_speed_limit import validate_download_speed_limit_bytes_per_second
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
-from yaloader.domain.format_rules import is_output_format_allowed
+from yaloader.domain.format_rules import AUDIO_OUTPUT_FORMATS, is_output_format_allowed
 from yaloader.domain.source_policy import validate_supported_media_url
 from yaloader.domain.value_objects.media_url import MediaUrl
 
@@ -25,6 +25,8 @@ class DownloadRequest(BaseModel):
     output_format: OutputFormat = OutputFormat.MP4
     video_quality: VideoQuality = VideoQuality.BEST
     include_playlist: bool = False
+    separate_audio_video_enabled: bool = False
+    separate_audio_format: OutputFormat = OutputFormat.MP3
     download_speed_limit_bytes_per_second: int | None = None
 
     @field_validator("url")
@@ -39,6 +41,15 @@ class DownloadRequest(BaseModel):
         if not value.is_absolute():
             msg = "Target directory must be an absolute path."
             raise ValueError(msg)
+
+        return value
+
+    @field_validator("separate_audio_format")
+    @classmethod
+    def validate_separate_audio_format(cls, value: OutputFormat) -> OutputFormat:
+        if value not in AUDIO_OUTPUT_FORMATS:
+            message = "Separate audio format must be an audio output format."
+            raise ValueError(message)
 
         return value
 

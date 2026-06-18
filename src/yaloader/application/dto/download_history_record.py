@@ -25,6 +25,8 @@ class DownloadHistoryRecord(BaseModel):
     target_dir: Path
     mode: DownloadMode
     output_format: OutputFormat
+    separate_audio_video_enabled: bool = False
+    separate_audio_format: OutputFormat = OutputFormat.MP3
     video_quality: VideoQuality
     status: DownloadStatus
     created_at: datetime
@@ -50,6 +52,8 @@ class DownloadHistoryRecord(BaseModel):
             target_dir=task.target_dir,
             mode=task.mode,
             output_format=task.output_format,
+            separate_audio_video_enabled=task.separate_audio_video_enabled,
+            separate_audio_format=task.separate_audio_format,
             video_quality=task.requested_video_quality,
             resolved_video_quality=task.video_quality,
             status=task.status,

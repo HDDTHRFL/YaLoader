@@ -89,3 +89,24 @@ def test_update_downloads_dir_preserves_download_speed_limit(tmp_path: Path) -> 
 
     assert settings.downloads_dir == second_downloads_dir
     assert settings.download_speed_limit_bytes_per_second == 1_048_576
+
+
+def test_settings_service_updates_separate_audio_video_preferences(
+    tmp_path: Path,
+) -> None:
+    from yaloader.domain.enums import OutputFormat
+
+    service = SettingsService(
+        settings_file=tmp_path / "settings.json",
+        default_downloads_dir=tmp_path / "downloads",
+    )
+
+    settings = service.update_separate_audio_video_enabled(is_enabled=True)
+    settings = service.update_separate_audio_video_audio_format(
+        audio_format=OutputFormat.M4A,
+    )
+
+    assert settings.separate_audio_video_enabled is True
+    assert settings.separate_audio_video_audio_format is OutputFormat.M4A
+    assert service.load().separate_audio_video_enabled is True
+    assert service.load().separate_audio_video_audio_format is OutputFormat.M4A

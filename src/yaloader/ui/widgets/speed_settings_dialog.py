@@ -15,6 +15,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import QEnterEvent, QMouseEvent
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -33,6 +34,7 @@ from yaloader.domain.download_speed_limit import (
     build_download_speed_limit_from_megabytes,
     convert_download_speed_limit_to_megabytes,
 )
+from yaloader.domain.enums import OutputFormat
 
 POPUP_WIDTH = 410
 POPUP_SHOW_ANIMATION_DURATION_MS = 145
@@ -102,6 +104,8 @@ class SpeedSettingsDialog(QDialog):
     show_history_on_startup_changed = pyqtSignal(bool)
     open_downloads_dir_after_queue_completed_changed = pyqtSignal(bool)
     confirm_clear_queue_changed = pyqtSignal(bool)
+    separate_audio_video_enabled_changed = pyqtSignal(bool)
+    separate_audio_video_audio_format_changed = pyqtSignal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -121,6 +125,11 @@ class SpeedSettingsDialog(QDialog):
             "Спрашивать подтверждение перед очисткой очереди",
             self,
         )
+        self._separate_audio_video_checkbox = QCheckBox(
+            "Скачивать аудио и видео раздельно",
+            self,
+        )
+        self._separate_audio_format_combo_box = QComboBox(self)
         self._show_animation: QParallelAnimationGroup | None = None
         self._final_popup_height = 0
 
@@ -149,19 +158,44 @@ class SpeedSettingsDialog(QDialog):
         )
         self._set_value_without_signal(megabytes_per_second=megabytes_per_second)
 
+    def set_separate_audio_video_audio_format(
+        self,
+        *,
+        audio_format: OutputFormat,
+    ) -> None:
+        format_index = self._separate_audio_format_combo_box.findData(audio_format)
+
+        if format_index < 0:
+            return
+
+        self._separate_audio_format_combo_box.setCurrentIndex(format_index)
+
     def set_preferences(self, *, settings: AppSettings) -> None:
         blockers = (
             QSignalBlocker(self._show_history_on_startup_checkbox),
             QSignalBlocker(self._open_downloads_dir_after_queue_completed_checkbox),
             QSignalBlocker(self._confirm_clear_queue_checkbox),
+            QSignalBlocker(self._separate_audio_video_checkbox),
+            QSignalBlocker(self._separate_audio_format_combo_box),
         )
 
         try:
-            self._show_history_on_startup_checkbox.setChecked(settings.show_history_on_startup)
+            self._show_history_on_startup_checkbox.setChecked(
+                settings.show_history_on_startup,
+            )
             self._open_downloads_dir_after_queue_completed_checkbox.setChecked(
                 settings.open_downloads_dir_after_queue_completed,
             )
             self._confirm_clear_queue_checkbox.setChecked(settings.confirm_clear_queue)
+            self._separate_audio_video_checkbox.setChecked(
+                settings.separate_audio_video_enabled,
+            )
+            self.set_separate_audio_video_audio_format(
+                audio_format=settings.separate_audio_video_audio_format,
+            )
+            self._separate_audio_format_combo_box.setEnabled(
+                settings.separate_audio_video_enabled,
+            )
         finally:
             del blockers
 
@@ -196,10 +230,17 @@ class SpeedSettingsDialog(QDialog):
         self._reset_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._reset_button.setToolTip("Сбросить ограничение скорости")
 
+        self._separate_audio_format_combo_box.setObjectName("SeparateAudioFormatComboBox")
+        self._separate_audio_format_combo_box.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._separate_audio_format_combo_box.addItem("mp3", OutputFormat.MP3)
+        self._separate_audio_format_combo_box.addItem("m4a", OutputFormat.M4A)
+        self._separate_audio_format_combo_box.setEnabled(False)
+
         for checkbox in (
             self._show_history_on_startup_checkbox,
             self._open_downloads_dir_after_queue_completed_checkbox,
             self._confirm_clear_queue_checkbox,
+            self._separate_audio_video_checkbox,
         ):
             checkbox.setObjectName("SettingsCheckBox")
             checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -222,6 +263,13 @@ class SpeedSettingsDialog(QDialog):
             self.confirm_clear_queue_changed.emit,
         )
 
+        self._separate_audio_video_checkbox.toggled.connect(
+            self._handle_separate_audio_video_toggled,
+        )
+        self._separate_audio_format_combo_box.currentIndexChanged.connect(
+            self._handle_separate_audio_format_changed,
+        )
+
     def _build_layout(self) -> None:
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(14, 12, 14, 12)
@@ -234,6 +282,18 @@ class SpeedSettingsDialog(QDialog):
         title_label = QLabel("Ограничение скорости загрузки", self)
         title_label.setObjectName("SpeedSettingsPopupTitle")
 
+        separate_download_title_label = QLabel("Раздельная загрузка", self)
+        separate_download_title_label.setObjectName("SmallSectionTitleLabel")
+
+        separate_audio_format_label = QLabel("Формат аудио:", self)
+        separate_audio_format_label.setObjectName("SpeedLimitUnitLabel")
+
+        separate_audio_format_layout = QHBoxLayout()
+        separate_audio_format_layout.setContentsMargins(0, 0, 0, 0)
+        separate_audio_format_layout.setSpacing(8)
+        separate_audio_format_layout.addWidget(separate_audio_format_label)
+        separate_audio_format_layout.addWidget(self._separate_audio_format_combo_box)
+
         behavior_title_label = QLabel("Поведение приложения", self)
         behavior_title_label.setObjectName("SmallSectionTitleLabel")
 
@@ -244,10 +304,23 @@ class SpeedSettingsDialog(QDialog):
         root_layout.addLayout(title_layout)
         root_layout.addWidget(self._slider)
         root_layout.addWidget(self._spin_box)
+        root_layout.addWidget(separate_download_title_label)
+        root_layout.addWidget(self._separate_audio_video_checkbox)
+        root_layout.addLayout(separate_audio_format_layout)
         root_layout.addWidget(behavior_title_label)
         root_layout.addWidget(self._show_history_on_startup_checkbox)
         root_layout.addWidget(self._open_downloads_dir_after_queue_completed_checkbox)
         root_layout.addWidget(self._confirm_clear_queue_checkbox)
+
+    def _handle_separate_audio_video_toggled(self, is_enabled: bool) -> None:
+        self._separate_audio_format_combo_box.setEnabled(is_enabled)
+        self.separate_audio_video_enabled_changed.emit(is_enabled)
+
+    def _handle_separate_audio_format_changed(self, _index: int) -> None:
+        audio_format = self._separate_audio_format_combo_box.currentData()
+
+        if isinstance(audio_format, OutputFormat):
+            self.separate_audio_video_audio_format_changed.emit(audio_format)
 
     def _show_near_anchor(self, *, anchor_widget: QWidget) -> None:
         self.setMinimumHeight(0)

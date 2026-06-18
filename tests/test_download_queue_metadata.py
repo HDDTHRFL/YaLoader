@@ -79,3 +79,21 @@ def create_video_request(
         output_format=OutputFormat.MP4,
         video_quality=video_quality,
     )
+
+
+def test_queue_keeps_separate_audio_video_settings(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        mode=DownloadMode.VIDEO,
+        output_format=OutputFormat.MP4,
+        video_quality=VideoQuality.BEST,
+        separate_audio_video_enabled=True,
+        separate_audio_format=OutputFormat.M4A,
+    )
+    service = DownloadQueueService()
+
+    task = service.add_download(request=request)
+
+    assert task.separate_audio_video_enabled is True
+    assert task.separate_audio_format is OutputFormat.M4A

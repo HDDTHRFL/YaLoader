@@ -313,13 +313,25 @@ class YtDlpDownloader:
             prepared_download=prepared_download,
         )
 
+        output_path: Path | None = None
+
         try:
-            self._download_with_optional_format_fallback(
-                request=request,
-                task=task,
-                prepared_download=prepared_download,
-                options=options,
-            )
+            if should_download_separate_audio_video(task=task):
+                output_path = self._download_separate_audio_video(
+                    request=request,
+                    task=task,
+                    prepared_download=prepared_download,
+                    options=options,
+                    existing_files=existing_files,
+                    cancellation_token=cancellation_token,
+                )
+            else:
+                self._download_with_optional_format_fallback(
+                    request=request,
+                    task=task,
+                    prepared_download=prepared_download,
+                    options=options,
+                )
         except DownloadCancelledError:
             removed_files_count = cleanup_created_files(
                 download_dir=task.target_dir,
@@ -369,10 +381,11 @@ class YtDlpDownloader:
 
             return DownloadResult.canceled(task_id=task.task_id)
 
-        output_path = detect_primary_output_path(
-            download_dir=task.target_dir,
-            existing_files=existing_files,
-        )
+        if output_path is None:
+            output_path = detect_primary_output_path(
+                download_dir=task.target_dir,
+                existing_files=existing_files,
+            )
 
         if progress_callback is not None:
             progress_callback(DownloadProgress.completed(task_id=task.task_id))
@@ -385,6 +398,78 @@ class YtDlpDownloader:
         return DownloadResult.completed(
             task_id=task.task_id,
             output_path=output_path,
+        )
+
+    def _download_separate_audio_video(
+        self,
+        *,
+        request: DownloadRequest,
+        task: DownloadTask,
+        prepared_download: PreparedDownload | None,
+        options: YtDlpOptions,
+        existing_files: frozenset[Path],
+        cancellation_token: CancellationToken | None,
+    ) -> Path | None:
+        video_options = self.options_builder.build_video_only(request=request)
+        copy_runtime_options(source_options=options, target_options=video_options)
+        apply_prepared_output_template(
+            options=video_options,
+            task=task,
+            prepared_download=prepared_download,
+            output_extension=task.output_format.value,
+        )
+
+        logger.info(
+            "Separate video stream download started. task_id={} format={} quality={}",
+            task.task_id,
+            task.output_format.value,
+            task.video_quality.value,
+        )
+        self._download_with_optional_format_fallback(
+            request=request,
+            task=task,
+            prepared_download=prepared_download,
+            options=video_options,
+        )
+
+        video_output_path = detect_primary_output_path(
+            download_dir=task.target_dir,
+            existing_files=existing_files,
+        )
+
+        raise_if_cancel_requested(cancellation_token=cancellation_token)
+
+        audio_request = self._build_audio_companion_request(task=task)
+        audio_options = self.options_builder.build_audio_companion(
+            request=request,
+            audio_format=task.separate_audio_format,
+        )
+        copy_runtime_options(source_options=options, target_options=audio_options)
+        apply_prepared_output_template(
+            options=audio_options,
+            task=task,
+            prepared_download=prepared_download,
+            output_extension=task.separate_audio_format.value,
+        )
+
+        logger.info(
+            "Separate audio companion download started. task_id={} format={}",
+            task.task_id,
+            task.separate_audio_format.value,
+        )
+        self._download_with_optional_format_fallback(
+            request=audio_request,
+            task=task,
+            prepared_download=prepared_download,
+            options=audio_options,
+        )
+
+        if video_output_path is not None:
+            return video_output_path
+
+        return detect_primary_output_path(
+            download_dir=task.target_dir,
+            existing_files=existing_files,
         )
 
     def _download_with_optional_format_fallback(
@@ -463,6 +548,17 @@ class YtDlpDownloader:
 
         return options.get("format") != VIDEO_FORMAT_UNAVAILABLE_FALLBACK_SELECTOR
 
+    def _build_audio_companion_request(self, *, task: DownloadTask) -> DownloadRequest:
+        return DownloadRequest(
+            url=task.url.value,
+            target_dir=task.target_dir,
+            mode=DownloadMode.AUDIO,
+            output_format=task.separate_audio_format,
+            video_quality=task.video_quality,
+            include_playlist=task.include_playlist,
+            download_speed_limit_bytes_per_second=(task.download_speed_limit_bytes_per_second),
+        )
+
     def _get_prepared_download(self, *, task: DownloadTask) -> PreparedDownload | None:
         if self.prepared_download_cache is None:
             return None
@@ -496,6 +592,8 @@ class YtDlpDownloader:
             output_format=task.output_format,
             video_quality=task.video_quality,
             include_playlist=task.include_playlist,
+            separate_audio_video_enabled=task.separate_audio_video_enabled,
+            separate_audio_format=task.separate_audio_format,
             download_speed_limit_bytes_per_second=(task.download_speed_limit_bytes_per_second),
         )
 
@@ -565,11 +663,33 @@ def is_requested_format_unavailable_error(*, error: Exception) -> bool:
     return REQUESTED_FORMAT_UNAVAILABLE_MARKER.casefold() in normalized_message
 
 
+def should_download_separate_audio_video(*, task: DownloadTask) -> bool:
+    return task.mode is DownloadMode.VIDEO and task.separate_audio_video_enabled
+
+
+def copy_runtime_options(
+    *,
+    source_options: YtDlpOptions,
+    target_options: YtDlpOptions,
+) -> None:
+    for option_name in ("progress_hooks",):
+        option_value = source_options.get(option_name)
+
+        if option_value is not None:
+            target_options[option_name] = option_value
+
+
+def raise_if_cancel_requested(*, cancellation_token: CancellationToken | None) -> None:
+    if cancellation_token is not None and cancellation_token.is_cancel_requested:
+        raise DownloadCancelledError
+
+
 def apply_prepared_output_template(
     *,
     options: YtDlpOptions,
     task: DownloadTask,
     prepared_download: PreparedDownload | None,
+    output_extension: str | None = None,
 ) -> None:
     if prepared_download is None or prepared_download.title is None:
         return
@@ -577,10 +697,11 @@ def apply_prepared_output_template(
     if task.include_playlist:
         return
 
+    resolved_output_extension = output_extension or task.output_format.value
     options["outtmpl"] = build_unique_output_template(
         target_dir=task.target_dir,
         title=prepared_download.title,
-        output_extension=task.output_format.value,
+        output_extension=resolved_output_extension,
     )
 
 

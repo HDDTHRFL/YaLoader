@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from yaloader.domain.entities.download_task import DownloadTask
+from yaloader.domain.enums import DownloadMode
 
 CHECKING_TEXT = "Checking..."
 UNKNOWN_TEXT = "—"
@@ -14,8 +15,15 @@ SECONDS_IN_MINUTE = 60
 def build_mode_cell_text(*, task: DownloadTask) -> str:
     return build_two_line_cell_text(
         first_line=task.mode.value,
-        second_line=task.output_format.value,
+        second_line=build_output_format_cell_text(task=task),
     )
+
+
+def build_output_format_cell_text(*, task: DownloadTask) -> str:
+    if task.mode is DownloadMode.VIDEO and task.separate_audio_video_enabled:
+        return f"{task.output_format.value} + {task.separate_audio_format.value}"
+
+    return task.output_format.value
 
 
 def build_quality_cell_text(*, task: DownloadTask, is_metadata_pending: bool) -> str:

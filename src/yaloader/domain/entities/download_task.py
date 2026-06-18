@@ -24,6 +24,8 @@ class DownloadTask:
     video_quality: VideoQuality
     requested_video_quality: VideoQuality
     include_playlist: bool
+    separate_audio_video_enabled: bool = False
+    separate_audio_format: OutputFormat = OutputFormat.MP3
     playlist_count: int | None = None
     duration_seconds: int | None = None
     estimated_file_size_bytes: int | None = None
@@ -44,6 +46,8 @@ class DownloadTask:
         output_format: OutputFormat,
         video_quality: VideoQuality,
         include_playlist: bool,
+        separate_audio_video_enabled: bool = False,
+        separate_audio_format: OutputFormat = OutputFormat.MP3,
         download_speed_limit_bytes_per_second: int | None = None,
     ) -> DownloadTask:
         if not target_dir.is_absolute():
@@ -63,6 +67,10 @@ class DownloadTask:
             video_quality=video_quality,
             requested_video_quality=video_quality,
             include_playlist=include_playlist,
+            separate_audio_video_enabled=(
+                separate_audio_video_enabled and mode is DownloadMode.VIDEO
+            ),
+            separate_audio_format=separate_audio_format,
             download_speed_limit_bytes_per_second=validated_download_speed_limit,
         )
 

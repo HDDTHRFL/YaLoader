@@ -30,7 +30,7 @@ from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.tool_installation import ToolUpdateCheckResult
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.download_speed_limit import format_download_speed_limit_label
-from yaloader.domain.enums import DownloadMode, DownloadStatus, VideoQuality
+from yaloader.domain.enums import DownloadMode, DownloadStatus, OutputFormat, VideoQuality
 from yaloader.infrastructure.windows.explorer import reveal_path_in_file_manager
 from yaloader.services.app_container import AppContainer
 from yaloader.ui.controllers.browser_cookies_controller import (
@@ -351,6 +351,13 @@ class MainWindow(QMainWindow):
         )
         self._speed_settings_dialog.confirm_clear_queue_changed.connect(
             self._handle_confirm_clear_queue_changed
+        )
+
+        self._speed_settings_dialog.separate_audio_video_enabled_changed.connect(
+            self._handle_separate_audio_video_enabled_changed
+        )
+        self._speed_settings_dialog.separate_audio_video_audio_format_changed.connect(
+            self._handle_separate_audio_video_audio_format_changed
         )
 
         self._header.settings_button.clicked.connect(self._handle_speed_settings_button_clicked)
@@ -704,6 +711,8 @@ class MainWindow(QMainWindow):
                 target_dir=self._settings.downloads_dir,
                 output_format=self._input_panel.get_selected_output_format(),
                 video_quality=self._input_panel.get_selected_video_quality(),
+                separate_audio_video_enabled=self._settings.separate_audio_video_enabled,
+                separate_audio_format=self._settings.separate_audio_video_audio_format,
                 download_speed_limit_bytes_per_second=(
                     self._settings.download_speed_limit_bytes_per_second
                 ),
@@ -717,6 +726,8 @@ class MainWindow(QMainWindow):
                 target_dir=self._settings.downloads_dir,
                 output_format=self._input_panel.get_selected_output_format(),
                 video_quality=self._input_panel.get_selected_video_quality(),
+                separate_audio_video_enabled=self._settings.separate_audio_video_enabled,
+                separate_audio_format=self._settings.separate_audio_video_audio_format,
                 download_speed_limit_bytes_per_second=(
                     self._settings.download_speed_limit_bytes_per_second
                 ),
@@ -772,6 +783,21 @@ class MainWindow(QMainWindow):
             bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
             settings=self._settings,
         )
+
+    def _handle_separate_audio_video_enabled_changed(self, is_enabled: bool) -> None:
+        update = self._environment_controller.change_separate_audio_video_enabled(
+            is_enabled=is_enabled,
+        )
+        self._apply_environment_update(update=update)
+
+    def _handle_separate_audio_video_audio_format_changed(
+        self,
+        audio_format: OutputFormat,
+    ) -> None:
+        update = self._environment_controller.change_separate_audio_video_audio_format(
+            audio_format=audio_format,
+        )
+        self._apply_environment_update(update=update)
 
     def _handle_download_speed_limit_signal_changed(self, value: object) -> None:
         try:
@@ -1308,6 +1334,7 @@ class MainWindow(QMainWindow):
         self._speed_settings_dialog.set_download_speed_limit(
             bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
         )
+        self._speed_settings_dialog.set_preferences(settings=self._settings)
         self._sync_speed_limit_indicator(
             bytes_per_second=self._settings.download_speed_limit_bytes_per_second,
         )

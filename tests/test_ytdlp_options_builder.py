@@ -180,3 +180,46 @@ def test_build_output_template_does_not_append_generated_id(tmp_path: Path) -> N
     output_template = str(options["outtmpl"])
     assert "[%(id)s]" not in output_template
     assert output_template.endswith("%(title).200B.%(ext)s")
+
+
+def test_build_video_only_mp4_options(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        mode=DownloadMode.VIDEO,
+        output_format=OutputFormat.MP4,
+        video_quality=VideoQuality.P720,
+    )
+    builder = YtDlpOptionsBuilder()
+
+    options = builder.build_video_only(request=request)
+
+    assert str(options["format"]).startswith("bv*[ext=mp4][height<=720]")
+    assert "merge_output_format" not in options
+    assert "postprocessors" not in options
+
+
+def test_build_audio_companion_mp3_options(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url="https://www.youtube.com/watch?v=test",
+        target_dir=tmp_path,
+        mode=DownloadMode.VIDEO,
+        output_format=OutputFormat.MP4,
+        video_quality=VideoQuality.P720,
+    )
+    builder = YtDlpOptionsBuilder()
+
+    options = builder.build_audio_companion(
+        request=request,
+        audio_format=OutputFormat.MP3,
+    )
+
+    assert options["format"] == "ba/b"
+    assert "merge_output_format" not in options
+    assert options["postprocessors"] == [
+        {
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "0",
+        }
+    ]

@@ -15,6 +15,7 @@ from yaloader.application.services.environment_check_service import EnvironmentC
 from yaloader.application.services.settings_service import SettingsService
 from yaloader.config.paths import AppPaths
 from yaloader.domain.download_speed_limit import format_download_speed_limit_label
+from yaloader.domain.enums import OutputFormat
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +141,35 @@ class EnvironmentController:
         status = "включено" if is_enabled else "выключено"
         return EnvironmentControllerUpdate(
             status_message=f"Подтверждение очистки очереди: {status}",
+            settings=settings,
+        )
+
+    def change_separate_audio_video_enabled(
+        self,
+        *,
+        is_enabled: bool,
+    ) -> EnvironmentControllerUpdate:
+        settings = self._settings_service.update_separate_audio_video_enabled(
+            is_enabled=is_enabled,
+        )
+
+        status = "включено" if is_enabled else "выключено"
+        return EnvironmentControllerUpdate(
+            status_message=f"Раздельное скачивание аудио и видео: {status}",
+            settings=settings,
+        )
+
+    def change_separate_audio_video_audio_format(
+        self,
+        *,
+        audio_format: OutputFormat,
+    ) -> EnvironmentControllerUpdate:
+        settings = self._settings_service.update_separate_audio_video_audio_format(
+            audio_format=audio_format,
+        )
+
+        return EnvironmentControllerUpdate(
+            status_message=f"Формат отдельного аудио: {audio_format.value}",
             settings=settings,
         )
 
