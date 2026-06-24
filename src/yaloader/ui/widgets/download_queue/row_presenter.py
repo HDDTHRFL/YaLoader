@@ -3,7 +3,8 @@ from __future__ import annotations
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem
 
-from yaloader.domain.source_platform import detect_source_platform
+from yaloader.config.resources import get_no_favicon_icon_path
+from yaloader.domain.source_platform import SourcePlatform, detect_source_platform
 from yaloader.ui.platform_icons import build_source_platform_icon
 from yaloader.ui.widgets.download_queue.columns import (
     FOLDER_COLUMN_INDEX,
@@ -92,4 +93,16 @@ class DownloadQueueRowPresenter:
 
         platform = detect_source_platform(url=row_state.task.url.value)
 
+        if platform is SourcePlatform.UNKNOWN:
+            return build_no_favicon_icon()
+
         return build_source_platform_icon(platform=platform)
+
+
+def build_no_favicon_icon() -> QIcon:
+    icon_path = get_no_favicon_icon_path()
+
+    if icon_path.is_file():
+        return QIcon(str(icon_path))
+
+    return QIcon()
