@@ -245,6 +245,7 @@ class MainWindow(QMainWindow):
         self._history_animation_end_panel_width = 0
         self._history_animation_start_window_width = 0
         self._history_animation_end_window_width = 0
+        self._history_animation_uses_window_resize = True
         self._tool_installation_activity_message: str | None = None
         self._browser_cookies_activity_message: str | None = None
         self._download_poll_timer = self.startTimer(DOWNLOAD_POLL_INTERVAL_MS)
@@ -279,8 +280,27 @@ class MainWindow(QMainWindow):
 
         if event.type() is QEvent.Type.WindowStateChange and not self.isMinimized():
             self._handle_speed_limit_indicator_window_state_changed()
+            self._handle_history_panel_window_state_changed()
             QTimer.singleShot(0, self._handle_speed_limit_indicator_window_state_changed)
+            QTimer.singleShot(0, self._handle_history_panel_window_state_changed)
             self._focus_url_input_later()
+
+    def _handle_history_panel_window_state_changed(self) -> None:
+        if self._history_animation is not None:
+            self._history_animation.stop()
+            self._history_animation = None
+
+        target_width = HISTORY_PANEL_WIDTH if self._is_history_panel_visible else 0
+        self._history_animation_uses_window_resize = self._should_resize_window_for_history_panel()
+        self._history_panel.set_drawer_width(width=target_width)
+        self._history_panel.setVisible(self._is_history_panel_visible)
+        self._header.set_history_visible(is_visible=self._is_history_panel_visible)
+        self._apply_history_minimum_width_for_current_state(history_panel_width=target_width)
+
+        central_widget = self.centralWidget()
+
+        if central_widget is not None:
+            central_widget.updateGeometry()
 
     def _handle_speed_limit_indicator_window_state_changed(self) -> None:
         if self._speed_limit_indicator_animation is not None:
@@ -500,7 +520,7 @@ class MainWindow(QMainWindow):
         self._history_panel.set_drawer_width(width=target_width)
         self._history_panel.setVisible(self._is_history_panel_visible)
         self._header.set_history_visible(is_visible=self._is_history_panel_visible)
-        self._set_history_adjusted_minimum_width(history_panel_width=target_width)
+        self._apply_history_minimum_width_for_current_state(history_panel_width=target_width)
 
     def _set_history_adjusted_minimum_width(self, *, history_panel_width: int) -> None:
         self.setMinimumWidth(
@@ -517,9 +537,15 @@ class MainWindow(QMainWindow):
             self._history_animation.stop()
             self._history_animation = None
 
+        self._history_animation_uses_window_resize = self._should_resize_window_for_history_panel()
+
         if is_visible:
             remaining_panel_width = HISTORY_PANEL_WIDTH - current_panel_width
-            target_window_width = start_window_width + remaining_panel_width
+            target_window_width = (
+                start_window_width + remaining_panel_width
+                if self._history_animation_uses_window_resize
+                else start_window_width
+            )
 
             self._is_history_panel_visible = True
             self._history_panel.setVisible(True)
@@ -529,8 +555,9 @@ class MainWindow(QMainWindow):
                 end_panel_width=HISTORY_PANEL_WIDTH,
                 start_window_width=start_window_width,
                 end_window_width=max(
-                    calculate_history_adjusted_window_minimum_width(
+                    self._calculate_history_window_target_width(
                         history_panel_width=HISTORY_PANEL_WIDTH,
+                        target_window_width=target_window_width,
                     ),
                     target_window_width,
                 ),
@@ -538,7 +565,11 @@ class MainWindow(QMainWindow):
             )
             return
 
-        target_window_width = start_window_width - current_panel_width
+        target_window_width = (
+            start_window_width - current_panel_width
+            if self._history_animation_uses_window_resize
+            else start_window_width
+        )
 
         self._is_history_panel_visible = False
         self._header.set_history_visible(is_visible=False)
@@ -547,7 +578,10 @@ class MainWindow(QMainWindow):
             end_panel_width=0,
             start_window_width=start_window_width,
             end_window_width=max(
-                calculate_history_adjusted_window_minimum_width(history_panel_width=0),
+                self._calculate_history_window_target_width(
+                    history_panel_width=0,
+                    target_window_width=target_window_width,
+                ),
                 target_window_width,
             ),
             hide_after_finish=True,
@@ -562,7 +596,9 @@ class MainWindow(QMainWindow):
         end_window_width: int,
         hide_after_finish: bool,
     ) -> None:
-        self._set_history_adjusted_minimum_width(history_panel_width=start_panel_width)
+        self._apply_history_minimum_width_for_current_state(
+            history_panel_width=start_panel_width,
+        )
 
         self._history_animation_start_panel_width = start_panel_width
         self._history_animation_end_panel_width = end_panel_width
@@ -604,8 +640,16 @@ class MainWindow(QMainWindow):
         )
 
         self._history_panel.set_drawer_width(width=panel_width)
-        self._set_history_adjusted_minimum_width(history_panel_width=panel_width)
-        self.resize(max(self.minimumWidth(), window_width), self.height())
+        self._apply_history_minimum_width_for_current_state(history_panel_width=panel_width)
+
+        if self._history_animation_uses_window_resize:
+            self.resize(max(self.minimumWidth(), window_width), self.height())
+            return
+
+        central_widget = self.centralWidget()
+
+        if central_widget is not None:
+            central_widget.updateGeometry()
 
     def _handle_history_panel_width_animation_finished(self, *, hide_after_finish: bool) -> None:
         if hide_after_finish:
@@ -616,12 +660,44 @@ class MainWindow(QMainWindow):
             final_panel_width = HISTORY_PANEL_WIDTH
             self._history_panel.set_drawer_width(width=final_panel_width)
 
-        self._set_history_adjusted_minimum_width(history_panel_width=final_panel_width)
-        self.resize(
-            max(self.minimumWidth(), self._history_animation_end_window_width),
-            self.height(),
+        self._apply_history_minimum_width_for_current_state(
+            history_panel_width=final_panel_width,
         )
+
+        if self._history_animation_uses_window_resize:
+            self.resize(
+                max(self.minimumWidth(), self._history_animation_end_window_width),
+                self.height(),
+            )
+
         self._history_animation = None
+
+    def _calculate_history_window_target_width(
+        self,
+        *,
+        history_panel_width: int,
+        target_window_width: int,
+    ) -> int:
+        if not self._history_animation_uses_window_resize:
+            return target_window_width
+
+        return calculate_history_adjusted_window_minimum_width(
+            history_panel_width=history_panel_width,
+        )
+
+    def _apply_history_minimum_width_for_current_state(
+        self,
+        *,
+        history_panel_width: int,
+    ) -> None:
+        if self._should_resize_window_for_history_panel():
+            self._set_history_adjusted_minimum_width(history_panel_width=history_panel_width)
+            return
+
+        self.setMinimumWidth(WINDOW_MINIMUM_WIDTH)
+
+    def _should_resize_window_for_history_panel(self) -> bool:
+        return not (self.isMaximized() or self.isFullScreen())
 
     def _reload_history_panel(self) -> None:
         self._apply_history_update(update=self._history_controller.load())
