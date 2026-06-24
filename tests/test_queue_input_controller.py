@@ -182,3 +182,26 @@ def test_add_from_input_keeps_explicit_audio_format_for_soundcloud(tmp_path: Pat
     assert update.added_task.output_format is OutputFormat.M4A
     assert update.metadata_request.mode is DownloadMode.AUDIO
     assert update.metadata_request.output_format is OutputFormat.M4A
+
+
+def test_add_from_input_accepts_ytdlp_auto_http_source_url(tmp_path: Path) -> None:
+    queue_service = DownloadQueueService()
+    controller = QueueInputController(queue_service=queue_service)
+
+    update = controller.add_from_input(
+        url="https://vimeo.com/123456",
+        target_dir=tmp_path,
+        output_format=OutputFormat.MP4,
+        video_quality=VideoQuality.BEST,
+    )
+
+    assert update.added_task is not None
+    assert update.metadata_request is not None
+    assert update.status_message == "Добавлено в очередь. Определяем доступное качество..."
+
+    assert update.added_task.url.value == "https://vimeo.com/123456"
+    assert update.added_task.mode is DownloadMode.VIDEO
+    assert update.added_task.output_format is OutputFormat.MP4
+    assert update.metadata_request.url == "https://vimeo.com/123456"
+    assert update.metadata_request.mode is DownloadMode.VIDEO
+    assert queue_service.count() == 1

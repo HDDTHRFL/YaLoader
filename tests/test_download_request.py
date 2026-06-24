@@ -54,12 +54,16 @@ def test_download_request_rejects_invalid_url(tmp_path: Path) -> None:
         )
 
 
-def test_download_request_rejects_unsupported_host(tmp_path: Path) -> None:
-    with pytest.raises(ValidationError):
-        DownloadRequest(
-            url="https://example.com/video",
-            target_dir=tmp_path,
-        )
+def test_download_request_accepts_ytdlp_auto_http_host(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url="https://example.com/video",
+        target_dir=tmp_path,
+        output_format=OutputFormat.MP4,
+    )
+
+    assert request.url == "https://example.com/video"
+    assert request.target_dir == tmp_path
+    assert request.output_format is OutputFormat.MP4
 
 
 def test_download_request_rejects_relative_target_dir() -> None:
@@ -106,4 +110,13 @@ def test_download_request_rejects_negative_download_speed_limit(tmp_path: Path) 
             url="https://www.youtube.com/watch?v=test",
             target_dir=tmp_path,
             download_speed_limit_bytes_per_second=-1,
+        )
+
+
+def test_download_request_rejects_non_http_url(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        DownloadRequest(
+            url="ftp://example.com/video",
+            target_dir=tmp_path,
+            output_format=OutputFormat.MP4,
         )

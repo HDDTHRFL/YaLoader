@@ -66,13 +66,23 @@ class SourcePlatform(StrEnum):
     UNKNOWN = "unknown"
 
 
+KNOWN_SOURCE_PLATFORMS = frozenset(
+    {
+        SourcePlatform.YOUTUBE,
+        SourcePlatform.RUTUBE,
+        SourcePlatform.VK_VIDEO,
+        SourcePlatform.TWITCH,
+        SourcePlatform.SOUNDCLOUD,
+    }
+)
+
 SOURCE_PLATFORM_LABELS = {
     SourcePlatform.YOUTUBE: "YouTube",
     SourcePlatform.RUTUBE: "Rutube",
     SourcePlatform.VK_VIDEO: "VK Video",
     SourcePlatform.TWITCH: "Twitch",
     SourcePlatform.SOUNDCLOUD: "SoundCloud",
-    SourcePlatform.UNKNOWN: "Unknown",
+    SourcePlatform.UNKNOWN: "Auto",
 }
 
 SOURCE_PLATFORM_QUEUE_LABELS = {
@@ -81,7 +91,7 @@ SOURCE_PLATFORM_QUEUE_LABELS = {
     SourcePlatform.VK_VIDEO: "VK Video",
     SourcePlatform.TWITCH: "Twitch",
     SourcePlatform.SOUNDCLOUD: "SoundCloud",
-    SourcePlatform.UNKNOWN: "Unknown",
+    SourcePlatform.UNKNOWN: "Auto",
 }
 
 
@@ -132,14 +142,25 @@ def is_soundcloud_url(url: str) -> bool:
     return detect_source_platform(url=url) is SourcePlatform.SOUNDCLOUD
 
 
+def is_known_source_platform(*, platform: SourcePlatform) -> bool:
+    return platform in KNOWN_SOURCE_PLATFORMS
+
+
+def is_known_source_url(url: str) -> bool:
+    return is_known_source_platform(platform=detect_source_platform(url=url))
+
+
 def is_supported_source_url(url: str) -> bool:
-    return detect_source_platform(url=url) in {
-        SourcePlatform.YOUTUBE,
-        SourcePlatform.RUTUBE,
-        SourcePlatform.VK_VIDEO,
-        SourcePlatform.TWITCH,
-        SourcePlatform.SOUNDCLOUD,
-    }
+    return is_http_source_url(url=url)
+
+
+def is_http_source_url(*, url: str) -> bool:
+    parsed_url = urlparse(url.strip())
+
+    if parsed_url.scheme not in {"http", "https"}:
+        return False
+
+    return bool(parsed_url.netloc)
 
 
 def get_source_platform_label(*, platform: SourcePlatform) -> str:

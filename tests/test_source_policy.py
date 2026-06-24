@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from yaloader.domain.source_policy import is_youtube_url, validate_supported_media_url
+from yaloader.domain.source_policy import (
+    is_known_source_url,
+    is_youtube_url,
+    validate_supported_media_url,
+)
 
 
 @pytest.mark.parametrize(
@@ -28,8 +32,16 @@ def test_is_youtube_url_accepts_supported_hosts(url: str) -> None:
         "https://vimeo.com/123",
     ],
 )
-def test_is_youtube_url_rejects_unsupported_hosts(url: str) -> None:
+def test_is_youtube_url_rejects_non_youtube_hosts(url: str) -> None:
     assert is_youtube_url(url) is False
+
+
+def test_known_source_url_accepts_youtube_url() -> None:
+    assert is_known_source_url("https://www.youtube.com/watch?v=test") is True
+
+
+def test_known_source_url_rejects_ytdlp_auto_url() -> None:
+    assert is_known_source_url("https://vimeo.com/123") is False
 
 
 def test_validate_supported_media_url_returns_valid_youtube_url() -> None:
@@ -40,9 +52,25 @@ def test_validate_supported_media_url_returns_valid_youtube_url() -> None:
     assert result == url
 
 
-def test_validate_supported_media_url_rejects_unsupported_host() -> None:
+def test_validate_supported_media_url_returns_ytdlp_auto_http_url() -> None:
+    url = "https://vimeo.com/123"
+
+    result = validate_supported_media_url(url=url)
+
+    assert result == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ftp://example.com/video",
+        "file:///C:/video.mp4",
+        "not-a-url",
+    ],
+)
+def test_validate_supported_media_url_rejects_non_http_urls(url: str) -> None:
     with pytest.raises(
         ValueError,
-        match="Only YouTube, Rutube, VK Video, Twitch and SoundCloud URLs",
+        match="Only YouTube, Rutube, VK Video, Twitch, SoundCloud",
     ):
-        validate_supported_media_url(url="https://example.com/video")
+        validate_supported_media_url(url=url)

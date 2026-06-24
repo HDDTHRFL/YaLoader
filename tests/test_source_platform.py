@@ -3,6 +3,7 @@ from __future__ import annotations
 from yaloader.domain.source_platform import (
     SourcePlatform,
     detect_source_platform,
+    is_known_source_url,
     is_supported_source_url,
 )
 
@@ -61,6 +62,18 @@ def test_detect_source_platform_for_soundcloud_short_link() -> None:
     )
 
 
+def test_detect_source_platform_for_unknown_http_host() -> None:
+    assert detect_source_platform(url="https://vimeo.com/123456") is SourcePlatform.UNKNOWN
+
+
+def test_youtube_is_known_source_url() -> None:
+    assert is_known_source_url(url="https://www.youtube.com/watch?v=test")
+
+
+def test_unknown_http_host_is_not_known_source_url() -> None:
+    assert not is_known_source_url(url="https://vimeo.com/123456")
+
+
 def test_rutube_is_supported_source_url() -> None:
     assert is_supported_source_url(url="https://rutube.ru/video/1234567890abcdef/")
 
@@ -75,3 +88,11 @@ def test_twitch_is_supported_source_url() -> None:
 
 def test_soundcloud_is_supported_source_url() -> None:
     assert is_supported_source_url(url="https://soundcloud.com/artist/track")
+
+
+def test_unknown_http_host_is_supported_as_ytdlp_auto_source_url() -> None:
+    assert is_supported_source_url(url="https://vimeo.com/123456")
+
+
+def test_non_http_source_url_is_not_supported() -> None:
+    assert not is_supported_source_url(url="ftp://example.com/video")

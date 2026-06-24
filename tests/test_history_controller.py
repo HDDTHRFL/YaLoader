@@ -168,7 +168,7 @@ def test_add_record_to_queue_rejects_duplicate_url(tmp_path: Path) -> None:
     assert queue_service.count() == 1
 
 
-def test_add_record_to_queue_returns_validation_error_for_unsupported_url(
+def test_add_record_to_queue_accepts_ytdlp_auto_http_url(
     tmp_path: Path,
 ) -> None:
     history_service = DownloadHistoryService(history_file=tmp_path / "download_history.json")
@@ -184,11 +184,12 @@ def test_add_record_to_queue_returns_validation_error_for_unsupported_url(
 
     update = controller.add_record_to_queue(record=record)
 
-    assert update.added_task is None
-    assert update.metadata_request is None
-    assert update.status_message is not None
-    assert update.status_message.startswith("Не удалось добавить из истории:")
-    assert queue_service.count() == 0
+    assert update.added_task is not None
+    assert update.metadata_request is not None
+    assert update.status_message == "Задача из истории добавлена в очередь загрузок"
+    assert update.added_task.url.value == "https://example.com/video"
+    assert update.metadata_request.url == "https://example.com/video"
+    assert queue_service.count() == 1
 
 
 def create_history_record(
