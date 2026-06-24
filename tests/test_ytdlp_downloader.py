@@ -42,6 +42,23 @@ class RecordingYtDlpBackend:
         self.options = options
 
 
+class RecordingDownloadHistoryYtDlpBackend:
+    def __init__(self) -> None:
+        self.download_calls: list[tuple[tuple[str, ...], YtDlpOptions]] = []
+        self.prepared_download_calls: list[PreparedDownload] = []
+
+    def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
+        self.download_calls.append((tuple(urls), dict(options)))
+
+    def download_prepared(
+        self,
+        *,
+        prepared_download: PreparedDownload,
+        options: YtDlpOptions,
+    ) -> None:
+        self.prepared_download_calls.append(prepared_download)
+
+
 class CreatingOutputYtDlpBackend:
     def __init__(self, *, output_file_name: str = "downloaded.mp4") -> None:
         self.output_file_name = output_file_name
@@ -234,6 +251,48 @@ def test_ytdlp_downloader_uses_prepared_download_from_cache(tmp_path: Path) -> N
     assert backend.prepared_download == prepared_download
     assert backend.options is not None
     assert backend.options["merge_output_format"] == "mp4"
+
+
+def test_ytdlp_downloader_reextracts_streams_for_separate_audio_video(
+    tmp_path: Path,
+) -> None:
+    backend = RecordingDownloadHistoryYtDlpBackend()
+    prepared_download_cache = PreparedDownloadCache()
+    downloader = YtDlpDownloader(
+        options_builder=YtDlpOptionsBuilder(),
+        backend=backend,
+        prepared_download_cache=prepared_download_cache,
+    )
+    task = DownloadTask.create(
+        url=MediaUrl("https://www.youtube.com/watch?v=test"),
+        target_dir=tmp_path,
+        mode=DownloadMode.VIDEO,
+        output_format=OutputFormat.MP4,
+        video_quality=VideoQuality.P1080,
+        include_playlist=False,
+        separate_audio_video_enabled=True,
+        separate_audio_format=OutputFormat.MP3,
+    )
+    prepared_download = PreparedDownload(
+        task_id=task.task_id,
+        url=task.url.value,
+        title="Prepared video",
+        raw_info={
+            "id": "test",
+            "title": "Prepared video",
+        },
+    )
+    prepared_download_cache.save(prepared_download=prepared_download)
+
+    result = downloader.download(task=task)
+
+    assert result.status == DownloadStatus.COMPLETED
+    assert backend.prepared_download_calls == []
+    assert len(backend.download_calls) == 2
+    assert backend.download_calls[0][0] == (task.url.value,)
+    assert backend.download_calls[1][0] == (task.url.value,)
+    assert "merge_output_format" not in backend.download_calls[0][1]
+    assert backend.download_calls[1][1]["format"] == "ba/b"
 
 
 def test_ytdlp_downloader_uses_unique_prepared_output_template_for_duplicate_file(

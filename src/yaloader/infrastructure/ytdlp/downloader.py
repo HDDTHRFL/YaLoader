@@ -430,6 +430,7 @@ class YtDlpDownloader:
             task=task,
             prepared_download=prepared_download,
             options=video_options,
+            use_prepared_download=False,
         )
 
         video_output_path = detect_primary_output_path(
@@ -462,6 +463,7 @@ class YtDlpDownloader:
             task=task,
             prepared_download=prepared_download,
             options=audio_options,
+            use_prepared_download=False,
         )
 
         if video_output_path is not None:
@@ -479,12 +481,14 @@ class YtDlpDownloader:
         task: DownloadTask,
         prepared_download: PreparedDownload | None,
         options: YtDlpOptions,
+        use_prepared_download: bool = True,
     ) -> None:
         try:
             self._run_backend_download(
                 task=task,
                 prepared_download=prepared_download,
                 options=options,
+                use_prepared_download=use_prepared_download,
             )
         except DownloadCancelledError:
             raise
@@ -510,6 +514,7 @@ class YtDlpDownloader:
                 task=task,
                 prepared_download=prepared_download,
                 options=fallback_options,
+                use_prepared_download=use_prepared_download,
             )
 
     def _run_backend_download(
@@ -518,13 +523,18 @@ class YtDlpDownloader:
         task: DownloadTask,
         prepared_download: PreparedDownload | None,
         options: YtDlpOptions,
+        use_prepared_download: bool,
     ) -> None:
         runtime_environment = YtDlpRuntimeEnvironment(
             process_runner=self.options_builder.process_runner,
         )
 
         with runtime_environment.apply():
-            if prepared_download is not None and prepared_download.raw_info:
+            if (
+                use_prepared_download
+                and prepared_download is not None
+                and prepared_download.raw_info
+            ):
                 self.backend.download_prepared(
                     prepared_download=prepared_download,
                     options=options,

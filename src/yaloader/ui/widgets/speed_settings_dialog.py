@@ -10,6 +10,7 @@ from PyQt6.QtCore import (
     QRect,
     QSignalBlocker,
     Qt,
+    QVariantAnimation,
     pyqtSignal,
 )
 from PyQt6.QtGui import QEnterEvent, QMouseEvent
@@ -38,6 +39,9 @@ from yaloader.domain.enums import OutputFormat
 
 POPUP_WIDTH = 410
 POPUP_SHOW_ANIMATION_DURATION_MS = 145
+SEPARATE_AUDIO_FORMAT_ANIMATION_DURATION_MS = 180
+POPUP_CONTENT_SPACING = 10
+SEPARATE_AUDIO_FORMAT_PANEL_TOP_MARGIN = POPUP_CONTENT_SPACING
 POPUP_RIGHT_EDGE_SHIFT_LEFT = -15
 RESET_BUTTON_SIZE = 28
 WINDOW_MAXIMUM_HEIGHT = 16_777_215
@@ -129,9 +133,17 @@ class SpeedSettingsDialog(QDialog):
             "Скачивать аудио и видео раздельно",
             self,
         )
-        self._separate_audio_format_combo_box = QComboBox(self)
+        self._content_widget = QWidget(self)
+        self._separate_audio_format_panel = QWidget(self._content_widget)
+        self._separate_audio_format_combo_box = QComboBox(self._content_widget)
         self._show_animation: QParallelAnimationGroup | None = None
+        self._separate_audio_format_animation: QVariantAnimation | None = None
         self._final_popup_height = 0
+        self._separate_audio_format_animation_start_geometry = QRect()
+        self._separate_audio_format_animation_start_panel_height = 0
+        self._separate_audio_format_animation_start_content_height = 0
+        self._separate_audio_format_animation_final_panel_height = 0
+        self._is_separate_audio_format_panel_target_expanded = False
 
         self._configure_widgets()
         self._connect_signals()
@@ -193,14 +205,15 @@ class SpeedSettingsDialog(QDialog):
             self.set_separate_audio_video_audio_format(
                 audio_format=settings.separate_audio_video_audio_format,
             )
-            self._separate_audio_format_combo_box.setEnabled(
-                settings.separate_audio_video_enabled,
+            self._set_separate_audio_format_panel_expanded(
+                is_expanded=settings.separate_audio_video_enabled,
             )
         finally:
             del blockers
 
     def _configure_widgets(self) -> None:
         self.setObjectName("SpeedSettingsDialog")
+        self._content_widget.setObjectName("SpeedSettingsDialogContent")
         self.setWindowTitle("Настройки загрузки")
         self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -229,6 +242,10 @@ class SpeedSettingsDialog(QDialog):
         self._reset_button.setFixedSize(RESET_BUTTON_SIZE, RESET_BUTTON_SIZE)
         self._reset_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._reset_button.setToolTip("Сбросить ограничение скорости")
+
+        self._separate_audio_format_panel.setObjectName("SeparateAudioFormatPanel")
+        self._set_separate_audio_format_panel_visible_height(height=0)
+        self._separate_audio_format_panel.show()
 
         self._separate_audio_format_combo_box.setObjectName("SeparateAudioFormatComboBox")
         self._separate_audio_format_combo_box.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -271,9 +288,9 @@ class SpeedSettingsDialog(QDialog):
         )
 
     def _build_layout(self) -> None:
-        root_layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self._content_widget)
         root_layout.setContentsMargins(14, 12, 14, 12)
-        root_layout.setSpacing(10)
+        root_layout.setSpacing(0)
 
         title_layout = QHBoxLayout()
         title_layout.setContentsMargins(0, 0, 0, 0)
@@ -288,8 +305,13 @@ class SpeedSettingsDialog(QDialog):
         separate_audio_format_label = QLabel("Формат аудио:", self)
         separate_audio_format_label.setObjectName("SpeedLimitUnitLabel")
 
-        separate_audio_format_layout = QHBoxLayout()
-        separate_audio_format_layout.setContentsMargins(0, 0, 0, 0)
+        separate_audio_format_layout = QHBoxLayout(self._separate_audio_format_panel)
+        separate_audio_format_layout.setContentsMargins(
+            0,
+            SEPARATE_AUDIO_FORMAT_PANEL_TOP_MARGIN,
+            0,
+            0,
+        )
         separate_audio_format_layout.setSpacing(8)
         separate_audio_format_layout.addWidget(separate_audio_format_label)
         separate_audio_format_layout.addWidget(self._separate_audio_format_combo_box)
@@ -302,18 +324,26 @@ class SpeedSettingsDialog(QDialog):
         title_layout.addWidget(self._reset_button)
 
         root_layout.addLayout(title_layout)
+        root_layout.addSpacing(POPUP_CONTENT_SPACING)
         root_layout.addWidget(self._slider)
+        root_layout.addSpacing(POPUP_CONTENT_SPACING)
         root_layout.addWidget(self._spin_box)
+        root_layout.addSpacing(POPUP_CONTENT_SPACING)
         root_layout.addWidget(separate_download_title_label)
+        root_layout.addSpacing(POPUP_CONTENT_SPACING)
         root_layout.addWidget(self._separate_audio_video_checkbox)
-        root_layout.addLayout(separate_audio_format_layout)
+        root_layout.addWidget(self._separate_audio_format_panel)
+        root_layout.addSpacing(POPUP_CONTENT_SPACING)
         root_layout.addWidget(behavior_title_label)
+        root_layout.addSpacing(POPUP_CONTENT_SPACING)
         root_layout.addWidget(self._show_history_on_startup_checkbox)
+        root_layout.addSpacing(POPUP_CONTENT_SPACING)
         root_layout.addWidget(self._open_downloads_dir_after_queue_completed_checkbox)
+        root_layout.addSpacing(POPUP_CONTENT_SPACING)
         root_layout.addWidget(self._confirm_clear_queue_checkbox)
 
     def _handle_separate_audio_video_toggled(self, is_enabled: bool) -> None:
-        self._separate_audio_format_combo_box.setEnabled(is_enabled)
+        self._animate_separate_audio_format_panel(is_expanded=is_enabled)
         self.separate_audio_video_enabled_changed.emit(is_enabled)
 
     def _handle_separate_audio_format_changed(self, _index: int) -> None:
@@ -322,13 +352,219 @@ class SpeedSettingsDialog(QDialog):
         if isinstance(audio_format, OutputFormat):
             self.separate_audio_video_audio_format_changed.emit(audio_format)
 
+    def _set_separate_audio_format_panel_expanded(self, *, is_expanded: bool) -> None:
+        panel_height = self._get_separate_audio_format_panel_expanded_height() if is_expanded else 0
+        self._is_separate_audio_format_panel_target_expanded = is_expanded
+        self._separate_audio_format_combo_box.setEnabled(is_expanded)
+        self._separate_audio_format_panel.show()
+        self._set_separate_audio_format_panel_visible_height(height=panel_height)
+        self._sync_content_widget_geometry()
+
+        if self.isVisible():
+            self._lock_popup_height_to_content_widget()
+
+    def _animate_separate_audio_format_panel(self, *, is_expanded: bool) -> None:
+        # smooth fixed-height content-widget animation
+        if self._separate_audio_format_animation is not None:
+            self._separate_audio_format_animation.stop()
+            self._separate_audio_format_animation = None
+
+        start_panel_height = self._get_separate_audio_format_panel_visible_height()
+        final_panel_height = (
+            self._get_separate_audio_format_panel_expanded_height() if is_expanded else 0
+        )
+
+        if start_panel_height == final_panel_height:
+            self._set_separate_audio_format_panel_expanded(is_expanded=is_expanded)
+            return
+
+        start_geometry = self.geometry()
+        start_content_height = max(1, self._content_widget.height())
+
+        self._is_separate_audio_format_panel_target_expanded = is_expanded
+        self._separate_audio_format_combo_box.setEnabled(is_expanded)
+        self._separate_audio_format_panel.show()
+        self._separate_audio_format_animation_start_geometry = start_geometry
+        self._separate_audio_format_animation_start_panel_height = start_panel_height
+        self._separate_audio_format_animation_start_content_height = start_content_height
+        self._separate_audio_format_animation_final_panel_height = final_panel_height
+
+        final_dialog_height = self._calculate_separate_audio_format_animation_height(
+            panel_height=final_panel_height,
+        )
+
+        self.setMinimumHeight(min(start_geometry.height(), final_dialog_height))
+        self.setMaximumHeight(max(start_geometry.height(), final_dialog_height))
+
+        animation = QVariantAnimation(self)
+        animation.setDuration(SEPARATE_AUDIO_FORMAT_ANIMATION_DURATION_MS)
+        animation.setStartValue(0.0)
+        animation.setEndValue(1.0)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.valueChanged.connect(
+            self._handle_separate_audio_format_animation_value_changed,
+        )
+        animation.finished.connect(self._handle_separate_audio_format_animation_finished)
+        animation.start()
+
+        self._separate_audio_format_animation = animation
+
+    def _handle_separate_audio_format_animation_value_changed(
+        self,
+        value: object,
+    ) -> None:
+        progress = self._normalize_animation_progress(value=value)
+        panel_height = self._calculate_separate_audio_format_panel_animation_height(
+            progress=progress,
+        )
+        content_height = self._calculate_separate_audio_format_content_animation_height(
+            panel_height=panel_height,
+        )
+        dialog_height = self._calculate_separate_audio_format_animation_height(
+            panel_height=panel_height,
+        )
+
+        self._apply_separate_audio_format_animation_frame(
+            panel_height=panel_height,
+            content_height=content_height,
+            dialog_height=dialog_height,
+        )
+
+    def _handle_separate_audio_format_animation_finished(self) -> None:
+        final_panel_height = self._separate_audio_format_animation_final_panel_height
+        final_content_height = self._calculate_separate_audio_format_content_animation_height(
+            panel_height=final_panel_height,
+        )
+        final_dialog_height = self._calculate_separate_audio_format_animation_height(
+            panel_height=final_panel_height,
+        )
+
+        self._apply_separate_audio_format_animation_frame(
+            panel_height=final_panel_height,
+            content_height=final_content_height,
+            dialog_height=final_dialog_height,
+        )
+        self.setMinimumHeight(final_dialog_height)
+        self.setMaximumHeight(final_dialog_height)
+        self._final_popup_height = final_dialog_height
+        self._separate_audio_format_animation = None
+
+    def _apply_separate_audio_format_animation_frame(
+        self,
+        *,
+        panel_height: int,
+        content_height: int,
+        dialog_height: int,
+    ) -> None:
+        is_expanding = (
+            self._separate_audio_format_animation_final_panel_height
+            > self._separate_audio_format_animation_start_panel_height
+        )
+
+        if is_expanding:
+            self._set_popup_animation_height(height=dialog_height)
+            self._set_content_widget_height(height=content_height)
+            self._set_separate_audio_format_panel_visible_height(height=panel_height)
+            return
+
+        self._set_separate_audio_format_panel_visible_height(height=panel_height)
+        self._set_content_widget_height(height=content_height)
+        self._set_popup_animation_height(height=dialog_height)
+
+    def _calculate_separate_audio_format_panel_animation_height(
+        self,
+        *,
+        progress: float,
+    ) -> int:
+        start_panel_height = self._separate_audio_format_animation_start_panel_height
+        final_panel_height = self._separate_audio_format_animation_final_panel_height
+
+        return max(
+            0,
+            round(start_panel_height + (final_panel_height - start_panel_height) * progress),
+        )
+
+    def _calculate_separate_audio_format_content_animation_height(
+        self,
+        *,
+        panel_height: int,
+    ) -> int:
+        start_panel_height = self._separate_audio_format_animation_start_panel_height
+        start_content_height = self._separate_audio_format_animation_start_content_height
+
+        return max(1, start_content_height + panel_height - start_panel_height)
+
+    def _calculate_separate_audio_format_animation_height(self, *, panel_height: int) -> int:
+        start_geometry = self._separate_audio_format_animation_start_geometry
+        start_panel_height = self._separate_audio_format_animation_start_panel_height
+
+        return max(1, start_geometry.height() + panel_height - start_panel_height)
+
+    def _set_popup_animation_height(self, *, height: int) -> None:
+        normalized_height = max(1, height)
+        start_geometry = self._separate_audio_format_animation_start_geometry
+
+        self.setMinimumHeight(normalized_height)
+        self.setMaximumHeight(normalized_height)
+        self.setGeometry(
+            start_geometry.left(),
+            start_geometry.top(),
+            start_geometry.width(),
+            normalized_height,
+        )
+        self._final_popup_height = normalized_height
+
+    def _set_content_widget_height(self, *, height: int) -> None:
+        normalized_height = max(1, height)
+        self._content_widget.setGeometry(
+            0,
+            0,
+            self.width(),
+            normalized_height,
+        )
+
+    def _sync_content_widget_geometry(self) -> None:
+        self._content_widget.adjustSize()
+        content_height = max(1, self._content_widget.sizeHint().height())
+        self._set_content_widget_height(height=content_height)
+
+    def _normalize_animation_progress(self, *, value: object) -> float:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return 0.0
+
+        return max(0.0, min(1.0, float(value)))
+
+    def _lock_popup_height_to_content_widget(self) -> None:
+        content_height = max(1, self._content_widget.height())
+        self.setMinimumHeight(content_height)
+        self.setMaximumHeight(content_height)
+        self.resize(self.width(), content_height)
+        self._final_popup_height = content_height
+
+    def _set_separate_audio_format_panel_visible_height(self, *, height: int) -> None:
+        normalized_height = max(0, height)
+        self._separate_audio_format_panel.setMinimumHeight(0)
+        self._separate_audio_format_panel.setMaximumHeight(normalized_height)
+
+    def _get_separate_audio_format_panel_expanded_height(self) -> int:
+        return max(1, self._separate_audio_format_panel.sizeHint().height())
+
+    def _get_separate_audio_format_panel_visible_height(self) -> int:
+        return max(
+            0,
+            min(
+                self._get_separate_audio_format_panel_expanded_height(),
+                self._separate_audio_format_panel.maximumHeight(),
+            ),
+        )
+
     def _show_near_anchor(self, *, anchor_widget: QWidget) -> None:
         self.setMinimumHeight(0)
         self.setMaximumHeight(WINDOW_MAXIMUM_HEIGHT)
-        self.adjustSize()
+        self._sync_content_widget_geometry()
 
-        final_width = self.sizeHint().width()
-        final_height = self.sizeHint().height()
+        final_width = self._content_widget.sizeHint().width()
+        final_height = self._content_widget.height()
         self._final_popup_height = final_height
 
         anchor_left_bottom = anchor_widget.mapToGlobal(anchor_widget.rect().bottomLeft())
@@ -352,6 +588,12 @@ class SpeedSettingsDialog(QDialog):
         final_height = max(1, final_geometry.height())
 
         self.setWindowOpacity(0.0)
+        self._content_widget.setGeometry(
+            0,
+            0,
+            final_geometry.width(),
+            final_height,
+        )
         self.setGeometry(
             final_geometry.left(),
             final_geometry.top(),

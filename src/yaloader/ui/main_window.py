@@ -236,6 +236,10 @@ class MainWindow(QMainWindow):
         self._speed_limit_indicator_end_height = 0
         self._speed_limit_indicator_start_window_height = 0
         self._speed_limit_indicator_end_window_height = 0
+        self._speed_limit_indicator_start_queue_height = 0
+        self._speed_limit_indicator_end_queue_height = 0
+        self._speed_limit_indicator_uses_window_resize = True
+        self._speed_limit_indicator_queue_panel_limits: tuple[int, int] | None = None
         self._speed_limit_indicator_frozen_widget_limits: tuple[tuple[QWidget, int, int], ...] = ()
         self._history_animation_start_panel_width = 0
         self._history_animation_end_panel_width = 0
@@ -274,7 +278,34 @@ class MainWindow(QMainWindow):
             return
 
         if event.type() is QEvent.Type.WindowStateChange and not self.isMinimized():
+            self._handle_speed_limit_indicator_window_state_changed()
+            QTimer.singleShot(0, self._handle_speed_limit_indicator_window_state_changed)
             self._focus_url_input_later()
+
+    def _handle_speed_limit_indicator_window_state_changed(self) -> None:
+        if self._speed_limit_indicator_animation is not None:
+            self._speed_limit_indicator_animation.stop()
+            self._speed_limit_indicator_animation = None
+
+        self._release_speed_limit_indicator_animation_widgets()
+        self._speed_limit_indicator_uses_window_resize = (
+            self._should_resize_window_for_speed_limit_indicator()
+        )
+
+        if self._speed_limit_indicator.is_expanded():
+            self._speed_limit_indicator.set_expanded()
+            self._is_speed_limit_window_extra_applied = True
+
+            if self._speed_limit_indicator_uses_window_resize:
+                self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT + SPEED_LIMIT_INDICATOR_WINDOW_DELTA)
+            else:
+                self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
+        else:
+            self._speed_limit_indicator.set_collapsed()
+            self._is_speed_limit_window_extra_applied = False
+            self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
+
+        self._queue_panel.updateGeometry()
 
     @override
     def closeEvent(self, event: QCloseEvent | None) -> None:
@@ -1360,15 +1391,58 @@ class MainWindow(QMainWindow):
         self._animate_speed_limit_indicator_visibility(is_visible=should_show_indicator)
 
     def _apply_speed_limit_indicator_visibility_directly(self, *, is_visible: bool) -> None:
-        self._resize_window_for_speed_limit_indicator_visibility(is_visible=is_visible)
+        if self._speed_limit_indicator_animation is not None:
+            self._speed_limit_indicator_animation.stop()
+            self._speed_limit_indicator_animation = None
+            self._release_speed_limit_indicator_animation_widgets()
+
+        start_indicator_height = self._speed_limit_indicator.current_visible_height()
+        end_indicator_height = SPEED_LIMIT_INDICATOR_EXPANDED_HEIGHT if is_visible else 0
+        self._speed_limit_indicator_uses_window_resize = (
+            self._should_resize_window_for_speed_limit_indicator()
+        )
+        self._speed_limit_indicator_start_height = start_indicator_height
+        self._speed_limit_indicator_end_height = end_indicator_height
+        self._speed_limit_indicator_start_window_height = self.height()
+        self._speed_limit_indicator_end_window_height = (
+            self._calculate_speed_limit_window_target_height(
+                start_indicator_height=start_indicator_height,
+                end_indicator_height=end_indicator_height,
+            )
+        )
+        self._speed_limit_indicator_start_queue_height = max(1, self._queue_panel.height())
+        self._speed_limit_indicator_end_queue_height = (
+            self._calculate_speed_limit_queue_target_height(
+                start_indicator_height=start_indicator_height,
+                end_indicator_height=end_indicator_height,
+            )
+        )
+
+        self._freeze_speed_limit_indicator_animation_widgets()
+        self._apply_speed_limit_indicator_animation_frame(
+            indicator_height=end_indicator_height,
+            window_height=self._speed_limit_indicator_end_window_height,
+            queue_height=self._speed_limit_indicator_end_queue_height,
+        )
 
         if is_visible:
             self._speed_limit_indicator.set_expanded()
+            self._is_speed_limit_window_extra_applied = True
+
+            if self._speed_limit_indicator_uses_window_resize:
+                self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT + SPEED_LIMIT_INDICATOR_WINDOW_DELTA)
+
+            self._release_speed_limit_indicator_animation_widgets()
             return
 
+        self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
+        self._speed_limit_indicator.set_download_speed_limit(bytes_per_second=None)
         self._speed_limit_indicator.set_collapsed()
+        self._is_speed_limit_window_extra_applied = False
+        self._release_speed_limit_indicator_animation_widgets()
 
     def _animate_speed_limit_indicator_visibility(self, *, is_visible: bool) -> None:
+        # stable adaptive speed limit indicator animation
         if self._speed_limit_indicator_animation is not None:
             self._speed_limit_indicator_animation.stop()
             self._speed_limit_indicator_animation = None
@@ -1381,14 +1455,9 @@ class MainWindow(QMainWindow):
             self._apply_speed_limit_indicator_visibility_directly(is_visible=is_visible)
             return
 
-        self._freeze_speed_limit_indicator_animation_widgets()
-
-        if is_visible:
-            self._speed_limit_indicator.set_visible_height(height=start_indicator_height)
-            self._speed_limit_indicator.show()
-        else:
-            self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
-
+        self._speed_limit_indicator_uses_window_resize = (
+            self._should_resize_window_for_speed_limit_indicator()
+        )
         self._speed_limit_indicator_animation_should_hide = not is_visible
         self._speed_limit_indicator_start_height = start_indicator_height
         self._speed_limit_indicator_end_height = end_indicator_height
@@ -1399,6 +1468,17 @@ class MainWindow(QMainWindow):
                 end_indicator_height=end_indicator_height,
             )
         )
+        self._speed_limit_indicator_start_queue_height = max(1, self._queue_panel.height())
+        self._speed_limit_indicator_end_queue_height = (
+            self._calculate_speed_limit_queue_target_height(
+                start_indicator_height=start_indicator_height,
+                end_indicator_height=end_indicator_height,
+            )
+        )
+
+        self._freeze_speed_limit_indicator_animation_widgets()
+        self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
+        self.setMaximumHeight(16_777_215)
 
         animation = QVariantAnimation(self)
         animation.setDuration(SPEED_LIMIT_INDICATOR_ANIMATION_DURATION_MS)
@@ -1429,31 +1509,67 @@ class MainWindow(QMainWindow):
             )
             * progress
         )
-
-        self._speed_limit_indicator.set_visible_height(height=indicator_height)
-        self.resize(self.width(), max(self.minimumHeight(), window_height))
-
-    def _handle_speed_limit_indicator_animation_finished(self) -> None:
-        self.resize(
-            self.width(),
-            max(
-                WINDOW_MINIMUM_HEIGHT,
-                self._speed_limit_indicator_end_window_height,
-            ),
+        queue_height = round(
+            self._speed_limit_indicator_start_queue_height
+            + (
+                self._speed_limit_indicator_end_queue_height
+                - self._speed_limit_indicator_start_queue_height
+            )
+            * progress
         )
 
-        if self._speed_limit_indicator_animation_should_hide:
+        self._apply_speed_limit_indicator_animation_frame(
+            indicator_height=indicator_height,
+            window_height=window_height,
+            queue_height=queue_height,
+        )
+
+    def _handle_speed_limit_indicator_animation_finished(self) -> None:
+        final_window_height = max(
+            WINDOW_MINIMUM_HEIGHT,
+            self._speed_limit_indicator_end_window_height,
+        )
+        final_queue_height = max(1, self._speed_limit_indicator_end_queue_height)
+        is_expanding = (
+            self._speed_limit_indicator_end_height > self._speed_limit_indicator_start_height
+        )
+
+        self._apply_speed_limit_indicator_animation_frame(
+            indicator_height=self._speed_limit_indicator_end_height,
+            window_height=final_window_height,
+            queue_height=final_queue_height,
+        )
+
+        if is_expanding:
+            self._speed_limit_indicator.set_expanded()
+            self._is_speed_limit_window_extra_applied = True
+
+            if self._speed_limit_indicator_uses_window_resize:
+                self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT + SPEED_LIMIT_INDICATOR_WINDOW_DELTA)
+            else:
+                self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
+        else:
+            self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
             self._speed_limit_indicator.set_download_speed_limit(bytes_per_second=None)
             self._speed_limit_indicator.set_collapsed()
             self._is_speed_limit_window_extra_applied = False
-            self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
-        else:
-            self._speed_limit_indicator.set_expanded()
-            self._is_speed_limit_window_extra_applied = True
-            self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT + SPEED_LIMIT_INDICATOR_WINDOW_DELTA)
 
         self._release_speed_limit_indicator_animation_widgets()
         self._speed_limit_indicator_animation = None
+
+    def _apply_speed_limit_indicator_animation_frame(
+        self,
+        *,
+        indicator_height: int,
+        window_height: int,
+        queue_height: int,
+    ) -> None:
+        if self._speed_limit_indicator_uses_window_resize:
+            self._set_window_height_preserving_top(height=window_height)
+        else:
+            self._set_queue_panel_animation_height(height=queue_height)
+
+        self._speed_limit_indicator.set_visible_height(height=indicator_height)
 
     def _calculate_speed_limit_window_target_height(
         self,
@@ -1461,48 +1577,92 @@ class MainWindow(QMainWindow):
         start_indicator_height: int,
         end_indicator_height: int,
     ) -> int:
+        if not self._speed_limit_indicator_uses_window_resize:
+            return self._speed_limit_indicator_start_window_height
+
         indicator_height_delta = end_indicator_height - start_indicator_height
-        target_height = self.height() + indicator_height_delta
 
-        if end_indicator_height > 0:
-            return max(
-                target_height,
-                WINDOW_MINIMUM_HEIGHT + SPEED_LIMIT_INDICATOR_WINDOW_DELTA,
-            )
+        return max(
+            WINDOW_MINIMUM_HEIGHT,
+            self._speed_limit_indicator_start_window_height + indicator_height_delta,
+        )
 
-        return max(target_height, WINDOW_MINIMUM_HEIGHT)
+    def _calculate_speed_limit_queue_target_height(
+        self,
+        *,
+        start_indicator_height: int,
+        end_indicator_height: int,
+    ) -> int:
+        if self._speed_limit_indicator_uses_window_resize:
+            return max(1, self._speed_limit_indicator_start_queue_height)
+
+        indicator_height_delta = end_indicator_height - start_indicator_height
+
+        return max(1, self._speed_limit_indicator_start_queue_height - indicator_height_delta)
 
     def _resize_window_for_speed_limit_indicator_visibility(self, *, is_visible: bool) -> None:
         if self._is_speed_limit_window_extra_applied == is_visible:
             return
 
-        self._is_speed_limit_window_extra_applied = is_visible
+        self._apply_speed_limit_indicator_visibility_directly(is_visible=is_visible)
 
-        if is_visible:
-            self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT + SPEED_LIMIT_INDICATOR_WINDOW_DELTA)
-            self.resize(
-                self.width(),
-                max(
-                    self.height() + SPEED_LIMIT_INDICATOR_WINDOW_DELTA,
-                    self.minimumHeight(),
-                ),
+    def _resize_window_down_by_speed_limit_delta(self, *, delta_height: int) -> None:
+        target_height = max(WINDOW_MINIMUM_HEIGHT, self.height() + delta_height)
+        self._set_window_height_preserving_top(height=target_height)
+
+    def _set_window_height_preserving_top(self, *, height: int) -> None:
+        normalized_height = max(WINDOW_MINIMUM_HEIGHT, height)
+        current_geometry = self.geometry()
+
+        self.setMaximumHeight(16_777_215)
+        self.setGeometry(
+            current_geometry.left(),
+            current_geometry.top(),
+            current_geometry.width(),
+            normalized_height,
+        )
+
+    def _set_queue_panel_animation_height(self, *, height: int) -> None:
+        if self._speed_limit_indicator_queue_panel_limits is None:
+            self._speed_limit_indicator_queue_panel_limits = (
+                self._queue_panel.minimumHeight(),
+                self._queue_panel.maximumHeight(),
             )
+
+        normalized_height = max(1, height)
+        self._queue_panel.setMinimumHeight(normalized_height)
+        self._queue_panel.setMaximumHeight(normalized_height)
+
+    def _restore_queue_panel_animation_height(self) -> None:
+        queue_panel_limits = self._speed_limit_indicator_queue_panel_limits
+
+        if queue_panel_limits is None:
             return
 
-        self.setMinimumHeight(WINDOW_MINIMUM_HEIGHT)
-        self.resize(
-            self.width(),
-            max(
-                self.height() - SPEED_LIMIT_INDICATOR_WINDOW_DELTA,
-                self.minimumHeight(),
-            ),
-        )
+        minimum_height, maximum_height = queue_panel_limits
+        self._queue_panel.setMinimumHeight(minimum_height)
+        self._queue_panel.setMaximumHeight(maximum_height)
+        self._queue_panel.updateGeometry()
+        self._speed_limit_indicator_queue_panel_limits = None
+
+    def _should_resize_window_for_speed_limit_indicator(self) -> bool:
+        return not (self.isMaximized() or self.isFullScreen())
 
     def _freeze_speed_limit_indicator_animation_widgets(self) -> None:
         if self._speed_limit_indicator_frozen_widget_limits:
             return
 
-        frozen_widgets = (self._queue_panel,)
+        frozen_widgets = list[QWidget](
+            (
+                self._header,
+                self._input_panel,
+                self._settings_panel,
+            )
+        )
+
+        if self._speed_limit_indicator_uses_window_resize:
+            frozen_widgets.append(self._queue_panel)
+
         self._speed_limit_indicator_frozen_widget_limits = tuple(
             (widget, widget.minimumHeight(), widget.maximumHeight()) for widget in frozen_widgets
         )
@@ -1511,6 +1671,8 @@ class MainWindow(QMainWindow):
             widget.setFixedHeight(widget.height())
 
     def _release_speed_limit_indicator_animation_widgets(self) -> None:
+        self._restore_queue_panel_animation_height()
+
         for (
             widget,
             minimum_height,
@@ -1518,6 +1680,7 @@ class MainWindow(QMainWindow):
         ) in self._speed_limit_indicator_frozen_widget_limits:
             widget.setMinimumHeight(minimum_height)
             widget.setMaximumHeight(maximum_height)
+            widget.updateGeometry()
 
         self._speed_limit_indicator_frozen_widget_limits = ()
 

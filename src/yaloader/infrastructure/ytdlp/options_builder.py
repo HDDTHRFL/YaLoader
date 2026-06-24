@@ -167,11 +167,26 @@ class YtDlpOptionsBuilder:
         video_quality: VideoQuality,
     ) -> str:
         height_filter = self._build_height_filter(video_quality=video_quality)
+        exact_height_filter = self._build_exact_height_filter(video_quality=video_quality)
 
         if output_format is OutputFormat.MP4:
+            if video_quality is VideoQuality.BEST:
+                return self._join_format_fallbacks(
+                    [
+                        "bv*[ext=mp4]",
+                        "bv*",
+                        "b[ext=mp4]",
+                        "b",
+                    ]
+                )
+
             return self._join_format_fallbacks(
                 [
+                    f"bv*[ext=mp4][vcodec^=avc1]{exact_height_filter}",
+                    f"bv*[ext=mp4]{exact_height_filter}",
+                    f"bv*[ext=mp4][vcodec^=avc1]{height_filter}",
                     f"bv*[ext=mp4]{height_filter}",
+                    f"bv*[vcodec^=avc1]{height_filter}",
                     f"bv*{height_filter}",
                     "bv*",
                     f"b[ext=mp4]{height_filter}",
@@ -214,6 +229,12 @@ class YtDlpOptionsBuilder:
             return ""
 
         return f"[height<={video_quality.value.removesuffix('p')}]"
+
+    def _build_exact_height_filter(self, *, video_quality: VideoQuality) -> str:
+        if video_quality is VideoQuality.BEST:
+            return ""
+
+        return f"[height={video_quality.value.removesuffix('p')}]"
 
     def _build_audio_format_selector(self, *, output_format: OutputFormat) -> str:
         if output_format is OutputFormat.MP3:

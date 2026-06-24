@@ -194,7 +194,7 @@ def test_build_video_only_mp4_options(tmp_path: Path) -> None:
 
     options = builder.build_video_only(request=request)
 
-    assert str(options["format"]).startswith("bv*[ext=mp4][height<=720]")
+    assert str(options["format"]).startswith("bv*[ext=mp4][vcodec^=avc1][height=720]")
     assert "merge_output_format" not in options
     assert "postprocessors" not in options
 
