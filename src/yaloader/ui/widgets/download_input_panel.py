@@ -128,7 +128,7 @@ class DownloadInputPanel(QFrame):
         self.add_to_queue_button.setObjectName("SuccessButton")
 
         self.url_input.setPlaceholderText(
-            "Вставьте ссылку на видео, аудио или страницу, которую поддерживает yt-dlp 👀"
+            "Вставьте ссылку на видео, аудио, плейлист YouTube или что-нибудь ещё 👀"
         )
         self.url_input.setToolTip("Можно вставить ссылку вручную или перетащить её в это поле")
         self.url_input.setClearButtonEnabled(True)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import cast, override
 from uuid import UUID
 
@@ -310,6 +311,20 @@ class DownloadQueueTable(QTableWidget):
         self._quality_presenter.sync_timer()
         self.resize_columns_to_viewport()
         self._sync_empty_hint_visibility()
+
+    def set_platform_icon_path(self, *, task_id: UUID, icon_path: Path) -> None:
+        row_index = self._row_by_task_id.get(task_id)
+        row_state = self._row_states_by_task_id.get(task_id)
+
+        if row_index is None or row_state is None:
+            return
+
+        updated_row_state = row_state.with_platform_icon_path(icon_path=icon_path)
+        self._row_states_by_task_id[task_id] = updated_row_state
+        self._row_presenter.set_mode_platform_icon(
+            row_index=row_index,
+            row_state=updated_row_state,
+        )
 
     def _build_updated_row_state_for_task(
         self,

@@ -16,6 +16,8 @@ FFMPEG_EXECUTABLE_NAME: Final = "ffmpeg.exe"
 DENO_DIR_NAME: Final = "deno"
 DENO_EXECUTABLE_NAME: Final = "deno.exe"
 
+PLATFORM_ICONS_CACHE_DIR_NAME: Final = "platform-icons"
+
 
 @dataclass(frozen=True, slots=True)
 class AppPaths:
@@ -29,6 +31,10 @@ class AppPaths:
     @property
     def tools_dir(self) -> Path:
         return self.data_dir / TOOLS_DIR_NAME
+
+    @property
+    def platform_icons_cache_dir(self) -> Path:
+        return self.data_dir / PLATFORM_ICONS_CACHE_DIR_NAME
 
     @property
     def ffmpeg_dir(self) -> Path:
@@ -57,6 +63,7 @@ class AppPaths:
             self.downloads_dir,
             self.logs_dir,
             self.tools_dir,
+            self.platform_icons_cache_dir,
         )
 
 

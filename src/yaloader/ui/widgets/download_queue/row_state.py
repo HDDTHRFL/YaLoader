@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 from yaloader.domain.entities.download_task import DownloadTask
 
@@ -12,6 +13,7 @@ class QueueTableRowState:
     is_metadata_resolution_failed: bool = False
     is_download_preparation_running: bool = False
     is_download_prepared: bool = False
+    platform_icon_path: Path | None = None
     copy_feedback_generation: int | None = None
 
     @classmethod
@@ -59,6 +61,13 @@ class QueueTableRowState:
         is_prepared: bool,
     ) -> QueueTableRowState:
         return replace(self, is_download_prepared=is_prepared)
+
+    def with_platform_icon_path(
+        self,
+        *,
+        icon_path: Path | None,
+    ) -> QueueTableRowState:
+        return replace(self, platform_icon_path=icon_path)
 
     def with_copy_feedback_generation(
         self,

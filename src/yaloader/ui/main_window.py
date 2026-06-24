@@ -30,7 +30,9 @@ from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.tool_installation import ToolUpdateCheckResult
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.download_speed_limit import format_download_speed_limit_label
+from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, DownloadStatus, OutputFormat, VideoQuality
+from yaloader.domain.source_platform import SourcePlatform, detect_source_platform
 from yaloader.infrastructure.windows.explorer import reveal_path_in_file_manager
 from yaloader.services.app_container import AppContainer
 from yaloader.ui.controllers.browser_cookies_controller import (
@@ -53,6 +55,7 @@ from yaloader.ui.controllers.media_metadata_controller import (
     MediaMetadataController,
     MediaMetadataResolutionResult,
 )
+from yaloader.ui.controllers.platform_icon_controller import PlatformIconController
 from yaloader.ui.controllers.queue_input_controller import (
     QueueInputController,
     QueueInputControllerUpdate,
@@ -200,6 +203,9 @@ class MainWindow(QMainWindow):
         self._metadata_controller = MediaMetadataController(
             service=container.media_metadata_service,
         )
+        self._platform_icon_controller = PlatformIconController(
+            resolver=container.platform_icon_resolver,
+        )
         self._download_controller = DownloadController(
             queue_service=container.download_queue_service,
             history_service=container.download_history_service,
@@ -333,6 +339,7 @@ class MainWindow(QMainWindow):
         self.killTimer(self._download_poll_timer)
         self._download_controller.shutdown()
         self._metadata_controller.shutdown()
+        self._platform_icon_controller.shutdown()
         self._browser_cookies_controller.shutdown()
         self._tool_installation_controller.shutdown()
         super().closeEvent(event)
@@ -343,6 +350,7 @@ class MainWindow(QMainWindow):
             super().timerEvent(event)
             return
 
+        self._drain_platform_icon_events()
         self._drain_metadata_events()
         self._apply_download_update(update=self._download_controller.poll())
         self._apply_tool_installation_update(
@@ -732,6 +740,7 @@ class MainWindow(QMainWindow):
 
         if update.added_task is not None:
             self._queue_table.append_task(task=update.added_task)
+            self._start_platform_icon_resolution_if_needed(task=update.added_task)
 
         if update.added_task is not None and update.metadata_request is not None:
             self._start_metadata_resolution(
@@ -743,6 +752,25 @@ class MainWindow(QMainWindow):
             self._show_transient_status_message(update.status_message)
 
         self._sync_queue_controls_state()
+
+    def _start_platform_icon_resolution_if_needed(self, *, task: DownloadTask) -> None:
+        if detect_source_platform(url=task.url.value) is not SourcePlatform.UNKNOWN:
+            return
+
+        self._platform_icon_controller.start_resolution(
+            task_id=task.task_id,
+            url=task.url.value,
+        )
+
+    def _drain_platform_icon_events(self) -> None:
+        for result in self._platform_icon_controller.drain_results():
+            if result.icon_path is None:
+                continue
+
+            self._queue_table.set_platform_icon_path(
+                task_id=result.task_id,
+                icon_path=result.icon_path,
+            )
 
     def _start_metadata_resolution(
         self,
@@ -850,6 +878,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         if update.added_task is not None:
             self._queue_table.append_task(task=update.added_task)
+            self._start_platform_icon_resolution_if_needed(task=update.added_task)
 
         if update.added_task is not None and update.metadata_request is not None:
             self._start_metadata_resolution(

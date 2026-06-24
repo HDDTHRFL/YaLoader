@@ -79,3 +79,14 @@ def create_task(*, target_dir: Path) -> DownloadTask:
         video_quality=VideoQuality.BEST,
         include_playlist=False,
     )
+
+
+def test_with_platform_icon_path_is_immutable(tmp_path: Path) -> None:
+    task = create_task(target_dir=tmp_path)
+    row_state = QueueTableRowState.create(task=task)
+    icon_path = tmp_path / "instagram.png"
+
+    updated_row_state = row_state.with_platform_icon_path(icon_path=icon_path)
+
+    assert row_state.platform_icon_path is None
+    assert updated_row_state.platform_icon_path == icon_path

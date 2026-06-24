@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem
 
 from yaloader.domain.source_platform import detect_source_platform
@@ -57,11 +58,7 @@ class DownloadQueueRowPresenter:
                 table_item.setText(value)
 
             if column_index == MODE_COLUMN_INDEX:
-                platform = detect_source_platform(url=task.url.value)
-                table_item.setData(
-                    MODE_PLATFORM_ICON_ROLE,
-                    build_source_platform_icon(platform=platform),
-                )
+                self.set_mode_platform_icon(row_index=row_index, row_state=row_state)
 
             if column_index == URL_COLUMN_INDEX:
                 self._url_presenter.configure_url_item(
@@ -75,3 +72,24 @@ class DownloadQueueRowPresenter:
                 table_item.setToolTip(self._quality_presenter.build_cell_tooltip(task=task))
             else:
                 table_item.setToolTip(value)
+
+    def set_mode_platform_icon(self, *, row_index: int, row_state: QueueTableRowState) -> None:
+        table_item = self._table.item(row_index, MODE_COLUMN_INDEX)
+
+        if table_item is None:
+            return
+
+        table_item.setData(
+            MODE_PLATFORM_ICON_ROLE,
+            self._build_platform_icon(row_state=row_state),
+        )
+
+    def _build_platform_icon(self, *, row_state: QueueTableRowState) -> QIcon:
+        icon_path = row_state.platform_icon_path
+
+        if icon_path is not None and icon_path.is_file():
+            return QIcon(str(icon_path))
+
+        platform = detect_source_platform(url=row_state.task.url.value)
+
+        return build_source_platform_icon(platform=platform)

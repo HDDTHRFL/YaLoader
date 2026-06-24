@@ -6,6 +6,7 @@ from yaloader.application.dto.app_settings import AppSettings
 from yaloader.application.dto.tool_installation import ToolId
 from yaloader.application.ports.download_preparer import DownloadPreparer
 from yaloader.application.ports.downloader import Downloader
+from yaloader.application.ports.platform_icon_resolver import PlatformIconResolver
 from yaloader.application.services.browser_cookies_service import BrowserCookiesService
 from yaloader.application.services.download_history_service import DownloadHistoryService
 from yaloader.application.services.download_queue_service import DownloadQueueService
@@ -19,6 +20,7 @@ from yaloader.config.paths import AppPaths, build_default_app_paths, ensure_app_
 from yaloader.infrastructure.system.tool_locator import ToolLocatorProcessRunner
 from yaloader.infrastructure.tools.deno_installer import DenoPortableInstaller
 from yaloader.infrastructure.tools.ffmpeg_installer import FfmpegPortableInstaller
+from yaloader.infrastructure.web.favicon_resolver import WebFaviconResolver
 from yaloader.infrastructure.ytdlp.browser_cookies_exporter import YtDlpBrowserCookiesExporter
 from yaloader.infrastructure.ytdlp.download_preparer import YtDlpDownloadPreparer
 from yaloader.infrastructure.ytdlp.downloader import YtDlpDownloader
@@ -37,6 +39,7 @@ class AppContainer:
     download_speed_limit_state: DownloadSpeedLimitState
     download_history_service: DownloadHistoryService
     prepared_download_cache: PreparedDownloadCache
+    platform_icon_resolver: PlatformIconResolver
     media_metadata_service: MediaMetadataService
     download_preparer: DownloadPreparer
     downloader: Downloader
@@ -81,6 +84,9 @@ def build_app_container() -> AppContainer:
         download_speed_limit_state=download_speed_limit_state,
         download_history_service=DownloadHistoryService(history_file=paths.history_file),
         prepared_download_cache=prepared_download_cache,
+        platform_icon_resolver=WebFaviconResolver(
+            cache_dir=paths.platform_icons_cache_dir,
+        ),
         media_metadata_service=MediaMetadataService(
             extractor=YtDlpMetadataExtractor.create_default(
                 cookies_file=paths.cookies_file,
