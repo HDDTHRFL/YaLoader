@@ -25,6 +25,7 @@ class FakeToolInstallationService:
     delay_seconds: float = 0.0
     calls: list[ToolId] = field(default_factory=list, init=False)
     force_reinstall_values: list[bool] = field(default_factory=list, init=False)
+    update_tool_id_requests: list[tuple[ToolId, ...]] = field(default_factory=list, init=False)
 
     def install_tool(
         self,
@@ -55,6 +56,7 @@ class FakeToolInstallationService:
         *,
         tool_ids: tuple[ToolId, ...],
     ) -> tuple[ToolUpdateCheckResult, ...]:
+        self.update_tool_id_requests.append(tool_ids)
         return tuple(check for check in self.update_checks if check.tool_id in tool_ids)
 
 
@@ -106,6 +108,7 @@ def test_check_required_tools_updates_returns_update_checks() -> None:
         finished_update = wait_for_finished_update(controller=controller)
 
         assert start_update.status_message == "Проверяем обновления инструментов..."
+        assert service.update_tool_id_requests == [(ToolId.FFMPEG, ToolId.DENO, ToolId.YTDLP)]
         assert finished_update.update_checks == service.update_checks
         assert finished_update.status_message == "Найдены обновления инструментов: ffmpeg 7.0 → 8.0"
     finally:
@@ -294,3 +297,28 @@ def wait_for_finished_update(
         time.sleep(0.01)
 
     raise AssertionError("Tool installation did not finish in time")
+
+
+def test_check_required_tools_updates_reports_ytdlp_diagnostic_update() -> None:
+    service = FakeToolInstallationService(
+        results_by_tool_id={},
+        update_checks=(
+            ToolUpdateCheckResult.update_available(
+                tool_id=ToolId.YTDLP,
+                current_version="2026.3.17",
+                latest_version="2026.4.1",
+            ),
+        ),
+    )
+    controller = ToolInstallationController(service=service)
+
+    try:
+        controller.check_required_tools_updates()
+        finished_update = wait_for_finished_update(controller=controller)
+
+        assert (
+            finished_update.status_message
+            == "Найдены диагностические обновления: yt-dlp 2026.3.17 → 2026.4.1"
+        )
+    finally:
+        controller.shutdown()

@@ -25,6 +25,7 @@ from yaloader.infrastructure.ytdlp.browser_cookies_exporter import YtDlpBrowserC
 from yaloader.infrastructure.ytdlp.download_preparer import YtDlpDownloadPreparer
 from yaloader.infrastructure.ytdlp.downloader import YtDlpDownloader
 from yaloader.infrastructure.ytdlp.metadata_extractor import YtDlpMetadataExtractor
+from yaloader.infrastructure.ytdlp.version_checker import YtDlpPackageVersionChecker
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +79,9 @@ def build_app_container() -> AppContainer:
             installers={
                 ToolId.FFMPEG: FfmpegPortableInstaller(paths=paths),
                 ToolId.DENO: DenoPortableInstaller(paths=paths),
+            },
+            version_checkers={
+                ToolId.YTDLP: YtDlpPackageVersionChecker(),
             },
         ),
         download_queue_service=DownloadQueueService(),

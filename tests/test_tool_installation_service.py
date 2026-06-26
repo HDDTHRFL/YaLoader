@@ -48,6 +48,25 @@ class FakeToolInstaller:
 
         return self.result
 
+    def get_latest_version(self) -> str:
+        return "9.0"
+
+    def get_installed_version(self, *, executable_path: Path) -> str:
+        return "8.0"
+
+
+@dataclass(slots=True)
+class FakeToolVersionChecker:
+    tool_id: ToolId
+    current_version: str
+    latest_version: str
+
+    def get_current_version(self) -> str:
+        return self.current_version
+
+    def get_latest_version(self) -> str:
+        return self.latest_version
+
 
 def test_check_tool_returns_available_when_executable_is_found() -> None:
     ffmpeg_path = Path("C:/Tools/ffmpeg.exe")
@@ -197,3 +216,45 @@ def test_install_tool_returns_failed_result_from_installer() -> None:
     assert result.message == "download failed"
     assert result.is_success is False
     assert installer.install_calls == 1
+
+
+def test_check_tool_update_uses_version_checker_for_ytdlp_update() -> None:
+    service = ToolInstallationService(
+        process_runner=FakeProcessRunner(executables={}),
+        installers={},
+        version_checkers={
+            ToolId.YTDLP: FakeToolVersionChecker(
+                tool_id=ToolId.YTDLP,
+                current_version="2026.3.17",
+                latest_version="2026.4.1",
+            ),
+        },
+    )
+
+    result = service.check_tool_update(tool_id=ToolId.YTDLP)
+
+    assert result.should_update is True
+    assert result.current_version == "2026.3.17"
+    assert result.latest_version == "2026.4.1"
+    assert result.executable_path is None
+
+
+def test_check_tool_update_uses_version_checker_for_current_ytdlp() -> None:
+    service = ToolInstallationService(
+        process_runner=FakeProcessRunner(executables={}),
+        installers={},
+        version_checkers={
+            ToolId.YTDLP: FakeToolVersionChecker(
+                tool_id=ToolId.YTDLP,
+                current_version="2026.3.17",
+                latest_version="2026.3.17",
+            ),
+        },
+    )
+
+    result = service.check_tool_update(tool_id=ToolId.YTDLP)
+
+    assert result.should_update is False
+    assert result.is_success is True
+    assert result.current_version == "2026.3.17"
+    assert result.latest_version == "2026.3.17"

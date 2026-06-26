@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
@@ -17,6 +17,7 @@ from yaloader.application.ports.tool_installer import (
     ToolInstallationProgressCallback,
     ToolInstaller,
 )
+from yaloader.application.ports.tool_version_checker import ToolVersionChecker
 from yaloader.infrastructure.tools.version_detection import is_version_newer
 
 TOOL_EXECUTABLE_NAMES: Final[Mapping[ToolId, str]] = {
@@ -25,15 +26,25 @@ TOOL_EXECUTABLE_NAMES: Final[Mapping[ToolId, str]] = {
 }
 
 
+def build_empty_tool_version_checkers() -> Mapping[ToolId, ToolVersionChecker]:
+    return {}
+
+
 @dataclass(frozen=True, slots=True)
 class ToolInstallationService:
     process_runner: ProcessRunner
     installers: Mapping[ToolId, ToolInstaller]
+    version_checkers: Mapping[ToolId, ToolVersionChecker] = field(
+        default_factory=build_empty_tool_version_checkers,
+    )
 
     def check_tool(self, *, tool_id: ToolId) -> ToolInstallationResult:
-        executable_path = self.process_runner.find_executable(
-            self._get_executable_name(tool_id=tool_id),
-        )
+        executable_name = TOOL_EXECUTABLE_NAMES.get(tool_id)
+
+        if executable_name is None:
+            return ToolInstallationResult.not_configured(tool_id=tool_id)
+
+        executable_path = self.process_runner.find_executable(executable_name)
 
         if executable_path is None:
             return ToolInstallationResult.missing(tool_id=tool_id)
@@ -44,6 +55,11 @@ class ToolInstallationService:
         )
 
     def check_tool_update(self, *, tool_id: ToolId) -> ToolUpdateCheckResult:
+        version_checker = self.version_checkers.get(tool_id)
+
+        if version_checker is not None:
+            return self._check_version_checker_update(version_checker=version_checker)
+
         current_result = self.check_tool(tool_id=tool_id)
 
         if current_result.status is ToolInstallationStatus.MISSING:
@@ -158,8 +174,37 @@ class ToolInstallationService:
 
         return result
 
-    def _get_executable_name(self, *, tool_id: ToolId) -> str:
-        return TOOL_EXECUTABLE_NAMES[tool_id]
+    def _check_version_checker_update(
+        self,
+        *,
+        version_checker: ToolVersionChecker,
+    ) -> ToolUpdateCheckResult:
+        tool_id = version_checker.tool_id
+
+        try:
+            current_version = version_checker.get_current_version()
+            latest_version = version_checker.get_latest_version()
+        except Exception as error:
+            return ToolUpdateCheckResult.check_failed(
+                tool_id=tool_id,
+                message=f"{tool_id.value}: не удалось проверить обновление: {error}",
+            )
+
+        if is_version_newer(
+            candidate_version=latest_version,
+            current_version=current_version,
+        ):
+            return ToolUpdateCheckResult.update_available(
+                tool_id=tool_id,
+                current_version=current_version,
+                latest_version=latest_version,
+            )
+
+        return ToolUpdateCheckResult.up_to_date(
+            tool_id=tool_id,
+            current_version=current_version,
+            latest_version=latest_version,
+        )
 
     def _emit_progress(
         self,

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ToolId(StrEnum):
     FFMPEG = "ffmpeg"
     DENO = "deno"
+    YTDLP = "yt-dlp"
 
 
 class ToolInstallationStatus(StrEnum):
@@ -143,7 +144,7 @@ class ToolUpdateCheckResult(BaseModel):
         tool_id: ToolId,
         current_version: str,
         latest_version: str,
-        executable_path: Path,
+        executable_path: Path | None = None,
     ) -> ToolUpdateCheckResult:
         return cls(
             tool_id=tool_id,
@@ -161,7 +162,7 @@ class ToolUpdateCheckResult(BaseModel):
         tool_id: ToolId,
         current_version: str,
         latest_version: str,
-        executable_path: Path,
+        executable_path: Path | None = None,
     ) -> ToolUpdateCheckResult:
         return cls(
             tool_id=tool_id,

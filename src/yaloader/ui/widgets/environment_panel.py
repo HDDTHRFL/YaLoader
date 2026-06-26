@@ -192,7 +192,8 @@ class EnvironmentPanel(QFrame):
         self.refresh_button.setToolTip("Повторно проверить состояние системы")
         self.prepare_system_button.setToolTip(PREPARE_SYSTEM_BUTTON_DEFAULT_TOOLTIP)
         self.update_tools_button.setToolTip(
-            "Принудительно скачать свежие FFmpeg и Deno в папку YaLoader"
+            "Проверить обновления FFmpeg, Deno и yt-dlp. "
+            "FFmpeg и Deno можно заменить автоматически."
         )
         self.cookies_actions_button.setToolTip(
             "Импортировать cookies.txt или создать его из Firefox"

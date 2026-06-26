@@ -19,6 +19,12 @@ REQUIRED_TOOL_IDS: tuple[ToolId, ...] = (
     ToolId.FFMPEG,
     ToolId.DENO,
 )
+UPDATE_CHECK_TOOL_IDS: tuple[ToolId, ...] = (
+    ToolId.FFMPEG,
+    ToolId.DENO,
+    ToolId.YTDLP,
+)
+INSTALLABLE_UPDATE_TOOL_IDS: frozenset[ToolId] = frozenset(REQUIRED_TOOL_IDS)
 
 
 class ToolInstallationUseCase(Protocol):
@@ -87,7 +93,7 @@ class ToolInstallationController:
 
         self._active_future = self._executor.submit(
             self._check_updates_worker,
-            REQUIRED_TOOL_IDS,
+            UPDATE_CHECK_TOOL_IDS,
         )
 
         return ToolInstallationControllerUpdate(
@@ -249,11 +255,26 @@ def build_tool_update_check_summary(
     if not update_checks:
         return "Проверка обновлений не выполнялась"
 
-    update_available_checks = tuple(check for check in update_checks if check.should_update)
+    installable_update_checks = tuple(
+        check
+        for check in update_checks
+        if check.should_update and is_installable_tool_update(tool_id=check.tool_id)
+    )
 
-    if update_available_checks:
+    if installable_update_checks:
         return "Найдены обновления инструментов: " + "; ".join(
-            format_tool_update_check_for_summary(check=check) for check in update_available_checks
+            format_tool_update_check_for_summary(check=check) for check in installable_update_checks
+        )
+
+    diagnostic_update_checks = tuple(
+        check
+        for check in update_checks
+        if check.should_update and not is_installable_tool_update(tool_id=check.tool_id)
+    )
+
+    if diagnostic_update_checks:
+        return "Найдены диагностические обновления: " + "; ".join(
+            format_tool_update_check_for_summary(check=check) for check in diagnostic_update_checks
         )
 
     failed_checks = tuple(check for check in update_checks if not check.is_success)
@@ -264,6 +285,10 @@ def build_tool_update_check_summary(
         )
 
     return "Доступных обновлений инструментов нет"
+
+
+def is_installable_tool_update(*, tool_id: ToolId) -> bool:
+    return tool_id in INSTALLABLE_UPDATE_TOOL_IDS
 
 
 def format_tool_update_check_for_summary(*, check: ToolUpdateCheckResult) -> str:
