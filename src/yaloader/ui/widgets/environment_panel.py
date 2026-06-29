@@ -361,7 +361,7 @@ def build_user_managed_ytdlp_status_html(*, message: str) -> str:
 
     link = (
         f'<a href="{YTDLP_RESET_LINK}" '
-        'style="color: #C9D1D9; text-decoration: underline;">'
+        'style="color: #A7F3D0; text-decoration: underline;">'
         f"{html.escape(marker_text)}</a>"
     )
 

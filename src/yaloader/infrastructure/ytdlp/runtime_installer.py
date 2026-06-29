@@ -24,6 +24,7 @@ from yaloader.infrastructure.tools.http_file_downloader import (
     FileDownloadError,
     HttpFileDownloader,
 )
+from yaloader.infrastructure.tools.version_detection import parse_version_parts
 from yaloader.infrastructure.ytdlp.runtime_manager import (
     YtDlpRuntimeManager,
     cleanup_failed_external_runtime_import,
@@ -254,11 +255,18 @@ def validate_external_ytdlp_runtime(*, runtime_dir: Path, expected_version: str)
     finally:
         cleanup_failed_external_runtime_import(runtime_dir=runtime_dir)
 
-    if actual_version != expected_version:
+    if not are_ytdlp_versions_equivalent(
+        left_version=actual_version,
+        right_version=expected_version,
+    ):
         raise YtDlpRuntimeInstallationError(
             "версия wheel не совпадает с PyPI: "
             f"ожидали {expected_version}, получили {actual_version}"
         )
+
+
+def are_ytdlp_versions_equivalent(*, left_version: str, right_version: str) -> bool:
+    return parse_version_parts(left_version) == parse_version_parts(right_version)
 
 
 def replace_current_runtime(*, runtime_manager: YtDlpRuntimeManager, staging_dir: Path) -> None:

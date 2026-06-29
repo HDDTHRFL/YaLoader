@@ -4,6 +4,7 @@ import pytest
 
 from yaloader.infrastructure.ytdlp.runtime_installer import (
     YtDlpRuntimeInstallationError,
+    are_ytdlp_versions_equivalent,
     extract_latest_ytdlp_wheel_release,
 )
 
@@ -48,3 +49,23 @@ def test_extract_latest_ytdlp_wheel_release_rejects_invalid_payload(
 ) -> None:
     with pytest.raises(YtDlpRuntimeInstallationError):
         extract_latest_ytdlp_wheel_release(payload=payload)
+
+
+def test_are_ytdlp_versions_equivalent_accepts_zero_padded_release_parts() -> None:
+    assert (
+        are_ytdlp_versions_equivalent(
+            left_version="2026.06.09",
+            right_version="2026.6.9",
+        )
+        is True
+    )
+
+
+def test_are_ytdlp_versions_equivalent_rejects_different_versions() -> None:
+    assert (
+        are_ytdlp_versions_equivalent(
+            left_version="2026.06.10",
+            right_version="2026.6.9",
+        )
+        is False
+    )

@@ -6,6 +6,7 @@ from yaloader.application.dto.environment_status import EnvironmentItemStatus, E
 from yaloader.ui.widgets.environment_panel import (
     build_missing_required_tool_names,
     build_prepare_system_button_tooltip,
+    build_user_managed_ytdlp_status_html,
     should_show_prepare_system_button,
 )
 
@@ -52,3 +53,12 @@ def build_item_status(*, title: str, is_ok: bool) -> EnvironmentItemStatus:
         message="найден" if is_ok else "не найден",
         path=Path("C:/Tools/tool.exe") if is_ok else None,
     )
+
+
+def test_user_managed_ytdlp_status_link_uses_ok_chip_text_color() -> None:
+    status_html = build_user_managed_ytdlp_status_html(
+        message="2026.06.09 (пользовательский)",
+    )
+
+    assert 'style="color: #A7F3D0; text-decoration: underline;"' in status_html
+    assert ">пользовательский</a>" in status_html
