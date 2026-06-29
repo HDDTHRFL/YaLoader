@@ -76,6 +76,11 @@ from yaloader.ui.status_messages import (
     is_primary_download_status_message,
 )
 from yaloader.ui.tool_update_confirmation import build_tool_update_confirmation_text
+from yaloader.ui.tool_update_dialog import (
+    ToolUpdateDialogAction,
+    build_managed_tool_update_started_message,
+    choose_tool_update_action,
+)
 from yaloader.ui.widgets.app_header import AppHeader
 from yaloader.ui.widgets.common.confirmation_dialogs import (
     confirm_dangerous_action,
@@ -98,7 +103,6 @@ from yaloader.ui.ytdlp_runtime_dialogs import (
     YtDlpFailureRecoveryAction,
     choose_ytdlp_failure_recovery_action,
     confirm_reset_ytdlp_runtime,
-    confirm_ytdlp_update,
 )
 
 WINDOW_INITIAL_WIDTH = 1180
@@ -269,6 +273,9 @@ class MainWindow(QMainWindow):
         self._history_animation_uses_window_resize = True
         self._tool_installation_activity_message: str | None = None
         self._browser_cookies_activity_message: str | None = None
+        self._is_combined_tool_update_check_pending = False
+        self._pending_managed_tool_update_checks: tuple[ToolUpdateCheckResult, ...] | None = None
+        self._pending_ytdlp_update_check: ToolUpdateCheckResult | None = None
         self._download_poll_timer = self.startTimer(DOWNLOAD_POLL_INTERVAL_MS)
 
         self._configure_window()
@@ -449,10 +456,7 @@ class MainWindow(QMainWindow):
         self._environment_panel.update_tools_button.clicked.connect(
             self._handle_update_tools_clicked
         )
-        self._environment_panel.update_ytdlp_button.clicked.connect(
-            self._handle_update_ytdlp_clicked
-        )
-        self._environment_panel.reset_ytdlp_button.clicked.connect(self._handle_reset_ytdlp_clicked)
+        self._environment_panel.connect_ytdlp_reset_requested(self._handle_reset_ytdlp_clicked)
         self._environment_panel.import_cookies_action.triggered.connect(
             self._handle_import_cookies_clicked
         )
@@ -1112,11 +1116,19 @@ class MainWindow(QMainWindow):
         )
 
     def _handle_update_tools_clicked(self) -> None:
+        if self._tool_installation_controller.is_active or self._ytdlp_runtime_controller.is_active:
+            self._show_transient_status_message(
+                "Проверка или обновление инструментов уже выполняется"
+            )
+            return
+
+        self._is_combined_tool_update_check_pending = True
+        self._pending_managed_tool_update_checks = None
+        self._pending_ytdlp_update_check = None
+
         self._apply_tool_installation_update(
             update=self._tool_installation_controller.check_required_tools_updates(),
         )
-
-    def _handle_update_ytdlp_clicked(self) -> None:
         self._apply_ytdlp_runtime_update(
             update=self._ytdlp_runtime_controller.check_update(),
         )
@@ -1237,7 +1249,7 @@ class MainWindow(QMainWindow):
             )
 
         if update.update_checks:
-            self._handle_tool_update_checks(update_checks=update.update_checks)
+            self._handle_managed_tool_update_checks(update_checks=update.update_checks)
             self._sync_queue_controls_state()
             return
 
@@ -1257,11 +1269,16 @@ class MainWindow(QMainWindow):
 
         self._sync_queue_controls_state()
 
-    def _handle_tool_update_checks(
+    def _handle_managed_tool_update_checks(
         self,
         *,
         update_checks: tuple[ToolUpdateCheckResult, ...],
     ) -> None:
+        if self._is_combined_tool_update_check_pending:
+            self._pending_managed_tool_update_checks = update_checks
+            self._try_show_combined_tool_update_dialog()
+            return
+
         confirmation_text = build_tool_update_confirmation_text(update_checks=update_checks)
 
         if not confirm_informational_action(
@@ -1280,6 +1297,47 @@ class MainWindow(QMainWindow):
             ),
         )
 
+    def _try_show_combined_tool_update_dialog(self) -> None:
+        if not self._is_combined_tool_update_check_pending:
+            return
+
+        if self._pending_managed_tool_update_checks is None:
+            return
+
+        if self._pending_ytdlp_update_check is None:
+            return
+
+        managed_update_checks = self._pending_managed_tool_update_checks
+        ytdlp_update_check = self._pending_ytdlp_update_check
+
+        self._is_combined_tool_update_check_pending = False
+        self._pending_managed_tool_update_checks = None
+        self._pending_ytdlp_update_check = None
+
+        action = choose_tool_update_action(
+            parent=self,
+            managed_update_checks=managed_update_checks,
+            ytdlp_update_check=ytdlp_update_check,
+        )
+
+        if action is ToolUpdateDialogAction.MANAGED_TOOLS:
+            self._apply_tool_installation_update(
+                update=self._tool_installation_controller.start_required_tools_update(
+                    start_message=build_managed_tool_update_started_message(
+                        update_checks=managed_update_checks,
+                    ),
+                ),
+            )
+            return
+
+        if action is ToolUpdateDialogAction.YTDLP:
+            self._apply_ytdlp_runtime_update(
+                update=self._ytdlp_runtime_controller.install_latest(),
+            )
+            return
+
+        self._show_transient_status_message("Обновление инструментов отменено")
+
     def _apply_ytdlp_runtime_update(
         self,
         *,
@@ -1292,7 +1350,7 @@ class MainWindow(QMainWindow):
             )
 
         if update.update_check is not None:
-            self._handle_ytdlp_update_check(update_check=update.update_check)
+            self._handle_ytdlp_update_check_received(update_check=update.update_check)
 
         if update.should_refresh_environment_status:
             self._apply_environment_update(
@@ -1310,23 +1368,24 @@ class MainWindow(QMainWindow):
 
         self._sync_queue_controls_state()
 
-    def _handle_ytdlp_update_check(self, *, update_check: ToolUpdateCheckResult) -> None:
+    def _handle_ytdlp_update_check_received(
+        self,
+        *,
+        update_check: ToolUpdateCheckResult,
+    ) -> None:
         if update_check.latest_version is not None:
+            runtime_info = self._container.ytdlp_runtime_manager.get_runtime_info()
             self._environment_panel.set_ytdlp_update_available(
                 latest_version=update_check.latest_version,
+                is_external=runtime_info.is_external,
             )
 
-        if not update_check.should_update:
-            self._show_transient_status_message(update_check.message)
+        if self._is_combined_tool_update_check_pending:
+            self._pending_ytdlp_update_check = update_check
+            self._try_show_combined_tool_update_dialog()
             return
 
-        if not confirm_ytdlp_update(parent=self, update_check=update_check):
-            self._show_transient_status_message("Обновление yt-dlp отменено")
-            return
-
-        self._apply_ytdlp_runtime_update(
-            update=self._ytdlp_runtime_controller.install_latest(),
-        )
+        self._show_transient_status_message(update_check.message)
 
     def _show_tool_installation_activity_message(
         self,
@@ -1957,8 +2016,6 @@ class MainWindow(QMainWindow):
         self._settings_panel.choose_downloads_dir_button.setEnabled(not has_blocking_operation)
         self._environment_panel.prepare_system_button.setEnabled(not has_blocking_operation)
         self._environment_panel.update_tools_button.setEnabled(not has_blocking_operation)
-        self._environment_panel.update_ytdlp_button.setEnabled(not has_blocking_operation)
-        self._environment_panel.reset_ytdlp_button.setEnabled(not has_blocking_operation)
         self._environment_panel.cookies_actions_button.setEnabled(not has_blocking_operation)
         self._environment_panel.delete_cookies_button.setEnabled(not has_blocking_operation)
         self._environment_panel.refresh_button.setEnabled(not has_blocking_operation)

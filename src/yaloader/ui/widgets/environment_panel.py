@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import html
+from collections.abc import Callable
+
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
@@ -22,6 +25,8 @@ PREPARE_SYSTEM_BUTTON_TEXT = "Подготовить систему"
 PREPARE_SYSTEM_BUTTON_DEFAULT_TOOLTIP = (
     "Скачать и подключить недостающие FFmpeg и Deno в папку YaLoader"
 )
+YTDLP_RESET_LINK = "reset-ytdlp"
+YTDLP_RESET_TOOLTIP = "Сбросить yt-dlp"
 
 
 class StatusChip(QFrame):
@@ -30,32 +35,61 @@ class StatusChip(QFrame):
 
         self._marker_label = QLabel("●", self)
         self._text_label = QLabel(self)
+        self._link_handlers: list[Callable[[str], None]] = []
 
         self._configure_widgets()
         self._build_layout()
 
     def set_status(self, status: EnvironmentItemStatus) -> None:
-        state = "ok" if status.is_ok else "warning"
-
-        self.setProperty("state", state)
-        self.setProperty("refreshing", "false")
-        self._marker_label.setProperty("state", state)
-        self._text_label.setProperty("state", state)
+        self._apply_common_status_properties(status=status)
+        self._text_label.setTextFormat(Qt.TextFormat.PlainText)
+        self._text_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self._text_label.setCursor(Qt.CursorShape.ArrowCursor)
         self._text_label.setText(f"{status.title}: {status.message}")
 
         tooltip = str(status.path) if status.path is not None else status.message
         self.setToolTip(tooltip)
         self._text_label.setToolTip(tooltip)
 
-        self._refresh_style(self)
-        self._refresh_style(self._marker_label)
-        self._refresh_style(self._text_label)
+        self._refresh_styles()
+
+    def set_interactive_status(
+        self,
+        *,
+        status: EnvironmentItemStatus,
+        html_message: str,
+        tooltip: str,
+    ) -> None:
+        self._apply_common_status_properties(status=status)
+        self._text_label.setTextFormat(Qt.TextFormat.RichText)
+        self._text_label.setOpenExternalLinks(False)
+        self._text_label.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        self._text_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._text_label.setText(f"{html.escape(status.title)}: {html_message}")
+        self.setToolTip(tooltip)
+        self._text_label.setToolTip(tooltip)
+        self._refresh_styles()
+
+    def connect_link_activated(self, handler: Callable[[str], None]) -> None:
+        self._link_handlers.append(handler)
 
     def play_refresh_feedback(self) -> None:
         self.setProperty("refreshing", "true")
         self._refresh_style(self)
 
         QTimer.singleShot(REFRESH_FEEDBACK_DURATION_MS, self._clear_refresh_feedback)
+
+    def _handle_link_activated(self, link: str) -> None:
+        for handler in tuple(self._link_handlers):
+            handler(link)
+
+    def _apply_common_status_properties(self, *, status: EnvironmentItemStatus) -> None:
+        state = "ok" if status.is_ok else "warning"
+
+        self.setProperty("state", state)
+        self.setProperty("refreshing", "false")
+        self._marker_label.setProperty("state", state)
+        self._text_label.setProperty("state", state)
 
     def _clear_refresh_feedback(self) -> None:
         self.setProperty("refreshing", "false")
@@ -73,6 +107,7 @@ class StatusChip(QFrame):
         self._text_label.setObjectName("StatusChipText")
         self._text_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self._text_label.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self._text_label.linkActivated.connect(self._handle_link_activated)
 
     def _build_layout(self) -> None:
         layout = QGridLayout(self)
@@ -89,6 +124,11 @@ class StatusChip(QFrame):
         layout.addWidget(self._text_label, 0, 1)
         layout.setColumnStretch(1, 1)
 
+    def _refresh_styles(self) -> None:
+        self._refresh_style(self)
+        self._refresh_style(self._marker_label)
+        self._refresh_style(self._text_label)
+
     def _refresh_style(self, widget: QWidget) -> None:
         style = widget.style()
 
@@ -101,8 +141,6 @@ class EnvironmentPanel(QFrame):
     refresh_button: QPushButton
     prepare_system_button: QPushButton
     update_tools_button: QPushButton
-    update_ytdlp_button: QPushButton
-    reset_ytdlp_button: QPushButton
 
     cookies_actions_button: QPushButton
     import_cookies_action: QAction
@@ -120,9 +158,7 @@ class EnvironmentPanel(QFrame):
 
         self.refresh_button = QPushButton("⟲", self)
         self.prepare_system_button = QPushButton(PREPARE_SYSTEM_BUTTON_TEXT, self)
-        self.update_tools_button = QPushButton("Обновить FFmpeg/Deno", self)
-        self.update_ytdlp_button = QPushButton("Обновить yt-dlp", self)
-        self.reset_ytdlp_button = QPushButton("Сбросить yt-dlp", self)
+        self.update_tools_button = QPushButton("Обновить инструменты", self)
 
         self.cookies_actions_button = QPushButton("Добавить cookies.txt", self)
         self.import_cookies_action = QAction("Импортировать файл...", self)
@@ -141,6 +177,7 @@ class EnvironmentPanel(QFrame):
         self._ytdlp_status_chip = StatusChip(self)
         self._cookies_status_chip = StatusChip(self)
         self._downloads_dir_status_chip = StatusChip(self)
+        self._ytdlp_reset_handlers: list[Callable[[], None]] = []
 
         self._configure_widgets()
         self._build_layout()
@@ -148,19 +185,45 @@ class EnvironmentPanel(QFrame):
     def set_status(self, status: EnvironmentStatus) -> None:
         self._ffmpeg_status_chip.set_status(status.ffmpeg)
         self._deno_status_chip.set_status(status.deno)
-        self._ytdlp_status_chip.set_status(status.ytdlp)
+        self._set_ytdlp_status(status=status.ytdlp)
         self._cookies_status_chip.set_status(status.cookies)
         self._downloads_dir_status_chip.set_status(status.downloads_dir)
         self._sync_prepare_system_button_status(status=status)
 
-    def set_ytdlp_update_available(self, *, latest_version: str) -> None:
-        self._ytdlp_status_chip.set_status(
-            EnvironmentItemStatus(
+    def set_ytdlp_update_available(self, *, latest_version: str, is_external: bool) -> None:
+        message = f"доступна {latest_version}"
+
+        if is_external:
+            message = f"{message} (пользовательский)"
+
+        self._set_ytdlp_status(
+            status=EnvironmentItemStatus(
                 title="yt-dlp",
                 is_ok=True,
-                message=f"доступна {latest_version}",
+                message=message,
             )
         )
+
+    def connect_ytdlp_reset_requested(self, handler: Callable[[], None]) -> None:
+        self._ytdlp_reset_handlers.append(handler)
+
+    def _set_ytdlp_status(self, *, status: EnvironmentItemStatus) -> None:
+        if is_user_managed_ytdlp_status_message(message=status.message):
+            self._ytdlp_status_chip.set_interactive_status(
+                status=status,
+                html_message=build_user_managed_ytdlp_status_html(message=status.message),
+                tooltip=YTDLP_RESET_TOOLTIP,
+            )
+            return
+
+        self._ytdlp_status_chip.set_status(status)
+
+    def _handle_ytdlp_status_link_activated(self, link: str) -> None:
+        if link != YTDLP_RESET_LINK:
+            return
+
+        for handler in tuple(self._ytdlp_reset_handlers):
+            handler()
 
     def _sync_prepare_system_button_status(self, *, status: EnvironmentStatus) -> None:
         self.prepare_system_button.setVisible(
@@ -186,8 +249,6 @@ class EnvironmentPanel(QFrame):
         self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.prepare_system_button.setObjectName("GhostButton")
         self.update_tools_button.setObjectName("GhostButton")
-        self.update_ytdlp_button.setObjectName("GhostButton")
-        self.reset_ytdlp_button.setObjectName("GhostButton")
 
         self.cookies_actions_button.setObjectName("TinyGhostButton")
         self.cookies_actions_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -206,19 +267,15 @@ class EnvironmentPanel(QFrame):
 
         self.refresh_button.setToolTip("Повторно проверить состояние системы")
         self.prepare_system_button.setToolTip(PREPARE_SYSTEM_BUTTON_DEFAULT_TOOLTIP)
-        self.update_tools_button.setToolTip("Проверить и заменить portable-сборки FFmpeg и Deno")
-        self.update_ytdlp_button.setToolTip(
-            "Проверить и установить пользовательский yt-dlp отдельно от версии YaLoader"
-        )
-        self.reset_ytdlp_button.setToolTip(
-            "Удалить пользовательский yt-dlp и вернуться к встроенной версии"
-        )
+        self.update_tools_button.setToolTip("Проверить обновления FFmpeg, Deno и yt-dlp")
         self.cookies_actions_button.setToolTip(
             "Импортировать cookies.txt или создать его из Firefox"
         )
         self.open_cookies_dir_button.setToolTip("Открыть папку с cookies.txt")
         self.delete_cookies_button.setToolTip("Безвозвратно удалить cookies.txt")
         self.open_downloads_dir_button.setToolTip("Открыть папку загрузок")
+
+        self._ytdlp_status_chip.connect_link_activated(self._handle_ytdlp_status_link_activated)
 
     def _build_layout(self) -> None:
         root_layout = QVBoxLayout(self)
@@ -249,14 +306,6 @@ class EnvironmentPanel(QFrame):
         )
         header_layout.addWidget(
             self.update_tools_button,
-            alignment=Qt.AlignmentFlag.AlignVCenter,
-        )
-        header_layout.addWidget(
-            self.update_ytdlp_button,
-            alignment=Qt.AlignmentFlag.AlignVCenter,
-        )
-        header_layout.addWidget(
-            self.reset_ytdlp_button,
             alignment=Qt.AlignmentFlag.AlignVCenter,
         )
 
@@ -293,6 +342,30 @@ class EnvironmentPanel(QFrame):
             self._cookies_status_chip,
             self._downloads_dir_status_chip,
         )
+
+
+def is_user_managed_ytdlp_status_message(*, message: str) -> bool:
+    return "пользовательский" in message.casefold()
+
+
+def build_user_managed_ytdlp_status_html(*, message: str) -> str:
+    marker = "пользовательский"
+    marker_index = message.casefold().find(marker)
+
+    if marker_index < 0:
+        return html.escape(message)
+
+    before_marker = message[:marker_index]
+    marker_text = message[marker_index : marker_index + len(marker)]
+    after_marker = message[marker_index + len(marker) :]
+
+    link = (
+        f'<a href="{YTDLP_RESET_LINK}" '
+        'style="color: #C9D1D9; text-decoration: underline;">'
+        f"{html.escape(marker_text)}</a>"
+    )
+
+    return f"{html.escape(before_marker)}{link}{html.escape(after_marker)}"
 
 
 def should_show_prepare_system_button(*, status: EnvironmentStatus) -> bool:
