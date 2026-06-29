@@ -2,8 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from yaloader.application.dto.ytdlp_runtime import YtDlpRuntimeInfo
 from yaloader.application.services.environment_check_service import EnvironmentCheckService
 from yaloader.config.paths import AppPaths
+
+
+class FakeYtDlpRuntimeInfoProvider:
+    def __init__(self, runtime_info: YtDlpRuntimeInfo) -> None:
+        self._runtime_info = runtime_info
+
+    def get_runtime_info(self) -> YtDlpRuntimeInfo:
+        return self._runtime_info
 
 
 class FakeProcessRunner:
@@ -79,3 +88,41 @@ def create_app_paths(tmp_path: Path) -> AppPaths:
         cookies_file=data_dir / "cookies.txt",
         history_file=data_dir / "download_history.json",
     )
+
+
+def test_environment_check_reports_external_ytdlp_runtime(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / "runtime"
+    service = EnvironmentCheckService(
+        paths=create_app_paths(tmp_path=tmp_path),
+        process_runner=FakeProcessRunner(executables={}),
+        ytdlp_runtime_provider=FakeYtDlpRuntimeInfoProvider(
+            runtime_info=YtDlpRuntimeInfo.external(
+                version="2026.4.1",
+                path=runtime_dir,
+            ),
+        ),
+    )
+
+    status = service.check(downloads_dir=tmp_path / "downloads")
+
+    assert status.ytdlp.is_ok is True
+    assert status.ytdlp.message == "2026.4.1 (пользовательский)"
+    assert status.ytdlp.path == runtime_dir
+
+
+def test_environment_check_reports_disabled_external_ytdlp_runtime(tmp_path: Path) -> None:
+    service = EnvironmentCheckService(
+        paths=create_app_paths(tmp_path=tmp_path),
+        process_runner=FakeProcessRunner(executables={}),
+        ytdlp_runtime_provider=FakeYtDlpRuntimeInfoProvider(
+            runtime_info=YtDlpRuntimeInfo.bundled(
+                version="2026.3.17",
+                fallback_reason="внешний yt-dlp отключён: broken",
+            ),
+        ),
+    )
+
+    status = service.check(downloads_dir=tmp_path / "downloads")
+
+    assert status.ytdlp.is_ok is True
+    assert status.ytdlp.message == "2026.3.17 (встроенный | внешний отключён)"

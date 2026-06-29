@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import re
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -28,6 +27,10 @@ from yaloader.infrastructure.ytdlp.options_builder import (
 )
 from yaloader.infrastructure.ytdlp.output_naming import build_unique_output_template
 from yaloader.infrastructure.ytdlp.runtime_environment import YtDlpRuntimeEnvironment
+from yaloader.infrastructure.ytdlp.runtime_manager import (
+    YtDlpRuntimeManager,
+    load_bundled_ytdlp_module,
+)
 
 ANSI_ESCAPE_SEQUENCE_RE = re.compile(r"\x1b\[[0-9;]*m")
 YOUTUBE_BOT_CHECK_MARKER = "Sign in to confirm"
@@ -94,8 +97,14 @@ class YtDlpPythonBackend:
     youtube_dl_factory: YoutubeDLFactory
 
     @classmethod
-    def create_default(cls) -> YtDlpPythonBackend:
-        return cls(youtube_dl_factory=load_youtube_dl_factory())
+    def create_default(
+        cls,
+        *,
+        runtime_manager: YtDlpRuntimeManager | None = None,
+    ) -> YtDlpPythonBackend:
+        return cls(
+            youtube_dl_factory=load_youtube_dl_factory(runtime_manager=runtime_manager),
+        )
 
     def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
         logger.debug("yt-dlp backend started. urls_count={}", len(urls))
@@ -257,13 +266,14 @@ class YtDlpDownloader:
         speed_limit_provider: DownloadSpeedLimitProvider | None = None,
         prepared_download_cache: PreparedDownloadCache | None = None,
         process_runner: ProcessRunner | None = None,
+        runtime_manager: YtDlpRuntimeManager | None = None,
     ) -> YtDlpDownloader:
         return cls(
             options_builder=YtDlpOptionsBuilder(
                 cookies_file=cookies_file,
                 process_runner=process_runner,
             ),
-            backend=YtDlpPythonBackend.create_default(),
+            backend=YtDlpPythonBackend.create_default(runtime_manager=runtime_manager),
             cookies_file=cookies_file,
             speed_limit_provider=speed_limit_provider,
             prepared_download_cache=prepared_download_cache,
@@ -935,6 +945,11 @@ def cleanup_created_files(*, download_dir: Path, existing_files: frozenset[Path]
     return removed_files_count
 
 
-def load_youtube_dl_factory() -> YoutubeDLFactory:
-    ytdlp_module = importlib.import_module("yt_dlp")
+def load_youtube_dl_factory(
+    *,
+    runtime_manager: YtDlpRuntimeManager | None = None,
+) -> YoutubeDLFactory:
+    ytdlp_module = (
+        load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
+    )
     return cast(YoutubeDLFactory, ytdlp_module.YoutubeDL)

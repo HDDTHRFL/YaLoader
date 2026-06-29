@@ -28,12 +28,14 @@ from yaloader.application.dto.browser_cookies import BrowserId
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.tool_installation import ToolUpdateCheckResult
+from yaloader.application.dto.ytdlp_runtime import YtDlpRuntimeSource
 from yaloader.config.app_info import APP_DISPLAY_NAME
 from yaloader.domain.download_speed_limit import format_download_speed_limit_label
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, DownloadStatus, OutputFormat, VideoQuality
 from yaloader.domain.source_platform import SourcePlatform, detect_source_platform
 from yaloader.infrastructure.windows.explorer import reveal_path_in_file_manager
+from yaloader.infrastructure.ytdlp.runtime_manager import get_bundled_ytdlp_version
 from yaloader.services.app_container import AppContainer
 from yaloader.ui.controllers.browser_cookies_controller import (
     BrowserCookiesController,
@@ -64,6 +66,10 @@ from yaloader.ui.controllers.tool_installation_controller import (
     ToolInstallationController,
     ToolInstallationControllerUpdate,
 )
+from yaloader.ui.controllers.ytdlp_runtime_controller import (
+    YtDlpRuntimeController,
+    YtDlpRuntimeControllerUpdate,
+)
 from yaloader.ui.footer_status_presenter import FooterStatusPresenter
 from yaloader.ui.status_messages import (
     DEFAULT_STATUS_MESSAGE,
@@ -87,6 +93,12 @@ from yaloader.ui.widgets.speed_limit_indicator import (
 from yaloader.ui.widgets.speed_settings_dialog import (
     SpeedSettingsDialog,
     normalize_download_speed_limit_signal_value,
+)
+from yaloader.ui.ytdlp_runtime_dialogs import (
+    YtDlpFailureRecoveryAction,
+    choose_ytdlp_failure_recovery_action,
+    confirm_reset_ytdlp_runtime,
+    confirm_ytdlp_update,
 )
 
 WINDOW_INITIAL_WIDTH = 1180
@@ -231,6 +243,9 @@ class MainWindow(QMainWindow):
         self._tool_installation_controller = ToolInstallationController(
             service=container.tool_installation_service,
         )
+        self._ytdlp_runtime_controller = YtDlpRuntimeController(
+            service=container.ytdlp_runtime_service,
+        )
 
         self._is_history_panel_visible = self._settings.show_history_on_startup
         self._history_animation: QVariantAnimation | None = None
@@ -342,6 +357,7 @@ class MainWindow(QMainWindow):
         self._platform_icon_controller.shutdown()
         self._browser_cookies_controller.shutdown()
         self._tool_installation_controller.shutdown()
+        self._ytdlp_runtime_controller.shutdown()
         super().closeEvent(event)
 
     @override
@@ -355,6 +371,9 @@ class MainWindow(QMainWindow):
         self._apply_download_update(update=self._download_controller.poll())
         self._apply_tool_installation_update(
             update=self._tool_installation_controller.poll(),
+        )
+        self._apply_ytdlp_runtime_update(
+            update=self._ytdlp_runtime_controller.poll(),
         )
         self._apply_browser_cookies_update(
             update=self._browser_cookies_controller.poll(),
@@ -430,6 +449,10 @@ class MainWindow(QMainWindow):
         self._environment_panel.update_tools_button.clicked.connect(
             self._handle_update_tools_clicked
         )
+        self._environment_panel.update_ytdlp_button.clicked.connect(
+            self._handle_update_ytdlp_clicked
+        )
+        self._environment_panel.reset_ytdlp_button.clicked.connect(self._handle_reset_ytdlp_clicked)
         self._environment_panel.import_cookies_action.triggered.connect(
             self._handle_import_cookies_clicked
         )
@@ -1093,6 +1116,20 @@ class MainWindow(QMainWindow):
             update=self._tool_installation_controller.check_required_tools_updates(),
         )
 
+    def _handle_update_ytdlp_clicked(self) -> None:
+        self._apply_ytdlp_runtime_update(
+            update=self._ytdlp_runtime_controller.check_update(),
+        )
+
+    def _handle_reset_ytdlp_clicked(self) -> None:
+        if not confirm_reset_ytdlp_runtime(parent=self):
+            self._show_transient_status_message("Сброс yt-dlp отменён")
+            return
+
+        self._apply_ytdlp_runtime_update(
+            update=self._ytdlp_runtime_controller.reset_to_bundled(),
+        )
+
     def _handle_prepare_system_clicked(self) -> None:
         self._apply_tool_installation_update(
             update=self._tool_installation_controller.start_required_tools_installation(),
@@ -1243,6 +1280,54 @@ class MainWindow(QMainWindow):
             ),
         )
 
+    def _apply_ytdlp_runtime_update(
+        self,
+        *,
+        update: YtDlpRuntimeControllerUpdate,
+    ) -> None:
+        for progress in update.progress_events:
+            self._show_tool_installation_activity_message(
+                message=f"yt-dlp: {progress.message}",
+                percent=progress.percent,
+            )
+
+        if update.update_check is not None:
+            self._handle_ytdlp_update_check(update_check=update.update_check)
+
+        if update.should_refresh_environment_status:
+            self._apply_environment_update(
+                update=self._environment_controller.load_status(
+                    downloads_dir=self._settings.downloads_dir,
+                )
+            )
+            self._environment_panel.play_refresh_feedback()
+
+        if update.status_message is not None:
+            if not self._ytdlp_runtime_controller.is_active:
+                self._clear_tool_installation_activity_message()
+
+            self._show_transient_status_message(update.status_message)
+
+        self._sync_queue_controls_state()
+
+    def _handle_ytdlp_update_check(self, *, update_check: ToolUpdateCheckResult) -> None:
+        if update_check.latest_version is not None:
+            self._environment_panel.set_ytdlp_update_available(
+                latest_version=update_check.latest_version,
+            )
+
+        if not update_check.should_update:
+            self._show_transient_status_message(update_check.message)
+            return
+
+        if not confirm_ytdlp_update(parent=self, update_check=update_check):
+            self._show_transient_status_message("Обновление yt-dlp отменено")
+            return
+
+        self._apply_ytdlp_runtime_update(
+            update=self._ytdlp_runtime_controller.install_latest(),
+        )
+
     def _show_tool_installation_activity_message(
         self,
         *,
@@ -1345,7 +1430,56 @@ class MainWindow(QMainWindow):
         if update.status_message is not None:
             self._apply_download_status_message(message=update.status_message)
 
+        self._maybe_offer_ytdlp_failure_recovery(update=update)
+
         self._sync_queue_controls_state()
+
+    def _maybe_offer_ytdlp_failure_recovery(
+        self,
+        *,
+        update: DownloadControllerUpdate,
+    ) -> None:
+        if self._download_controller.is_active:
+            return
+
+        failed_task_ids = tuple(
+            task.task_id for task in update.updated_tasks if task.status is DownloadStatus.FAILED
+        )
+
+        if not failed_task_ids:
+            return
+
+        runtime_info = self._container.ytdlp_runtime_manager.get_runtime_info()
+
+        if runtime_info.source is not YtDlpRuntimeSource.EXTERNAL:
+            return
+
+        action = choose_ytdlp_failure_recovery_action(
+            parent=self,
+            external_version=runtime_info.version,
+            bundled_version=get_bundled_ytdlp_version(),
+        )
+
+        if action is YtDlpFailureRecoveryAction.NONE:
+            return
+
+        reset_result = self._container.ytdlp_runtime_service.reset_to_bundled()
+        self._show_transient_status_message(reset_result.message)
+        self._apply_environment_update(
+            update=self._environment_controller.load_status(
+                downloads_dir=self._settings.downloads_dir,
+            )
+        )
+
+        if not reset_result.is_success:
+            return
+
+        self._download_controller.clear_prepared_downloads(task_ids=failed_task_ids)
+
+        if action is YtDlpFailureRecoveryAction.TRY_BUNDLED:
+            self._apply_download_update(
+                update=self._download_controller.start_tasks(task_ids=failed_task_ids),
+            )
 
     def _should_open_downloads_dir_after_queue_completed(
         self,
@@ -1808,9 +1942,12 @@ class MainWindow(QMainWindow):
         )
         has_active_download = self._download_controller.is_active
         has_active_tool_installation = self._tool_installation_controller.is_active
+        has_active_ytdlp_runtime_operation = self._ytdlp_runtime_controller.is_active
         has_active_browser_cookies_export = self._browser_cookies_controller.is_active
         has_environment_operation = (
-            has_active_tool_installation or has_active_browser_cookies_export
+            has_active_tool_installation
+            or has_active_ytdlp_runtime_operation
+            or has_active_browser_cookies_export
         )
         has_blocking_operation = has_active_download or has_environment_operation
 
@@ -1820,6 +1957,8 @@ class MainWindow(QMainWindow):
         self._settings_panel.choose_downloads_dir_button.setEnabled(not has_blocking_operation)
         self._environment_panel.prepare_system_button.setEnabled(not has_blocking_operation)
         self._environment_panel.update_tools_button.setEnabled(not has_blocking_operation)
+        self._environment_panel.update_ytdlp_button.setEnabled(not has_blocking_operation)
+        self._environment_panel.reset_ytdlp_button.setEnabled(not has_blocking_operation)
         self._environment_panel.cookies_actions_button.setEnabled(not has_blocking_operation)
         self._environment_panel.delete_cookies_button.setEnabled(not has_blocking_operation)
         self._environment_panel.refresh_button.setEnabled(not has_blocking_operation)

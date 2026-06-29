@@ -8,6 +8,7 @@ from typing import Final, cast
 import httpx
 
 from yaloader.application.dto.tool_installation import ToolId
+from yaloader.application.ports.ytdlp_runtime import YtDlpRuntimeInfoProvider
 
 YTDLP_PACKAGE_NAME: Final = "yt-dlp"
 YTDLP_PYPI_JSON_URL: Final = "https://pypi.org/pypi/yt-dlp/json"
@@ -21,12 +22,16 @@ class YtDlpVersionCheckError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class YtDlpPackageVersionChecker:
     timeout_seconds: float = YTDLP_VERSION_CHECK_TIMEOUT_SECONDS
+    runtime_provider: YtDlpRuntimeInfoProvider | None = None
 
     @property
     def tool_id(self) -> ToolId:
         return ToolId.YTDLP
 
     def get_current_version(self) -> str:
+        if self.runtime_provider is not None:
+            return self.runtime_provider.get_runtime_info().version
+
         try:
             return importlib.metadata.version(YTDLP_PACKAGE_NAME)
         except importlib.metadata.PackageNotFoundError as error:

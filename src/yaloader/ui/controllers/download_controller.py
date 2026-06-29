@@ -228,6 +228,10 @@ class DownloadController:
 
         return DownloadControllerUpdate(updated_tasks=tuple(updated_tasks))
 
+    def clear_prepared_downloads(self, *, task_ids: tuple[UUID, ...]) -> None:
+        for task_id in tuple(dict.fromkeys(task_ids)):
+            self._remove_prepared_download_from_cache(task_id=task_id)
+
     def cancel_active_download(self) -> DownloadControllerUpdate:
         if self._active_cancellation_token is None or self._active_download_task_id is None:
             return DownloadControllerUpdate(status_message="Нет активной загрузки для отмены")

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +23,10 @@ from yaloader.infrastructure.ytdlp.metadata_extractor import (
 )
 from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
 from yaloader.infrastructure.ytdlp.runtime_environment import YtDlpRuntimeEnvironment
+from yaloader.infrastructure.ytdlp.runtime_manager import (
+    YtDlpRuntimeManager,
+    load_bundled_ytdlp_module,
+)
 
 
 class DownloadPreparationCancelledError(RuntimeError):
@@ -59,9 +62,12 @@ class YtDlpDownloadPreparer:
         *,
         cookies_file: Path | None = None,
         process_runner: ProcessRunner | None = None,
+        runtime_manager: YtDlpRuntimeManager | None = None,
     ) -> YtDlpDownloadPreparer:
         return cls(
-            youtube_dl_factory=load_youtube_dl_preparation_factory(),
+            youtube_dl_factory=load_youtube_dl_preparation_factory(
+                runtime_manager=runtime_manager,
+            ),
             options_builder=YtDlpOptionsBuilder(
                 cookies_file=cookies_file,
                 process_runner=process_runner,
@@ -192,6 +198,11 @@ def copy_string_key_mapping(*, value: object) -> dict[str, object]:
     return copied_mapping
 
 
-def load_youtube_dl_preparation_factory() -> YoutubeDLPreparationFactory:
-    ytdlp_module = importlib.import_module("yt_dlp")
+def load_youtube_dl_preparation_factory(
+    *,
+    runtime_manager: YtDlpRuntimeManager | None = None,
+) -> YoutubeDLPreparationFactory:
+    ytdlp_module = (
+        load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
+    )
     return cast(YoutubeDLPreparationFactory, ytdlp_module.YoutubeDL)

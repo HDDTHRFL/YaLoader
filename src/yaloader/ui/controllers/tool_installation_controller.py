@@ -22,7 +22,6 @@ REQUIRED_TOOL_IDS: tuple[ToolId, ...] = (
 UPDATE_CHECK_TOOL_IDS: tuple[ToolId, ...] = (
     ToolId.FFMPEG,
     ToolId.DENO,
-    ToolId.YTDLP,
 )
 INSTALLABLE_UPDATE_TOOL_IDS: frozenset[ToolId] = frozenset(REQUIRED_TOOL_IDS)
 

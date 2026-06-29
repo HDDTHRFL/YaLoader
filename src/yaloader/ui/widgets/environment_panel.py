@@ -101,6 +101,8 @@ class EnvironmentPanel(QFrame):
     refresh_button: QPushButton
     prepare_system_button: QPushButton
     update_tools_button: QPushButton
+    update_ytdlp_button: QPushButton
+    reset_ytdlp_button: QPushButton
 
     cookies_actions_button: QPushButton
     import_cookies_action: QAction
@@ -118,7 +120,9 @@ class EnvironmentPanel(QFrame):
 
         self.refresh_button = QPushButton("⟲", self)
         self.prepare_system_button = QPushButton(PREPARE_SYSTEM_BUTTON_TEXT, self)
-        self.update_tools_button = QPushButton("Обновить инструменты", self)
+        self.update_tools_button = QPushButton("Обновить FFmpeg/Deno", self)
+        self.update_ytdlp_button = QPushButton("Обновить yt-dlp", self)
+        self.reset_ytdlp_button = QPushButton("Сбросить yt-dlp", self)
 
         self.cookies_actions_button = QPushButton("Добавить cookies.txt", self)
         self.import_cookies_action = QAction("Импортировать файл...", self)
@@ -149,6 +153,15 @@ class EnvironmentPanel(QFrame):
         self._downloads_dir_status_chip.set_status(status.downloads_dir)
         self._sync_prepare_system_button_status(status=status)
 
+    def set_ytdlp_update_available(self, *, latest_version: str) -> None:
+        self._ytdlp_status_chip.set_status(
+            EnvironmentItemStatus(
+                title="yt-dlp",
+                is_ok=True,
+                message=f"доступна {latest_version}",
+            )
+        )
+
     def _sync_prepare_system_button_status(self, *, status: EnvironmentStatus) -> None:
         self.prepare_system_button.setVisible(
             should_show_prepare_system_button(status=status),
@@ -173,6 +186,8 @@ class EnvironmentPanel(QFrame):
         self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.prepare_system_button.setObjectName("GhostButton")
         self.update_tools_button.setObjectName("GhostButton")
+        self.update_ytdlp_button.setObjectName("GhostButton")
+        self.reset_ytdlp_button.setObjectName("GhostButton")
 
         self.cookies_actions_button.setObjectName("TinyGhostButton")
         self.cookies_actions_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -191,9 +206,12 @@ class EnvironmentPanel(QFrame):
 
         self.refresh_button.setToolTip("Повторно проверить состояние системы")
         self.prepare_system_button.setToolTip(PREPARE_SYSTEM_BUTTON_DEFAULT_TOOLTIP)
-        self.update_tools_button.setToolTip(
-            "Проверить обновления FFmpeg, Deno и yt-dlp. "
-            "FFmpeg и Deno можно заменить автоматически."
+        self.update_tools_button.setToolTip("Проверить и заменить portable-сборки FFmpeg и Deno")
+        self.update_ytdlp_button.setToolTip(
+            "Проверить и установить пользовательский yt-dlp отдельно от версии YaLoader"
+        )
+        self.reset_ytdlp_button.setToolTip(
+            "Удалить пользовательский yt-dlp и вернуться к встроенной версии"
         )
         self.cookies_actions_button.setToolTip(
             "Импортировать cookies.txt или создать его из Firefox"
@@ -231,6 +249,14 @@ class EnvironmentPanel(QFrame):
         )
         header_layout.addWidget(
             self.update_tools_button,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
+        header_layout.addWidget(
+            self.update_ytdlp_button,
+            alignment=Qt.AlignmentFlag.AlignVCenter,
+        )
+        header_layout.addWidget(
+            self.reset_ytdlp_button,
             alignment=Qt.AlignmentFlag.AlignVCenter,
         )
 

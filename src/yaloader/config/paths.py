@@ -8,6 +8,7 @@ from typing import Final
 from yaloader.config.app_info import APP_NAME
 
 TOOLS_DIR_NAME: Final = "tools"
+YTDLP_RUNTIME_ROOT_DIR_NAME: Final = "yt-dlp-runtimes"
 
 FFMPEG_DIR_NAME: Final = "ffmpeg"
 FFMPEG_BIN_DIR_NAME: Final = "bin"
@@ -31,6 +32,10 @@ class AppPaths:
     @property
     def tools_dir(self) -> Path:
         return self.data_dir / TOOLS_DIR_NAME
+
+    @property
+    def ytdlp_runtime_root_dir(self) -> Path:
+        return self.tools_dir / YTDLP_RUNTIME_ROOT_DIR_NAME
 
     @property
     def platform_icons_cache_dir(self) -> Path:
@@ -63,6 +68,7 @@ class AppPaths:
             self.downloads_dir,
             self.logs_dir,
             self.tools_dir,
+            self.ytdlp_runtime_root_dir,
             self.platform_icons_cache_dir,
         )
 

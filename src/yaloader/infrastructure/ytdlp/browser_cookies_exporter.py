@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -19,6 +18,10 @@ from yaloader.application.ports.browser_cookies_exporter import (
 from yaloader.application.services.cookies_file_service import (
     compact_cookies_file_in_place,
     validate_cookies_file,
+)
+from yaloader.infrastructure.ytdlp.runtime_manager import (
+    YtDlpRuntimeManager,
+    load_bundled_ytdlp_module,
 )
 
 TEMPORARY_COOKIES_FILE_SUFFIX = ".tmp"
@@ -290,6 +293,11 @@ def format_browser_display_name(*, browser_id: BrowserId) -> str:
     return BROWSER_DISPLAY_NAMES.get(browser_id, browser_id.value)
 
 
-def load_youtube_dl_browser_cookies_factory() -> YtDlpBrowserCookiesFactory:
-    ytdlp_module = importlib.import_module("yt_dlp")
+def load_youtube_dl_browser_cookies_factory(
+    *,
+    runtime_manager: YtDlpRuntimeManager | None = None,
+) -> YtDlpBrowserCookiesFactory:
+    ytdlp_module = (
+        load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
+    )
     return cast(YtDlpBrowserCookiesFactory, ytdlp_module.YoutubeDL)

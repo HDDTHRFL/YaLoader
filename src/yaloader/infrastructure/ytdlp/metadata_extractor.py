@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -17,6 +16,10 @@ from yaloader.application.ports.process_runner import ProcessRunner
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
 from yaloader.infrastructure.ytdlp.options_builder import YtDlpOptions, YtDlpOptionsBuilder
 from yaloader.infrastructure.ytdlp.runtime_environment import YtDlpRuntimeEnvironment
+from yaloader.infrastructure.ytdlp.runtime_manager import (
+    YtDlpRuntimeManager,
+    load_bundled_ytdlp_module,
+)
 
 BITS_PER_BYTE = 8
 KILOBITS_PER_SECOND_MULTIPLIER = 1000
@@ -71,9 +74,12 @@ class YtDlpMetadataExtractor:
         *,
         cookies_file: Path | None = None,
         process_runner: ProcessRunner | None = None,
+        runtime_manager: YtDlpRuntimeManager | None = None,
     ) -> YtDlpMetadataExtractor:
         return cls(
-            youtube_dl_factory=load_youtube_dl_metadata_factory(),
+            youtube_dl_factory=load_youtube_dl_metadata_factory(
+                runtime_manager=runtime_manager,
+            ),
             cookies_file=cookies_file,
             process_runner=process_runner,
         )
@@ -714,6 +720,11 @@ def normalize_positive_int(value: object) -> int | None:
     return None
 
 
-def load_youtube_dl_metadata_factory() -> YoutubeDLMetadataFactory:
-    ytdlp_module = importlib.import_module("yt_dlp")
+def load_youtube_dl_metadata_factory(
+    *,
+    runtime_manager: YtDlpRuntimeManager | None = None,
+) -> YoutubeDLMetadataFactory:
+    ytdlp_module = (
+        load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
+    )
     return cast(YoutubeDLMetadataFactory, ytdlp_module.YoutubeDL)

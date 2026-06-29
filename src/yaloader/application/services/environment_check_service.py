@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import importlib.metadata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
 from loguru import logger
 
 from yaloader.application.dto.environment_status import EnvironmentItemStatus, EnvironmentStatus
+from yaloader.application.dto.ytdlp_runtime import YtDlpRuntimeInfo, YtDlpRuntimeSource
 from yaloader.application.ports.process_runner import ProcessRunner
+from yaloader.application.ports.ytdlp_runtime import YtDlpRuntimeInfoProvider
 from yaloader.application.services.cookies_file_service import (
     CookiesFileImportError,
     format_cookies_file_size,
@@ -19,9 +21,23 @@ from yaloader.config.paths import AppPaths
 
 
 @dataclass(frozen=True, slots=True)
+class PackageYtDlpRuntimeInfoProvider:
+    def get_runtime_info(self) -> YtDlpRuntimeInfo:
+        try:
+            version = importlib.metadata.version("yt-dlp")
+        except importlib.metadata.PackageNotFoundError as error:
+            raise RuntimeError("yt-dlp не найден") from error
+
+        return YtDlpRuntimeInfo.bundled(version=version)
+
+
+@dataclass(frozen=True, slots=True)
 class EnvironmentCheckService:
     paths: AppPaths
     process_runner: ProcessRunner
+    ytdlp_runtime_provider: YtDlpRuntimeInfoProvider = field(
+        default_factory=PackageYtDlpRuntimeInfoProvider,
+    )
 
     def check(self, *, downloads_dir: Path) -> EnvironmentStatus:
         status = EnvironmentStatus(
@@ -76,18 +92,19 @@ class EnvironmentCheckService:
 
     def _check_ytdlp(self) -> EnvironmentItemStatus:
         try:
-            version = importlib.metadata.version("yt-dlp")
-        except importlib.metadata.PackageNotFoundError:
+            runtime_info = self.ytdlp_runtime_provider.get_runtime_info()
+        except Exception as error:
             return EnvironmentItemStatus(
                 title="yt-dlp",
                 is_ok=False,
-                message="не найден",
+                message=str(error),
             )
 
         return EnvironmentItemStatus(
             title="yt-dlp",
             is_ok=True,
-            message=version,
+            message=format_ytdlp_runtime_status(runtime_info=runtime_info),
+            path=runtime_info.path,
         )
 
     def _check_cookies_file(self) -> EnvironmentItemStatus:
@@ -156,6 +173,16 @@ class EnvironmentCheckService:
             message="доступна",
             path=downloads_dir,
         )
+
+
+def format_ytdlp_runtime_status(*, runtime_info: YtDlpRuntimeInfo) -> str:
+    if runtime_info.source is YtDlpRuntimeSource.EXTERNAL:
+        return f"{runtime_info.version} (пользовательский)"
+
+    if runtime_info.fallback_reason is not None:
+        return f"{runtime_info.version} (встроенный | внешний отключён)"
+
+    return f"{runtime_info.version} (встроенный)"
 
 
 def format_environment_item_for_log(status: EnvironmentItemStatus) -> str:
