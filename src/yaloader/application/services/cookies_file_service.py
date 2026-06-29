@@ -49,9 +49,7 @@ class CookiesFileService:
             validate_cookies_file(source_file=temporary_file)
             temporary_file.replace(self.target_file)
         except OSError as error:
-            raise CookiesFileImportError(
-                f"не удалось импортировать cookies.txt: {error}"
-            ) from error
+            raise CookiesFileImportError(f"не удалось импортировать cookies.txt: {error}") from error
         finally:
             remove_file_if_exists(file_path=temporary_file)
 

@@ -96,10 +96,7 @@ def test_start_tasks_while_active_prepares_new_pending_task_without_parallel_dow
 
         assert update.status_message == "Добавлено в текущую очередь: 1"
         assert update.prepared_task_ids == (second_task.task_id,)
-        assert (
-            require_task(queue_service=queue_service, task_id=second_task.task_id).status
-            is DownloadStatus.PENDING
-        )
+        assert require_task(queue_service=queue_service, task_id=second_task.task_id).status is DownloadStatus.PENDING
 
         assert wait_until(lambda: second_task.task_id in preparer.prepared_task_ids)
         assert downloader.started_task_ids == [first_task.task_id]
@@ -149,14 +146,8 @@ def test_cancel_prepared_running_task_removes_prepared_cache_entry(
 
         cancel_update = controller.cancel_tasks_download(task_ids=(task.task_id,))
 
-        assert (
-            cancel_update.status_message
-            == "Отмена выбранной загрузки... Частичные файлы будут удалены"
-        )
-        assert (
-            require_task(queue_service=queue_service, task_id=task.task_id).status
-            is DownloadStatus.CANCELED
-        )
+        assert cancel_update.status_message == "Отмена выбранной загрузки... Частичные файлы будут удалены"
+        assert require_task(queue_service=queue_service, task_id=task.task_id).status is DownloadStatus.CANCELED
         assert not prepared_download_cache.contains(task_id=task.task_id)
     finally:
         controller.shutdown()

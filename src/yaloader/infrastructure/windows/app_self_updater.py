@@ -9,17 +9,17 @@ from pathlib import Path
 from typing import Final
 
 from yaloader.application.dto.app_update import (
-    YALOADER_EXE_ASSET_NAME,
-    YALOADER_EXE_SHA256_ASSET_NAME,
+    YALOADER_EXE_FILE_NAME,
     AppReleaseInfo,
     AppUpdateInstallResult,
+    build_yaloader_windows_x64_archive_name,
 )
 from yaloader.config.paths import AppPaths
-from yaloader.infrastructure.tools.checksum import (
-    ChecksumError,
-    parse_sha256_text,
-    verify_file_sha256,
+from yaloader.infrastructure.tools.archive_extraction import (
+    ArchiveExtractionError,
+    safe_extract_zip_archive,
 )
+from yaloader.infrastructure.tools.checksum import ChecksumError, verify_file_sha256
 from yaloader.infrastructure.tools.http_file_downloader import (
     FileDownloader,
     FileDownloadError,
@@ -29,6 +29,7 @@ from yaloader.infrastructure.tools.http_file_downloader import (
 UPDATES_DIR_NAME: Final = "updates"
 UPDATER_COMMAND_FILE_NAME: Final = "apply_yaloader_update.cmd"
 UPDATER_LOG_FILE_NAME: Final = "update.log"
+EXTRACTED_DIR_NAME: Final = "extracted"
 PREVIOUS_EXE_SUFFIX: Final = ".previous"
 
 
@@ -46,6 +47,7 @@ class WindowsAppSelfUpdater:
             self._install(release_info=release_info)
         except (
             AppSelfUpdateError,
+            ArchiveExtractionError,
             ChecksumError,
             FileDownloadError,
             OSError,
@@ -63,37 +65,41 @@ class WindowsAppSelfUpdater:
         if not is_running_from_frozen_executable():
             raise AppSelfUpdateError("автообновление доступно только для собранного YaLoader.exe")
 
-        if release_info.executable_url is None:
-            raise AppSelfUpdateError(f"в GitHub release не найден asset {YALOADER_EXE_ASSET_NAME}")
-
-        if release_info.checksum_url is None:
-            raise AppSelfUpdateError(
-                f"в GitHub release не найден asset {YALOADER_EXE_SHA256_ASSET_NAME}"
+        if release_info.archive_url is None:
+            expected_archive_name = build_yaloader_windows_x64_archive_name(
+                version=release_info.version,
             )
+            raise AppSelfUpdateError(f"в GitHub release не найден asset {expected_archive_name}")
+
+        if release_info.archive_sha256 is None:
+            raise AppSelfUpdateError("GitHub release asset не содержит SHA-256 digest")
 
         current_executable = get_current_executable_path()
         update_dir = self._prepare_update_dir(version=release_info.version)
-        staged_executable = update_dir / YALOADER_EXE_ASSET_NAME
-        checksum_file = update_dir / YALOADER_EXE_SHA256_ASSET_NAME
+        archive_file = update_dir / resolve_release_archive_file_name(release_info=release_info)
+        extracted_dir = update_dir / EXTRACTED_DIR_NAME
+        staged_executable = update_dir / YALOADER_EXE_FILE_NAME
         command_file = update_dir / UPDATER_COMMAND_FILE_NAME
         log_file = update_dir / UPDATER_LOG_FILE_NAME
 
         self.downloader.download_file(
-            url=release_info.executable_url,
-            destination_file=staged_executable,
-        )
-        self.downloader.download_file(
-            url=release_info.checksum_url,
-            destination_file=checksum_file,
-        )
-
-        expected_sha256 = parse_sha256_text(
-            text=checksum_file.read_text(encoding="utf-8", errors="replace"),
+            url=release_info.archive_url,
+            destination_file=archive_file,
         )
         verify_file_sha256(
-            file_path=staged_executable,
-            expected_sha256=expected_sha256,
+            file_path=archive_file,
+            expected_sha256=release_info.archive_sha256,
         )
+        safe_extract_zip_archive(
+            archive_file=archive_file,
+            destination_dir=extracted_dir,
+        )
+
+        source_executable = find_yaloader_executable(extracted_dir=extracted_dir)
+        shutil.copy2(source_executable, staged_executable)
+
+        if not staged_executable.is_file():
+            raise AppSelfUpdateError(f"YaLoader.exe не подготовлен: {staged_executable}")
 
         write_updater_command_file(
             command_file=command_file,
@@ -126,10 +132,27 @@ def get_current_executable_path() -> Path:
     return Path(sys.executable).resolve()
 
 
+def resolve_release_archive_file_name(*, release_info: AppReleaseInfo) -> str:
+    archive_name = release_info.archive_name
+
+    if archive_name is None:
+        archive_name = build_yaloader_windows_x64_archive_name(version=release_info.version)
+
+    return sanitize_update_asset_file_name(file_name=archive_name)
+
+
+def sanitize_update_asset_file_name(*, file_name: str) -> str:
+    normalized_file_name = Path(file_name.strip()).name
+
+    if not normalized_file_name:
+        raise AppSelfUpdateError("имя asset-файла обновления пустое")
+
+    return normalized_file_name
+
+
 def sanitize_update_version_dir_name(*, version: str) -> str:
     safe_characters = tuple(
-        character if character.isalnum() or character in {".", "-", "_"} else "_"
-        for character in version.strip()
+        character if character.isalnum() or character in {".", "-", "_"} else "_" for character in version.strip()
     )
     safe_version = "".join(safe_characters).strip("._-")
 
@@ -137,6 +160,14 @@ def sanitize_update_version_dir_name(*, version: str) -> str:
         return safe_version
 
     raise AppSelfUpdateError("версия обновления пуста")
+
+
+def find_yaloader_executable(*, extracted_dir: Path) -> Path:
+    for file_path in extracted_dir.rglob("*"):
+        if file_path.is_file() and file_path.name.casefold() == YALOADER_EXE_FILE_NAME.casefold():
+            return file_path
+
+    raise AppSelfUpdateError(f"YaLoader.exe не найден в архиве обновления: {extracted_dir}")
 
 
 def write_updater_command_file(
@@ -186,11 +217,7 @@ def build_updater_command_text(
             "    goto wait_for_yaloader_exit",
             ")",
             'if exist "%YALOADER_BACKUP%" del /f /q "%YALOADER_BACKUP%" >> "%YALOADER_LOG%" 2>&1',
-            (
-                'if exist "%YALOADER_TARGET%" '
-                'move /Y "%YALOADER_TARGET%" "%YALOADER_BACKUP%" '
-                '>> "%YALOADER_LOG%" 2>&1'
-            ),
+            ('if exist "%YALOADER_TARGET%" move /Y "%YALOADER_TARGET%" "%YALOADER_BACKUP%" >> "%YALOADER_LOG%" 2>&1'),
             'copy /Y "%YALOADER_SOURCE%" "%YALOADER_TARGET%" >> "%YALOADER_LOG%" 2>&1',
             "if errorlevel 1 (",
             '    echo Failed to replace YaLoader executable. >> "%YALOADER_LOG%"',

@@ -85,9 +85,7 @@ def collect_existing_file_names(*, target_dir: Path) -> frozenset[str]:
     if not target_dir.is_dir():
         return frozenset()
 
-    return frozenset(
-        file_path.name.casefold() for file_path in target_dir.iterdir() if file_path.is_file()
-    )
+    return frozenset(file_path.name.casefold() for file_path in target_dir.iterdir() if file_path.is_file())
 
 
 def does_output_file_exist(

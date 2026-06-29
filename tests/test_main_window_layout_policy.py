@@ -8,10 +8,7 @@ from yaloader.ui.main_window import (
 
 
 def test_calculate_history_adjusted_window_minimum_width_without_history() -> None:
-    assert (
-        calculate_history_adjusted_window_minimum_width(history_panel_width=0)
-        == WINDOW_MINIMUM_WIDTH
-    )
+    assert calculate_history_adjusted_window_minimum_width(history_panel_width=0) == WINDOW_MINIMUM_WIDTH
 
 
 def test_calculate_history_adjusted_window_minimum_width_with_history() -> None:
@@ -24,7 +21,4 @@ def test_calculate_history_adjusted_window_minimum_width_with_history() -> None:
 
 
 def test_calculate_history_adjusted_window_minimum_width_ignores_negative_width() -> None:
-    assert (
-        calculate_history_adjusted_window_minimum_width(history_panel_width=-100)
-        == WINDOW_MINIMUM_WIDTH
-    )
+    assert calculate_history_adjusted_window_minimum_width(history_panel_width=-100) == WINDOW_MINIMUM_WIDTH

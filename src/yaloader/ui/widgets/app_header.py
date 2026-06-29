@@ -81,9 +81,7 @@ class AppHeader(QWidget):
         self._version_label.setOpenExternalLinks(False)
         self._version_label.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
         self._version_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._version_label.setToolTip(
-            f"Обновить YaLoader до версии {latest_version}. Страница релиза: {releases_url}"
-        )
+        self._version_label.setToolTip(f"Обновить YaLoader до версии {latest_version}. Страница релиза: {releases_url}")
         self._version_label.setText(
             format_app_version_label_with_update(
                 current_version=APP_VERSION,
@@ -120,18 +118,14 @@ class AppHeader(QWidget):
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
         )
         self._title_label.setFont(self._build_title_font())
-        self._title_label.setStyleSheet(
-            build_title_label_style_sheet(title_font_family=self._title_font_family)
-        )
+        self._title_label.setStyleSheet(build_title_label_style_sheet(title_font_family=self._title_font_family))
 
         self._version_label.setObjectName("VersionLabel")
         self._version_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
         )
         self._version_label.setFont(self._build_version_font())
-        self._version_label.setStyleSheet(
-            build_version_label_style_sheet(title_font_family=self._title_font_family)
-        )
+        self._version_label.setStyleSheet(build_version_label_style_sheet(title_font_family=self._title_font_family))
         self._version_label.linkActivated.connect(self._handle_version_link_activated)
 
         self._subtitle_label.setObjectName("SubtitleLabel")
@@ -290,9 +284,7 @@ def build_title_font_family_stack(*, title_font_family: str) -> str:
     )
 
     return ", ".join(
-        f'"{escape_qss_font_family(value=font_family)}"'
-        for font_family in font_families
-        if font_family.strip()
+        f'"{escape_qss_font_family(value=font_family)}"' for font_family in font_families if font_family.strip()
     )
 
 

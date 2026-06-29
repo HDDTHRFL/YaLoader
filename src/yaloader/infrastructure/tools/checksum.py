@@ -54,6 +54,5 @@ def verify_file_sha256(*, file_path: Path, expected_sha256: str) -> None:
 
     if actual_sha256 != normalized_expected_sha256:
         raise ChecksumError(
-            f"sha256 mismatch for {file_path}: expected {normalized_expected_sha256}, "
-            f"actual {actual_sha256}",
+            f"sha256 mismatch for {file_path}: expected {normalized_expected_sha256}, actual {actual_sha256}",
         )

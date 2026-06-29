@@ -64,9 +64,7 @@ class QueueInputController:
                 output_format=resolved_output_format,
                 video_quality=video_quality,
                 include_playlist=include_playlist,
-                separate_audio_video_enabled=(
-                    separate_audio_video_enabled and resolved_mode is DownloadMode.VIDEO
-                ),
+                separate_audio_video_enabled=(separate_audio_video_enabled and resolved_mode is DownloadMode.VIDEO),
                 separate_audio_format=separate_audio_format,
                 download_speed_limit_bytes_per_second=download_speed_limit_bytes_per_second,
             )
@@ -99,17 +97,13 @@ class QueueInputController:
         if request.include_playlist:
             return append_download_speed_limit_status_suffix(
                 message="Плейлист добавлен в очередь загрузок",
-                download_speed_limit_bytes_per_second=(
-                    request.download_speed_limit_bytes_per_second
-                ),
+                download_speed_limit_bytes_per_second=(request.download_speed_limit_bytes_per_second),
             )
 
         if request.mode is DownloadMode.VIDEO:
             return append_download_speed_limit_status_suffix(
                 message="Добавлено в очередь. Определяем доступное качество...",
-                download_speed_limit_bytes_per_second=(
-                    request.download_speed_limit_bytes_per_second
-                ),
+                download_speed_limit_bytes_per_second=(request.download_speed_limit_bytes_per_second),
             )
 
         return append_download_speed_limit_status_suffix(

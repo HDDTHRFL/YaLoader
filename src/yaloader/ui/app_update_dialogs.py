@@ -15,8 +15,8 @@ def confirm_app_update_installation(
         title="Обновить YaLoader?",
         text=f"YaLoader будет обновлён до версии {latest_version}.",
         informative_text=(
-            "Приложение скачает новый YaLoader.exe из GitHub Releases и проверит "
-            "SHA-256 перед заменой.\n\n"
+            "Приложение скачает ZIP-архив YaLoader из GitHub Releases, "
+            "проверит SHA-256 через GitHub asset digest и распакует новый YaLoader.exe.\n\n"
             "После подготовки обновления YaLoader будет закрыт и запущен заново.\n\n"
             "Не будут затронуты:\n"
             "• история загрузок;\n"

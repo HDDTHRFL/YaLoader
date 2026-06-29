@@ -27,12 +27,8 @@ def test_build_managed_tool_update_button_text_uses_update_when_ffmpeg_update_ex
         ),
     )
 
-    assert build_managed_tool_update_button_text(update_checks=update_checks) == (
-        "Обновить FFmpeg/Deno"
-    )
-    assert build_managed_tool_update_started_message(update_checks=update_checks) == (
-        "Обновление FFmpeg/Deno запущено"
-    )
+    assert build_managed_tool_update_button_text(update_checks=update_checks) == ("Обновить FFmpeg/Deno")
+    assert build_managed_tool_update_started_message(update_checks=update_checks) == ("Обновление FFmpeg/Deno запущено")
 
 
 def test_build_managed_tool_update_button_text_uses_reinstall_without_updates() -> None:
@@ -51,9 +47,7 @@ def test_build_managed_tool_update_button_text_uses_reinstall_without_updates() 
         ),
     )
 
-    assert build_managed_tool_update_button_text(update_checks=update_checks) == (
-        "Переустановить FFmpeg/Deno"
-    )
+    assert build_managed_tool_update_button_text(update_checks=update_checks) == ("Переустановить FFmpeg/Deno")
     assert build_managed_tool_update_started_message(update_checks=update_checks) == (
         "Переустановка FFmpeg/Deno запущена"
     )

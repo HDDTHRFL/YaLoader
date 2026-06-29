@@ -55,9 +55,7 @@ def calculate_queue_column_widths(*, available_width: int) -> dict[int, int]:
         calculated_widths[column_index] = minimum_width + weighted_extra
 
     last_column_width = available_width - sum(
-        width
-        for column_index, width in calculated_widths.items()
-        if column_index != FOLDER_COLUMN_INDEX
+        width for column_index, width in calculated_widths.items() if column_index != FOLDER_COLUMN_INDEX
     )
     calculated_widths[FOLDER_COLUMN_INDEX] = max(1, last_column_width)
 

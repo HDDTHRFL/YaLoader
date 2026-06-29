@@ -127,9 +127,7 @@ class DownloadInputPanel(QFrame):
         self.setAcceptDrops(True)
         self.add_to_queue_button.setObjectName("SuccessButton")
 
-        self.url_input.setPlaceholderText(
-            "Вставьте ссылку на видео, аудио, плейлист YouTube или что-нибудь ещё 👀"
-        )
+        self.url_input.setPlaceholderText("Вставьте ссылку на видео, аудио, плейлист YouTube или что-нибудь ещё 👀")
         self.url_input.setToolTip("Можно вставить ссылку вручную или перетащить её в это поле")
         self.url_input.setClearButtonEnabled(True)
 
@@ -201,9 +199,7 @@ class DownloadInputPanel(QFrame):
         self.add_to_queue_button.click()
 
     def _sync_add_to_queue_button_state(self) -> None:
-        self.add_to_queue_button.setEnabled(
-            self._is_add_to_queue_available and bool(self.get_url_text())
-        )
+        self.add_to_queue_button.setEnabled(self._is_add_to_queue_available and bool(self.get_url_text()))
 
     def _accept_supported_url_drag_event(
         self,

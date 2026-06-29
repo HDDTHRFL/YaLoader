@@ -166,16 +166,12 @@ def ensure_first_sys_path_entry(*, path_text: str) -> None:
 
 def remove_sys_path_entry(*, path_text: str) -> None:
     normalized_path = normalize_sys_path_entry(value=path_text)
-    sys.path[:] = [
-        entry for entry in sys.path if normalize_sys_path_entry(value=entry) != normalized_path
-    ]
+    sys.path[:] = [entry for entry in sys.path if normalize_sys_path_entry(value=entry) != normalized_path]
 
 
 def remove_external_runtime_paths_from_sys_path() -> None:
     sys.path[:] = [
-        entry
-        for entry in sys.path
-        if YTDLP_RUNTIME_CURRENT_DIR_NAME not in normalize_sys_path_entry(value=entry)
+        entry for entry in sys.path if YTDLP_RUNTIME_CURRENT_DIR_NAME not in normalize_sys_path_entry(value=entry)
     ]
 
 

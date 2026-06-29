@@ -93,12 +93,10 @@ class YtDlpWheelRuntimeInstaller:
             self.downloader.download_file(
                 url=release.url,
                 destination_file=wheel_file,
-                progress_callback=lambda downloaded_bytes, total_bytes: (
-                    self._handle_download_progress(
-                        downloaded_bytes=downloaded_bytes,
-                        total_bytes=total_bytes,
-                        progress_callback=progress_callback,
-                    )
+                progress_callback=lambda downloaded_bytes, total_bytes: self._handle_download_progress(
+                    downloaded_bytes=downloaded_bytes,
+                    total_bytes=total_bytes,
+                    progress_callback=progress_callback,
                 ),
             )
 
@@ -135,9 +133,7 @@ class YtDlpWheelRuntimeInstaller:
             runtime_info = self.runtime_manager.get_runtime_info()
 
             if not runtime_info.is_external:
-                raise YtDlpRuntimeInstallationError(
-                    "после установки активным остался встроенный yt-dlp"
-                )
+                raise YtDlpRuntimeInstallationError("после установки активным остался встроенный yt-dlp")
 
             self._emit_progress(
                 progress_callback=progress_callback,
@@ -163,9 +159,7 @@ class YtDlpWheelRuntimeInstaller:
         return extract_latest_ytdlp_wheel_release(payload=payload)
 
     def _build_temporary_root_dir(self) -> Path:
-        return (
-            self.runtime_manager.runtime_dir / TEMPORARY_RUNTIME_DIR_NAME / f"yt-dlp-{uuid4().hex}"
-        )
+        return self.runtime_manager.runtime_dir / TEMPORARY_RUNTIME_DIR_NAME / f"yt-dlp-{uuid4().hex}"
 
     def _handle_download_progress(
         self,
@@ -260,8 +254,7 @@ def validate_external_ytdlp_runtime(*, runtime_dir: Path, expected_version: str)
         right_version=expected_version,
     ):
         raise YtDlpRuntimeInstallationError(
-            "версия wheel не совпадает с PyPI: "
-            f"ожидали {expected_version}, получили {actual_version}"
+            f"версия wheel не совпадает с PyPI: ожидали {expected_version}, получили {actual_version}"
         )
 
 

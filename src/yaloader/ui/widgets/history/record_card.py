@@ -201,9 +201,7 @@ class HistoryRecordCard(QFrame):
 
         platform_icon_label = QLabel(self)
         platform_icon_label.setObjectName("HistoryPlatformIconLabel")
-        platform_icon_label.setFixedSize(
-            QSize(HISTORY_PLATFORM_ICON_SIZE, HISTORY_PLATFORM_ICON_SIZE)
-        )
+        platform_icon_label.setFixedSize(QSize(HISTORY_PLATFORM_ICON_SIZE, HISTORY_PLATFORM_ICON_SIZE))
         platform_icon_label.setPixmap(
             platform_icon.pixmap(QSize(HISTORY_PLATFORM_ICON_SIZE, HISTORY_PLATFORM_ICON_SIZE))
         )

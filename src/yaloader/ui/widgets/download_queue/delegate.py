@@ -239,9 +239,7 @@ class DownloadQueueItemDelegate(QStyledItemDelegate):
         if has_secondary_text:
             secondary_rect = QRect(content_rect)
             secondary_rect.setLeft(primary_text_rect.left())
-            secondary_rect.setTop(
-                primary_line_rect.top() + primary_height + URL_TITLE_VERTICAL_SPACING
-            )
+            secondary_rect.setTop(primary_line_rect.top() + primary_height + URL_TITLE_VERTICAL_SPACING)
             secondary_rect.setHeight(secondary_height)
 
             painter.setFont(secondary_font)

@@ -67,9 +67,7 @@ class DownloadTask:
             video_quality=video_quality,
             requested_video_quality=video_quality,
             include_playlist=include_playlist,
-            separate_audio_video_enabled=(
-                separate_audio_video_enabled and mode is DownloadMode.VIDEO
-            ),
+            separate_audio_video_enabled=(separate_audio_video_enabled and mode is DownloadMode.VIDEO),
             separate_audio_format=separate_audio_format,
             download_speed_limit_bytes_per_second=validated_download_speed_limit,
         )

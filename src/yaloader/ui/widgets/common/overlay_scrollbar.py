@@ -287,9 +287,7 @@ class OverlayVerticalScrollBarController(QObject):
         viewport_geometry = self._viewport.geometry()
         scroll_bar_width = self._current_overlay_scroll_bar_width()
         height = max(0, viewport_geometry.height() - OVERLAY_SCROLL_BAR_VERTICAL_MARGIN * 2)
-        x_position = (
-            viewport_geometry.right() - scroll_bar_width - OVERLAY_SCROLL_BAR_RIGHT_MARGIN + 1
-        )
+        x_position = viewport_geometry.right() - scroll_bar_width - OVERLAY_SCROLL_BAR_RIGHT_MARGIN + 1
 
         self._overlay_scroll_bar.setGeometry(
             x_position,
@@ -335,9 +333,7 @@ class OverlayVerticalScrollBarController(QObject):
 
         self._opacity_animation.setDuration(OVERLAY_SCROLLBAR_HIDE_DURATION_MS)
         self._opacity_animation.setEndValue(0.0)
-        self._opacity_animation.finished.connect(
-            lambda: self._hide_overlay_after_animation(generation=generation)
-        )
+        self._opacity_animation.finished.connect(lambda: self._hide_overlay_after_animation(generation=generation))
         self._opacity_animation.start()
 
     def _hide_overlay_after_animation(self, *, generation: int) -> None:

@@ -87,9 +87,7 @@ PLACEHOLDER_VALUE_MARKERS: Final[tuple[str, ...]] = (
     "replace_me",
 )
 
-CODE_REFERENCE_VALUE_RE: Final[Pattern[str]] = re.compile(
-    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$"
-)
+CODE_REFERENCE_VALUE_RE: Final[Pattern[str]] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
 GENERIC_SECRET_ASSIGNMENT_RE: Final[Pattern[str]] = re.compile(
     r"(?i)\b"
@@ -549,10 +547,7 @@ def format_finding(*, finding: GitHistoryFinding) -> str:
     commit_text = "" if finding.commit is None else f"{finding.commit[:12]}:"
     line_text = "" if finding.line_number is None else f":{finding.line_number}"
 
-    return (
-        f"{commit_text}{finding.path}{line_text}: "
-        f"{finding.rule_id}: {finding.message} {finding.preview}"
-    )
+    return f"{commit_text}{finding.path}{line_text}: {finding.rule_id}: {finding.message} {finding.preview}"
 
 
 def iter_batches(*, items: tuple[str, ...], batch_size: int) -> Iterable[tuple[str, ...]]:

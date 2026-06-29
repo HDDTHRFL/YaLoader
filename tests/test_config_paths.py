@@ -11,9 +11,7 @@ def test_app_paths_exposes_app_managed_tool_paths(tmp_path: Path) -> None:
     assert paths.tools_dir == tmp_path / "appdata" / "tools"
     assert paths.ffmpeg_dir == tmp_path / "appdata" / "tools" / "ffmpeg"
     assert paths.ffmpeg_bin_dir == tmp_path / "appdata" / "tools" / "ffmpeg" / "bin"
-    assert paths.ffmpeg_executable == (
-        tmp_path / "appdata" / "tools" / "ffmpeg" / "bin" / "ffmpeg.exe"
-    )
+    assert paths.ffmpeg_executable == (tmp_path / "appdata" / "tools" / "ffmpeg" / "bin" / "ffmpeg.exe")
     assert paths.deno_dir == tmp_path / "appdata" / "tools" / "deno"
     assert paths.deno_executable == tmp_path / "appdata" / "tools" / "deno" / "deno.exe"
 

@@ -6,8 +6,8 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict, Field
 
 GITHUB_RELEASES_URL: Final = "https://github.com/HDDTHRFL/YaLoader/releases"
-YALOADER_EXE_ASSET_NAME: Final = "YaLoader.exe"
-YALOADER_EXE_SHA256_ASSET_NAME: Final = "YaLoader.exe.sha256"
+YALOADER_EXE_FILE_NAME: Final = "YaLoader.exe"
+YALOADER_WINDOWS_X64_ARCHIVE_NAME_TEMPLATE: Final = "YaLoader-v{version}-windows-x64.zip"
 
 
 class AppUpdateCheckStatus(StrEnum):
@@ -29,12 +29,13 @@ class AppReleaseInfo(BaseModel):
 
     version: str = Field(min_length=1)
     releases_url: str = Field(default=GITHUB_RELEASES_URL, min_length=1)
-    executable_url: str | None = Field(default=None, min_length=1)
-    checksum_url: str | None = Field(default=None, min_length=1)
+    archive_name: str | None = Field(default=None, min_length=1)
+    archive_url: str | None = Field(default=None, min_length=1)
+    archive_sha256: str | None = Field(default=None, min_length=64)
 
     @property
     def has_update_assets(self) -> bool:
-        return self.executable_url is not None and self.checksum_url is not None
+        return self.archive_url is not None and self.archive_sha256 is not None
 
 
 class AppUpdateCheckResult(BaseModel):
@@ -139,8 +140,7 @@ class AppUpdateInstallResult(BaseModel):
             status=AppUpdateInstallStatus.READY_TO_RESTART,
             installed_version=installed_version,
             message=(
-                f"Обновление YaLoader {installed_version} подготовлено. "
-                "Приложение будет закрыто и запущено заново."
+                f"Обновление YaLoader {installed_version} подготовлено. Приложение будет закрыто и запущено заново."
             ),
         )
 
@@ -150,3 +150,7 @@ class AppUpdateInstallResult(BaseModel):
             status=AppUpdateInstallStatus.FAILED,
             message=message,
         )
+
+
+def build_yaloader_windows_x64_archive_name(*, version: str) -> str:
+    return YALOADER_WINDOWS_X64_ARCHIVE_NAME_TEMPLATE.format(version=version)

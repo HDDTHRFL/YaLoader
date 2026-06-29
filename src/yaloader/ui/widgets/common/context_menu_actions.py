@@ -99,10 +99,7 @@ class AnimatedMenuButton(QPushButton):
         text_width = self.fontMetrics().horizontalAdvance(self._text)
         width = max(
             MENU_MINIMUM_WIDTH,
-            text_width
-            + MENU_BUTTON_LEFT_PADDING
-            + MENU_BUTTON_RIGHT_PADDING
-            + MENU_BUTTON_HOVER_OFFSET,
+            text_width + MENU_BUTTON_LEFT_PADDING + MENU_BUTTON_RIGHT_PADDING + MENU_BUTTON_HOVER_OFFSET,
         )
         return QSize(width, MENU_BUTTON_HEIGHT)
 
@@ -133,9 +130,7 @@ class AnimatedMenuButton(QPushButton):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def _configure_text_label(self) -> None:
-        self._text_label.setObjectName(
-            "MenuDangerButtonText" if self._is_danger else "MenuButtonText"
-        )
+        self._text_label.setObjectName("MenuDangerButtonText" if self._is_danger else "MenuButtonText")
         self._text_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._text_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self._text_label.move(MENU_BUTTON_LEFT_PADDING, 0)

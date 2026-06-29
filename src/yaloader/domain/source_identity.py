@@ -234,10 +234,7 @@ def extract_rutube_video_id(*, path: str) -> str | None:
     ):
         return path_parts[1]
 
-    if (
-        first_path_part in {RUTUBE_EMBED_PATH_PREFIX, RUTUBE_LIVE_PATH_PREFIX}
-        and len(path_parts) >= 3
-    ):
+    if first_path_part in {RUTUBE_EMBED_PATH_PREFIX, RUTUBE_LIVE_PATH_PREFIX} and len(path_parts) >= 3:
         return path_parts[2]
 
     return None
@@ -447,9 +444,7 @@ def extract_soundcloud_embedded_source_key(
 
     normalized_embedded_url = unquote(embedded_url).strip()
     parsed_embedded_url = urlparse(normalized_embedded_url)
-    embedded_host = (
-        parsed_embedded_url.hostname.casefold() if parsed_embedded_url.hostname is not None else ""
-    )
+    embedded_host = parsed_embedded_url.hostname.casefold() if parsed_embedded_url.hostname is not None else ""
 
     if embedded_host == SOUNDCLOUD_API_HOST:
         return extract_soundcloud_api_source_key(path=parsed_embedded_url.path)

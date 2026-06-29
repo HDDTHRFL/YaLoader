@@ -53,11 +53,7 @@ def validate_custom_download_speed_limit_mb(*, megabytes_per_second: int) -> int
         message = "Download speed limit must be an integer number of megabytes per second."
         raise ValueError(message)
 
-    if not (
-        MIN_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB
-        <= megabytes_per_second
-        <= MAX_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB
-    ):
+    if not (MIN_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB <= megabytes_per_second <= MAX_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB):
         message = (
             "Download speed limit must be between "
             f"{MIN_CUSTOM_DOWNLOAD_SPEED_LIMIT_MB} and "

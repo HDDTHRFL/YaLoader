@@ -252,9 +252,7 @@ def test_build_tool_installation_summary_reports_update_failures() -> None:
         force_reinstall=True,
     )
 
-    assert (
-        summary == "Переустановка инструментов завершилось с ошибками: Не удалось обновить FFmpeg"
-    )
+    assert summary == "Переустановка инструментов завершилось с ошибками: Не удалось обновить FFmpeg"
 
 
 def test_build_tool_installation_summary_reports_already_available_tools() -> None:

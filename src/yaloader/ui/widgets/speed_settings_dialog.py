@@ -264,9 +264,7 @@ class SpeedSettingsDialog(QDialog):
 
     def _connect_signals(self) -> None:
         self._slider.valueChanged.connect(self._handle_slider_value_changed)
-        self._slider.interaction_state_changed.connect(
-            self._handle_slider_interaction_state_changed
-        )
+        self._slider.interaction_state_changed.connect(self._handle_slider_interaction_state_changed)
         self._spin_box.valueChanged.connect(self._handle_spin_box_value_changed)
         self._reset_button.clicked.connect(self._handle_reset_button_clicked)
 
@@ -370,9 +368,7 @@ class SpeedSettingsDialog(QDialog):
             self._separate_audio_format_animation = None
 
         start_panel_height = self._get_separate_audio_format_panel_visible_height()
-        final_panel_height = (
-            self._get_separate_audio_format_panel_expanded_height() if is_expanded else 0
-        )
+        final_panel_height = self._get_separate_audio_format_panel_expanded_height() if is_expanded else 0
 
         if start_panel_height == final_panel_height:
             self._set_separate_audio_format_panel_expanded(is_expanded=is_expanded)

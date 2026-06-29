@@ -25,15 +25,9 @@ def run_executable_for_text(*, executable_path: Path, args: tuple[str, ...]) -> 
             timeout=VERSION_COMMAND_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
-        raise ToolVersionDetectionError(
-            f"не удалось получить версию: {executable_path}: {error}"
-        ) from error
+        raise ToolVersionDetectionError(f"не удалось получить версию: {executable_path}: {error}") from error
 
-    output = "\n".join(
-        part.strip()
-        for part in (completed_process.stdout, completed_process.stderr)
-        if part.strip()
-    )
+    output = "\n".join(part.strip() for part in (completed_process.stdout, completed_process.stderr) if part.strip())
 
     if not output:
         raise ToolVersionDetectionError(f"команда версии не вернула вывод: {executable_path}")

@@ -30,9 +30,7 @@ VersionBumpError = bump_version_module.VersionBumpError
 
 
 def test_replace_project_version_updates_project_table_only() -> None:
-    pyproject_text = (
-        '[project]\nname = "yaloader"\nversion = "0.1.0"\n\n[tool.demo]\nversion = "unchanged"\n'
-    )
+    pyproject_text = '[project]\nname = "yaloader"\nversion = "0.1.0"\n\n[tool.demo]\nversion = "unchanged"\n'
 
     updated_text = replace_project_version(
         pyproject_text=pyproject_text,

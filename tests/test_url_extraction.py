@@ -9,17 +9,11 @@ from yaloader.domain.url_extraction import (
 
 
 def test_extract_first_http_url_from_plain_url() -> None:
-    assert (
-        extract_first_http_url(text="https://www.youtube.com/watch?v=test")
-        == "https://www.youtube.com/watch?v=test"
-    )
+    assert extract_first_http_url(text="https://www.youtube.com/watch?v=test") == "https://www.youtube.com/watch?v=test"
 
 
 def test_extract_first_http_url_from_text() -> None:
-    assert (
-        extract_first_http_url(text="Видео тут: https://youtu.be/test123")
-        == "https://youtu.be/test123"
-    )
+    assert extract_first_http_url(text="Видео тут: https://youtu.be/test123") == "https://youtu.be/test123"
 
 
 def test_extract_first_http_url_strips_trailing_punctuation() -> None:

@@ -108,8 +108,7 @@ class YtDlpDownloadPreparer:
         )
 
         logger.debug(
-            "Download preparation finished. task_id={} title={} playlist_count={} size={} "
-            "size_estimated={}",
+            "Download preparation finished. task_id={} title={} playlist_count={} size={} size_estimated={}",
             task.task_id,
             prepared_download.title,
             prepared_download.playlist_count,
@@ -173,12 +172,8 @@ def build_prepared_download(
         task_id=task.task_id,
         url=task.url.value,
         title=extract_title(media_info=media_info),
-        playlist_count=(
-            extract_playlist_count(media_info=media_info) if task.include_playlist else None
-        ),
-        duration_seconds=(
-            None if task.include_playlist else extract_duration_seconds(media_info=media_info)
-        ),
+        playlist_count=(extract_playlist_count(media_info=media_info) if task.include_playlist else None),
+        duration_seconds=(None if task.include_playlist else extract_duration_seconds(media_info=media_info)),
         estimated_file_size_bytes=file_size_metadata.size_bytes,
         is_file_size_estimated=file_size_metadata.is_estimated,
         raw_info=copy_string_key_mapping(value=raw_info),
@@ -202,7 +197,5 @@ def load_youtube_dl_preparation_factory(
     *,
     runtime_manager: YtDlpRuntimeManager | None = None,
 ) -> YoutubeDLPreparationFactory:
-    ytdlp_module = (
-        load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
-    )
+    ytdlp_module = load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
     return cast(YoutubeDLPreparationFactory, ytdlp_module.YoutubeDL)

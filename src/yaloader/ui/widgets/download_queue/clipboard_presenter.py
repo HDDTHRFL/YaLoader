@@ -50,9 +50,7 @@ class DownloadQueueClipboardPresenter:
             if row_state is None:
                 continue
 
-            self._row_states_by_task_id[task_id] = row_state.with_copy_feedback_generation(
-                generation=generation
-            )
+            self._row_states_by_task_id[task_id] = row_state.with_copy_feedback_generation(generation=generation)
             self._url_presenter.set_copy_feedback(task_id=task_id, text=COPY_FEEDBACK_TEXT)
 
         QTimer.singleShot(
@@ -75,7 +73,5 @@ class DownloadQueueClipboardPresenter:
             if row_state is None or row_state.copy_feedback_generation != generation:
                 continue
 
-            self._row_states_by_task_id[task_id] = row_state.with_copy_feedback_generation(
-                generation=None
-            )
+            self._row_states_by_task_id[task_id] = row_state.with_copy_feedback_generation(generation=None)
             self._url_presenter.set_copy_feedback(task_id=task_id, text=None)

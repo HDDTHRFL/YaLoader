@@ -25,6 +25,4 @@ class EnvironmentStatus(BaseModel):
 
     @property
     def is_ready_for_basic_downloads(self) -> bool:
-        return (
-            self.ffmpeg.is_ok and self.deno.is_ok and self.ytdlp.is_ok and self.downloads_dir.is_ok
-        )
+        return self.ffmpeg.is_ok and self.deno.is_ok and self.ytdlp.is_ok and self.downloads_dir.is_ok

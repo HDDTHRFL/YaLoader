@@ -39,7 +39,12 @@ class FakeAppUpdateInstaller:
 
 
 def test_app_update_service_reports_available_update() -> None:
-    release_info = AppReleaseInfo(version="1.1.0")
+    release_info = AppReleaseInfo(
+        version="1.1.0",
+        archive_name="YaLoader-v1.1.0-windows-x64.zip",
+        archive_url="https://example.test/YaLoader-v1.1.0-windows-x64.zip",
+        archive_sha256="a" * 64,
+    )
     service = AppUpdateService(
         current_version="1.0.0",
         checker=FakeAppUpdateChecker(release_info=release_info),
@@ -51,6 +56,7 @@ def test_app_update_service_reports_available_update() -> None:
     assert result.should_update is True
     assert result.latest_version == "1.1.0"
     assert result.release_info == release_info
+    assert result.release_info.has_update_assets is True
     assert "Доступна новая версия" in result.message
 
 

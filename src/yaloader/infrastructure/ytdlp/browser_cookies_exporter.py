@@ -297,7 +297,5 @@ def load_youtube_dl_browser_cookies_factory(
     *,
     runtime_manager: YtDlpRuntimeManager | None = None,
 ) -> YtDlpBrowserCookiesFactory:
-    ytdlp_module = (
-        load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
-    )
+    ytdlp_module = load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
     return cast(YtDlpBrowserCookiesFactory, ytdlp_module.YoutubeDL)

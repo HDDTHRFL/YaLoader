@@ -88,10 +88,7 @@ def build_combined_tool_update_details(
     ytdlp_update_check: ToolUpdateCheckResult,
 ) -> str:
     lines = (
-        *(
-            format_tool_update_check_for_user(update_check=update_check)
-            for update_check in managed_update_checks
-        ),
+        *(format_tool_update_check_for_user(update_check=update_check) for update_check in managed_update_checks),
         format_tool_update_check_for_user(update_check=ytdlp_update_check),
     )
 
@@ -128,8 +125,7 @@ def build_managed_tool_update_started_message(
 
 def has_managed_tool_updates(*, update_checks: tuple[ToolUpdateCheckResult, ...]) -> bool:
     return any(
-        update_check.tool_id in MANAGED_TOOL_IDS and update_check.should_update
-        for update_check in update_checks
+        update_check.tool_id in MANAGED_TOOL_IDS and update_check.should_update for update_check in update_checks
     )
 
 

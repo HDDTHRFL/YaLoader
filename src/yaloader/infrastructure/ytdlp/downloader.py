@@ -540,11 +540,7 @@ class YtDlpDownloader:
         )
 
         with runtime_environment.apply():
-            if (
-                use_prepared_download
-                and prepared_download is not None
-                and prepared_download.raw_info
-            ):
+            if use_prepared_download and prepared_download is not None and prepared_download.raw_info:
                 self.backend.download_prepared(
                     prepared_download=prepared_download,
                     options=options,
@@ -651,9 +647,7 @@ class YtDlpDownloader:
         error_message = strip_ansi_escape_sequences(text=str(error)).strip()
 
         if YOUTUBE_BOT_CHECK_MARKER in error_message:
-            cookies_file_text = (
-                str(self.cookies_file) if self.cookies_file is not None else "cookies.txt"
-            )
+            cookies_file_text = str(self.cookies_file) if self.cookies_file is not None else "cookies.txt"
             return (
                 "YouTube запросил подтверждение, что вы не бот. "
                 f"Добавьте актуальный cookies.txt сюда: {cookies_file_text}. "
@@ -874,9 +868,7 @@ def collect_files(*, download_dir: Path) -> frozenset[Path]:
         return frozenset()
 
     files = frozenset(path.resolve() for path in download_dir.rglob("*") if path.is_file())
-    logger.debug(
-        "Collected existing files before download. path={} count={}", download_dir, len(files)
-    )
+    logger.debug("Collected existing files before download. path={} count={}", download_dir, len(files))
 
     return files
 
@@ -888,9 +880,7 @@ def detect_primary_output_path(
 ) -> Path | None:
     created_files = collect_files(download_dir=download_dir) - existing_files
     completed_files = tuple(
-        file_path
-        for file_path in created_files
-        if not is_temporary_download_file(file_path=file_path)
+        file_path for file_path in created_files if not is_temporary_download_file(file_path=file_path)
     )
 
     if not completed_files:
@@ -949,7 +939,5 @@ def load_youtube_dl_factory(
     *,
     runtime_manager: YtDlpRuntimeManager | None = None,
 ) -> YoutubeDLFactory:
-    ytdlp_module = (
-        load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
-    )
+    ytdlp_module = load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
     return cast(YoutubeDLFactory, ytdlp_module.YoutubeDL)

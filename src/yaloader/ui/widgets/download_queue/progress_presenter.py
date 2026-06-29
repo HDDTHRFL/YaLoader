@@ -150,9 +150,7 @@ class DownloadQueueProgressPresenter:
         self._preparation_timer.timeout.connect(self._handle_preparation_timer_timeout)
 
     def _handle_preparation_timer_timeout(self) -> None:
-        self._preparation_step_index = (self._preparation_step_index + 1) % len(
-            PREPARING_DOWNLOAD_TEXT_STATES
-        )
+        self._preparation_step_index = (self._preparation_step_index + 1) % len(PREPARING_DOWNLOAD_TEXT_STATES)
         stale_task_ids: list[UUID] = []
 
         for task_id in tuple(self._preparing_task_ids):
@@ -197,10 +195,7 @@ class DownloadQueueProgressPresenter:
         if progress.speed_bytes_per_second is None:
             return progress_text
 
-        return (
-            f"{progress_text} · "
-            f"{format_bytes_per_second(bytes_per_second=progress.speed_bytes_per_second)}"
-        )
+        return f"{progress_text} · {format_bytes_per_second(bytes_per_second=progress.speed_bytes_per_second)}"
 
     def _ensure_progress_bar(self, *, row_index: int) -> QProgressBar:
         progress_cell_widget = self._table.cellWidget(row_index, STATUS_PROGRESS_COLUMN_INDEX)

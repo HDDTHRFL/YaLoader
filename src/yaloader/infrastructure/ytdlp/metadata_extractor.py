@@ -25,9 +25,7 @@ BITS_PER_BYTE = 8
 KILOBITS_PER_SECOND_MULTIPLIER = 1000
 
 RESOLUTION_HEIGHT_RE: Pattern[str] = re.compile(r"(?<!\d)\d{3,5}x(?P<height>\d{3,5})(?!\d)")
-HEIGHT_TEXT_RE: Pattern[str] = re.compile(
-    r"(?<!\d)(?P<height>2160|1440|1080|720|480|360|240|144)p?(?!\d)"
-)
+HEIGHT_TEXT_RE: Pattern[str] = re.compile(r"(?<!\d)(?P<height>2160|1440|1080|720|480|360|240|144)p?(?!\d)")
 
 VIDEO_QUALITY_HEIGHT_LIMITS: Mapping[VideoQuality, int] = {
     VideoQuality.P2160: 2160,
@@ -105,16 +103,10 @@ class YtDlpMetadataExtractor:
         )
         title = extract_title(media_info=media_info)
         available_video_heights = (
-            ()
-            if request.include_playlist
-            else extract_available_video_heights(media_info=media_info)
+            () if request.include_playlist else extract_available_video_heights(media_info=media_info)
         )
-        playlist_count = (
-            extract_playlist_count(media_info=media_info) if request.include_playlist else None
-        )
-        duration_seconds = (
-            None if request.include_playlist else extract_duration_seconds(media_info=media_info)
-        )
+        playlist_count = extract_playlist_count(media_info=media_info) if request.include_playlist else None
+        duration_seconds = None if request.include_playlist else extract_duration_seconds(media_info=media_info)
         file_size_metadata = (
             FileSizeMetadata()
             if request.include_playlist
@@ -509,9 +501,7 @@ def select_best_audio_format(
     formats: tuple[Mapping[str, object], ...],
     output_format: OutputFormat,
 ) -> Mapping[str, object] | None:
-    candidates = tuple(
-        format_item for format_item in formats if format_has_audio(format_item=format_item)
-    )
+    candidates = tuple(format_item for format_item in formats if format_has_audio(format_item=format_item))
 
     if not candidates:
         return None
@@ -668,12 +658,7 @@ def calculate_file_size_bytes_from_bitrate(
     duration_seconds: int,
     bitrate_kilobits_per_second: float,
 ) -> int:
-    estimated_size = (
-        duration_seconds
-        * bitrate_kilobits_per_second
-        * KILOBITS_PER_SECOND_MULTIPLIER
-        / BITS_PER_BYTE
-    )
+    estimated_size = duration_seconds * bitrate_kilobits_per_second * KILOBITS_PER_SECOND_MULTIPLIER / BITS_PER_BYTE
 
     return max(1, int(estimated_size))
 
@@ -724,7 +709,5 @@ def load_youtube_dl_metadata_factory(
     *,
     runtime_manager: YtDlpRuntimeManager | None = None,
 ) -> YoutubeDLMetadataFactory:
-    ytdlp_module = (
-        load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
-    )
+    ytdlp_module = load_bundled_ytdlp_module() if runtime_manager is None else runtime_manager.load_module()
     return cast(YoutubeDLMetadataFactory, ytdlp_module.YoutubeDL)

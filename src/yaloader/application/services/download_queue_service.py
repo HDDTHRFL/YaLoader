@@ -194,9 +194,7 @@ class DownloadQueueService:
         source_key = build_media_source_key(url=url)
 
         with self._lock:
-            return any(
-                build_media_source_key(url=task.url.value) == source_key for task in self._tasks
-            )
+            return any(build_media_source_key(url=task.url.value) == source_key for task in self._tasks)
 
     def get_task_by_url(self, url: str) -> DownloadTask | None:
         source_key = build_media_source_key(url=url)
@@ -209,6 +207,4 @@ class DownloadQueueService:
         return None
 
     def _rebuild_task_index(self) -> None:
-        self._task_index_by_id = {
-            task.task_id: task_index for task_index, task in enumerate(self._tasks)
-        }
+        self._task_index_by_id = {task.task_id: task_index for task_index, task in enumerate(self._tasks)}

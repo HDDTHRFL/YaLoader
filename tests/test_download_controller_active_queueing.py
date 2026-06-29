@@ -69,10 +69,7 @@ def test_start_tasks_while_download_is_active_appends_tasks_to_current_queue(
 
         assert update.status_message == "Добавлено в текущую очередь: 1"
         assert update.prepared_task_ids == (second_task.task_id,)
-        assert (
-            require_task(queue_service=queue_service, task_id=second_task.task_id).status
-            is DownloadStatus.PENDING
-        )
+        assert require_task(queue_service=queue_service, task_id=second_task.task_id).status is DownloadStatus.PENDING
 
         controller.cancel_tasks_download(task_ids=(first_task.task_id,))
 

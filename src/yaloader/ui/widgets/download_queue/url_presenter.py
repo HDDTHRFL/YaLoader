@@ -110,9 +110,7 @@ class DownloadQueueUrlPresenter:
         if row_index is None or row_state is None:
             return
 
-        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_failed(
-            is_failed=True
-        )
+        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_failed(is_failed=True)
         self.set_secondary_text(
             row_index=row_index,
             text=METADATA_RESOLUTION_FAILED_TEXT,
@@ -129,9 +127,7 @@ class DownloadQueueUrlPresenter:
         if row_state is None:
             return
 
-        self._row_states_by_task_id[task.task_id] = row_state.with_metadata_resolution_failed(
-            is_failed=False
-        )
+        self._row_states_by_task_id[task.task_id] = row_state.with_metadata_resolution_failed(is_failed=False)
 
     def set_copy_feedback(self, *, task_id: UUID, text: str | None) -> None:
         row_index = self._row_by_task_id.get(task_id)

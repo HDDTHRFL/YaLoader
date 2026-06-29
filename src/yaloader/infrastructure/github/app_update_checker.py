@@ -8,21 +8,27 @@ import httpx
 
 from yaloader.application.dto.app_update import (
     GITHUB_RELEASES_URL,
-    YALOADER_EXE_ASSET_NAME,
-    YALOADER_EXE_SHA256_ASSET_NAME,
     AppReleaseInfo,
+    build_yaloader_windows_x64_archive_name,
 )
+from yaloader.infrastructure.tools.checksum import ChecksumError, validate_sha256_hex
 from yaloader.infrastructure.tools.version_detection import normalize_tool_version
 
-GITHUB_LATEST_RELEASE_API_URL: Final = (
-    "https://api.github.com/repos/HDDTHRFL/YaLoader/releases/latest"
-)
+GITHUB_LATEST_RELEASE_API_URL: Final = "https://api.github.com/repos/HDDTHRFL/YaLoader/releases/latest"
 GITHUB_API_TIMEOUT_SECONDS: Final = 12.0
 GITHUB_API_USER_AGENT: Final = "YaLoader"
+GITHUB_SHA256_DIGEST_PREFIX: Final = "sha256:"
 
 
 class GitHubAppUpdateCheckError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class GitHubReleaseAsset:
+    name: str
+    download_url: str
+    sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,9 +50,7 @@ class GitHubReleaseAppUpdateChecker:
                 response.raise_for_status()
                 payload = cast(object, response.json())
         except httpx.HTTPStatusError as error:
-            raise GitHubAppUpdateCheckError(
-                f"GitHub вернул HTTP {error.response.status_code}"
-            ) from error
+            raise GitHubAppUpdateCheckError(f"GitHub вернул HTTP {error.response.status_code}") from error
         except httpx.HTTPError as error:
             raise GitHubAppUpdateCheckError(f"GitHub недоступен: {error}") from error
 
@@ -60,51 +64,93 @@ def extract_latest_release_from_github_payload(*, payload: object) -> AppRelease
         key="tag_name",
         description="tag_name релиза",
     )
-    releases_url = (
-        extract_optional_text(mapping=payload_mapping, key="html_url") or GITHUB_RELEASES_URL
+    version = normalize_github_release_version(value=tag_name)
+    releases_url = extract_optional_text(mapping=payload_mapping, key="html_url") or GITHUB_RELEASES_URL
+    archive_asset = find_yaloader_windows_x64_archive_asset(
+        payload=payload_mapping,
+        version=version,
     )
 
     return AppReleaseInfo(
-        version=normalize_github_release_version(value=tag_name),
+        version=version,
         releases_url=releases_url,
-        executable_url=find_release_asset_download_url(
-            payload=payload_mapping,
-            asset_name=YALOADER_EXE_ASSET_NAME,
-        ),
-        checksum_url=find_release_asset_download_url(
-            payload=payload_mapping,
-            asset_name=YALOADER_EXE_SHA256_ASSET_NAME,
-        ),
+        archive_name=None if archive_asset is None else archive_asset.name,
+        archive_url=None if archive_asset is None else archive_asset.download_url,
+        archive_sha256=None if archive_asset is None else archive_asset.sha256,
     )
 
 
-def find_release_asset_download_url(
+def find_yaloader_windows_x64_archive_asset(
     *,
     payload: Mapping[object, object],
-    asset_name: str,
-) -> str | None:
+    version: str,
+) -> GitHubReleaseAsset | None:
+    expected_asset_name = build_yaloader_windows_x64_archive_name(version=version)
+
+    for asset in extract_release_assets(payload=payload):
+        if asset.name.casefold() == expected_asset_name.casefold():
+            return asset
+
+    return None
+
+
+def extract_release_assets(*, payload: Mapping[object, object]) -> tuple[GitHubReleaseAsset, ...]:
     assets = payload.get("assets")
 
     if assets is None:
-        return None
+        return ()
 
     if isinstance(assets, (str, bytes)) or not isinstance(assets, Sequence):
         raise GitHubAppUpdateCheckError("поле assets в ответе GitHub имеет неожиданный формат")
 
+    release_assets: list[GitHubReleaseAsset] = []
+
     for asset in assets:
         asset_mapping = ensure_mapping(value=asset, description="GitHub release asset")
-        current_asset_name = extract_optional_text(mapping=asset_mapping, key="name")
-
-        if current_asset_name != asset_name:
-            continue
-
-        return extract_required_text(
+        asset_name = extract_required_text(
+            mapping=asset_mapping,
+            key="name",
+            description="name release asset",
+        )
+        download_url = extract_required_text(
             mapping=asset_mapping,
             key="browser_download_url",
             description=f"browser_download_url для {asset_name}",
         )
+        release_assets.append(
+            GitHubReleaseAsset(
+                name=asset_name,
+                download_url=download_url,
+                sha256=extract_github_asset_sha256(mapping=asset_mapping),
+            )
+        )
 
-    return None
+    return tuple(release_assets)
+
+
+def extract_github_asset_sha256(*, mapping: Mapping[object, object]) -> str | None:
+    digest = extract_optional_text(mapping=mapping, key="digest")
+
+    if digest is None:
+        return None
+
+    return parse_github_asset_sha256_digest(digest=digest)
+
+
+def parse_github_asset_sha256_digest(*, digest: str) -> str:
+    normalized_digest = digest.strip().casefold()
+
+    if not normalized_digest.startswith(GITHUB_SHA256_DIGEST_PREFIX):
+        raise GitHubAppUpdateCheckError(f"GitHub asset digest должен начинаться с {GITHUB_SHA256_DIGEST_PREFIX}")
+
+    sha256 = normalized_digest.removeprefix(GITHUB_SHA256_DIGEST_PREFIX).strip()
+
+    try:
+        validate_sha256_hex(value=sha256)
+    except ChecksumError as error:
+        raise GitHubAppUpdateCheckError(f"GitHub asset digest содержит неверный SHA-256: {error}") from error
+
+    return sha256
 
 
 def normalize_github_release_version(*, value: str) -> str:

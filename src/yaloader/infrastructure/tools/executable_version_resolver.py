@@ -38,9 +38,7 @@ class ToolExecutableVersionResolver:
         command = TOOL_VERSION_COMMANDS.get(normalized_name)
 
         if command is None:
-            raise ToolExecutableVersionResolutionError(
-                f"получение версии не настроено для {executable_name}"
-            )
+            raise ToolExecutableVersionResolutionError(f"получение версии не настроено для {executable_name}")
 
         version_text = run_executable_for_text(
             executable_path=executable_path,

@@ -335,18 +335,18 @@ class DownloadQueueTable(QTableWidget):
         updated_row_state = row_state.with_task(task=task)
 
         if task.status is DownloadStatus.RUNNING:
-            return updated_row_state.with_download_preparation_running(
-                is_running=False
-            ).with_download_prepared(is_prepared=True)
+            return updated_row_state.with_download_preparation_running(is_running=False).with_download_prepared(
+                is_prepared=True
+            )
 
         if task.status in {
             DownloadStatus.COMPLETED,
             DownloadStatus.FAILED,
             DownloadStatus.CANCELED,
         }:
-            return updated_row_state.with_download_preparation_running(
-                is_running=False
-            ).with_download_prepared(is_prepared=False)
+            return updated_row_state.with_download_preparation_running(is_running=False).with_download_prepared(
+                is_prepared=False
+            )
 
         return updated_row_state
 
@@ -482,11 +482,9 @@ class DownloadQueueTable(QTableWidget):
         row_state = self._row_states_by_task_id.get(progress.task_id)
 
         if row_state is not None:
-            self._row_states_by_task_id[progress.task_id] = (
-                row_state.with_download_preparation_running(
-                    is_running=False
-                ).with_download_prepared(is_prepared=True)
-            )
+            self._row_states_by_task_id[progress.task_id] = row_state.with_download_preparation_running(
+                is_running=False
+            ).with_download_prepared(is_prepared=True)
 
         self._url_presenter.set_progress(progress=progress)
         self._progress_presenter.set_task_progress(progress=progress)
@@ -824,10 +822,7 @@ class DownloadQueueTable(QTableWidget):
             return True
 
         delta = current_position - self._left_press_position
-        return (
-            abs(delta.x()) > LONG_PRESS_MOVE_TOLERANCE_PX
-            or abs(delta.y()) > LONG_PRESS_MOVE_TOLERANCE_PX
-        )
+        return abs(delta.x()) > LONG_PRESS_MOVE_TOLERANCE_PX or abs(delta.y()) > LONG_PRESS_MOVE_TOLERANCE_PX
 
     def _scroll_vertically_by_drag(self, *, current_y_position: int) -> None:
         if self._last_drag_y_position is None:
@@ -877,8 +872,7 @@ class DownloadQueueTable(QTableWidget):
         selection = QItemSelection(top_left_index, bottom_right_index)
         selection_model.select(
             selection,
-            QItemSelectionModel.SelectionFlag.ClearAndSelect
-            | QItemSelectionModel.SelectionFlag.Rows,
+            QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows,
         )
         selection_model.setCurrentIndex(
             current_index,

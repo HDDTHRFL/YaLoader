@@ -46,9 +46,7 @@ class DownloadQueueQualityPresenter:
         if row_state.task.status is not DownloadStatus.PENDING:
             return
 
-        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_pending(
-            is_pending=True
-        )
+        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_pending(is_pending=True)
         self.set_cell_text(
             row_index=row_index,
             text=self.build_pending_text(),
@@ -64,9 +62,7 @@ class DownloadQueueQualityPresenter:
             return
 
         was_pending = row_state.is_metadata_resolution_pending
-        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_pending(
-            is_pending=False
-        )
+        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_pending(is_pending=False)
         self.sync_timer()
 
         if not was_pending:
@@ -87,9 +83,7 @@ class DownloadQueueQualityPresenter:
         if task.status is DownloadStatus.PENDING:
             return
 
-        self._row_states_by_task_id[task.task_id] = row_state.with_metadata_resolution_pending(
-            is_pending=False
-        )
+        self._row_states_by_task_id[task.task_id] = row_state.with_metadata_resolution_pending(is_pending=False)
 
     def build_cell_text(self, *, task: DownloadTask) -> str:
         if self.is_pending(task_id=task.task_id):
@@ -176,6 +170,4 @@ class DownloadQueueQualityPresenter:
         if row_state is None:
             return
 
-        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_pending(
-            is_pending=False
-        )
+        self._row_states_by_task_id[task_id] = row_state.with_metadata_resolution_pending(is_pending=False)

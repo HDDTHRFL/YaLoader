@@ -31,12 +31,8 @@ from yaloader.infrastructure.tools.version_detection import (
     run_executable_for_text,
 )
 
-FFMPEG_RELEASE_ESSENTIALS_ZIP_URL = (
-    "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-)
-FFMPEG_RELEASE_ESSENTIALS_SHA256_URL = (
-    "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256"
-)
+FFMPEG_RELEASE_ESSENTIALS_ZIP_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+FFMPEG_RELEASE_ESSENTIALS_SHA256_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256"
 FFMPEG_RELEASE_VERSION_URL = "https://www.gyan.dev/ffmpeg/builds/release-version"
 
 DOWNLOAD_START_PERCENT = 10

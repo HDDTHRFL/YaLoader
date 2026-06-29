@@ -75,9 +75,7 @@ def filter_managed_tool_update_checks(
     update_checks: tuple[ToolUpdateCheckResult, ...],
 ) -> tuple[ToolUpdateCheckResult, ...]:
     return tuple(
-        update_check
-        for update_check in update_checks
-        if is_installable_tool_update(tool_id=update_check.tool_id)
+        update_check for update_check in update_checks if is_installable_tool_update(tool_id=update_check.tool_id)
     )
 
 
@@ -91,8 +89,7 @@ def build_tool_update_confirmation_details(
     has_updates: bool,
 ) -> str:
     check_lines = tuple(
-        format_tool_update_check_for_confirmation(update_check=update_check)
-        for update_check in update_checks
+        format_tool_update_check_for_confirmation(update_check=update_check) for update_check in update_checks
     )
 
     header = "Найдены обновления:" if has_updates else "Результат проверки:"

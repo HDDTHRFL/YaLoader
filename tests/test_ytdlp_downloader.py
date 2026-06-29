@@ -139,9 +139,7 @@ class AlwaysFormatUnavailableYtDlpBackend:
 
 class BotCheckYtDlpBackend:
     def download(self, urls: Sequence[str], options: YtDlpOptions) -> None:
-        raise RuntimeError(
-            "\x1b[0;31mERROR:\x1b[0m [youtube] test: Sign in to confirm you're not a bot."
-        )
+        raise RuntimeError("\x1b[0;31mERROR:\x1b[0m [youtube] test: Sign in to confirm you're not a bot.")
 
     def download_prepared(
         self,
@@ -149,9 +147,7 @@ class BotCheckYtDlpBackend:
         prepared_download: PreparedDownload,
         options: YtDlpOptions,
     ) -> None:
-        raise RuntimeError(
-            "\x1b[0;31mERROR:\x1b[0m [youtube] test: Sign in to confirm you're not a bot."
-        )
+        raise RuntimeError("\x1b[0;31mERROR:\x1b[0m [youtube] test: Sign in to confirm you're not a bot.")
 
 
 def test_ytdlp_downloader_returns_completed_result(tmp_path: Path) -> None:

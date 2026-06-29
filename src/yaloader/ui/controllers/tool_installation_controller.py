@@ -230,16 +230,12 @@ def build_tool_installation_summary(
 
     if failed_results:
         operation_title = "Переустановка инструментов" if force_reinstall else "Подготовка системы"
-        return f"{operation_title} завершилось с ошибками: " + "; ".join(
-            result.message for result in failed_results
-        )
+        return f"{operation_title} завершилось с ошибками: " + "; ".join(result.message for result in failed_results)
 
     if force_reinstall:
         return "Системные инструменты переустановлены"
 
-    installed_results = tuple(
-        result for result in results if result.status is ToolInstallationStatus.INSTALLED
-    )
+    installed_results = tuple(result for result in results if result.status is ToolInstallationStatus.INSTALLED)
 
     if installed_results:
         return "Системные компоненты подготовлены"
@@ -255,9 +251,7 @@ def build_tool_update_check_summary(
         return "Проверка обновлений не выполнялась"
 
     installable_update_checks = tuple(
-        check
-        for check in update_checks
-        if check.should_update and is_installable_tool_update(tool_id=check.tool_id)
+        check for check in update_checks if check.should_update and is_installable_tool_update(tool_id=check.tool_id)
     )
 
     if installable_update_checks:
@@ -279,9 +273,7 @@ def build_tool_update_check_summary(
     failed_checks = tuple(check for check in update_checks if not check.is_success)
 
     if failed_checks:
-        return "Не удалось проверить часть инструментов: " + "; ".join(
-            check.message for check in failed_checks
-        )
+        return "Не удалось проверить часть инструментов: " + "; ".join(check.message for check in failed_checks)
 
     return "Доступных обновлений инструментов нет"
 

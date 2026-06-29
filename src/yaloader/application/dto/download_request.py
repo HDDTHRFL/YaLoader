@@ -72,8 +72,7 @@ class DownloadRequest(BaseModel):
     def validate_output_format_matches_mode(self) -> Self:
         if not is_output_format_allowed(mode=self.mode, output_format=self.output_format):
             message = (
-                f"Output format '{self.output_format.value}' is not allowed "
-                f"for download mode '{self.mode.value}'."
+                f"Output format '{self.output_format.value}' is not allowed for download mode '{self.mode.value}'."
             )
             raise ValueError(message)
 

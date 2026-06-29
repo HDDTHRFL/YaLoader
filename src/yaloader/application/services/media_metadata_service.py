@@ -71,9 +71,7 @@ def resolve_requested_video_quality(
         return resolve_quality_from_height(height=max(normalized_heights))
 
     requested_height_limit = VIDEO_QUALITY_HEIGHTS[requested_quality]
-    matching_heights = tuple(
-        height for height in normalized_heights if height <= requested_height_limit
-    )
+    matching_heights = tuple(height for height in normalized_heights if height <= requested_height_limit)
 
     if not matching_heights:
         return requested_quality

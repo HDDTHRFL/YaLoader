@@ -22,9 +22,7 @@ from yaloader.application.dto.environment_status import EnvironmentItemStatus, E
 REFRESH_FEEDBACK_DURATION_MS = 160
 REFRESH_ICON_BUTTON_SIZE_PX = 34
 PREPARE_SYSTEM_BUTTON_TEXT = "Подготовить систему"
-PREPARE_SYSTEM_BUTTON_DEFAULT_TOOLTIP = (
-    "Скачать и подключить недостающие FFmpeg и Deno в папку YaLoader"
-)
+PREPARE_SYSTEM_BUTTON_DEFAULT_TOOLTIP = "Скачать и подключить недостающие FFmpeg и Deno в папку YaLoader"
 YTDLP_RESET_LINK = "reset-ytdlp"
 YTDLP_RESET_TOOLTIP = "Сбросить yt-dlp"
 
@@ -266,9 +264,7 @@ class EnvironmentPanel(QFrame):
         self.refresh_button.setToolTip("Повторно проверить состояние системы")
         self.prepare_system_button.setToolTip(PREPARE_SYSTEM_BUTTON_DEFAULT_TOOLTIP)
         self.update_tools_button.setToolTip("Проверить обновления FFmpeg, Deno и yt-dlp")
-        self.cookies_actions_button.setToolTip(
-            "Импортировать cookies.txt или создать его из Firefox"
-        )
+        self.cookies_actions_button.setToolTip("Импортировать cookies.txt или создать его из Firefox")
         self.open_cookies_dir_button.setToolTip("Открыть папку с cookies.txt")
         self.delete_cookies_button.setToolTip("Безвозвратно удалить cookies.txt")
         self.open_downloads_dir_button.setToolTip("Открыть папку загрузок")

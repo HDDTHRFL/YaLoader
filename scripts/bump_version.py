@@ -111,9 +111,7 @@ def replace_project_version(*, pyproject_text: str, version: str) -> str:
         if version_match is None:
             continue
 
-        lines[line_index] = (
-            f'{version_match.group("prefix")}"{version}"{version_match.group("suffix")}{newline}'
-        )
+        lines[line_index] = f'{version_match.group("prefix")}"{version}"{version_match.group("suffix")}{newline}'
         return "".join(lines)
 
     raise VersionBumpError("could not find [project] version in pyproject.toml")

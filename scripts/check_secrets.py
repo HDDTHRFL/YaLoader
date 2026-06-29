@@ -98,9 +98,7 @@ PLACEHOLDER_VALUE_MARKERS: Final[tuple[str, ...]] = (
     "replace_me",
 )
 
-CODE_REFERENCE_VALUE_RE: Final[Pattern[str]] = re.compile(
-    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$"
-)
+CODE_REFERENCE_VALUE_RE: Final[Pattern[str]] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,9 +272,7 @@ def find_sensitive_file_path_findings(*, relative_path: Path) -> tuple[SecretFin
 
 
 def matches_sensitive_file_pattern(*, file_name: str) -> bool:
-    return any(
-        fnmatch.fnmatchcase(file_name, pattern.casefold()) for pattern in SENSITIVE_FILE_PATTERNS
-    )
+    return any(fnmatch.fnmatchcase(file_name, pattern.casefold()) for pattern in SENSITIVE_FILE_PATTERNS)
 
 
 def should_scan_text_content(*, file_path: Path) -> bool:

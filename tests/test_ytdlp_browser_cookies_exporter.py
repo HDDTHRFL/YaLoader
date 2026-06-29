@@ -171,9 +171,7 @@ def test_build_ytdlp_browser_cookie_options_uses_yandex_profile_path(
 
 
 def test_build_temporary_cookies_file_adds_tmp_suffix(tmp_path: Path) -> None:
-    assert build_temporary_cookies_file(target_file=tmp_path / "cookies.txt") == (
-        tmp_path / "cookies.txt.tmp"
-    )
+    assert build_temporary_cookies_file(target_file=tmp_path / "cookies.txt") == (tmp_path / "cookies.txt.tmp")
 
 
 def test_ytdlp_browser_cookies_exporter_exports_firefox_cookies(tmp_path: Path) -> None:
@@ -212,9 +210,7 @@ def test_ytdlp_browser_cookies_exporter_replaces_existing_file(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    exporter = YtDlpBrowserCookiesExporter(
-        youtube_dl_factory=as_youtube_dl_factory(FakeYoutubeDLFactory())
-    )
+    exporter = YtDlpBrowserCookiesExporter(youtube_dl_factory=as_youtube_dl_factory(FakeYoutubeDLFactory()))
 
     result = exporter.export(
         browser_id=BrowserId.FIREFOX,

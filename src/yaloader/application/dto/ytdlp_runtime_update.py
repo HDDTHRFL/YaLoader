@@ -66,10 +66,7 @@ class YtDlpRuntimeUpdateResult(BaseModel):
     def not_installed(cls, *, runtime_info: YtDlpRuntimeInfo) -> YtDlpRuntimeUpdateResult:
         return cls(
             status=YtDlpRuntimeUpdateStatus.NOT_INSTALLED,
-            message=(
-                "Пользовательский yt-dlp не установлен. "
-                f"Активна встроенная версия {runtime_info.version}"
-            ),
+            message=(f"Пользовательский yt-dlp не установлен. Активна встроенная версия {runtime_info.version}"),
             runtime_info=runtime_info,
         )
 

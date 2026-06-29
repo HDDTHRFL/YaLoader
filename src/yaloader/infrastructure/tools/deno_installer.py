@@ -27,9 +27,7 @@ from yaloader.infrastructure.tools.version_detection import (
 )
 
 DENO_LATEST_VERSION_URL = "https://dl.deno.land/release-latest.txt"
-DENO_WINDOWS_X64_ZIP_URL_TEMPLATE = (
-    "https://dl.deno.land/release/{version}/deno-x86_64-pc-windows-msvc.zip"
-)
+DENO_WINDOWS_X64_ZIP_URL_TEMPLATE = "https://dl.deno.land/release/{version}/deno-x86_64-pc-windows-msvc.zip"
 
 VERSION_RESOLUTION_PERCENT = 8
 DOWNLOAD_START_PERCENT = 10

@@ -12,9 +12,7 @@ from loguru import logger
 FAVICON_HTTP_TIMEOUT_SECONDS: Final = 6.0
 MAX_FAVICON_SIZE_BYTES: Final = 1 * 1024 * 1024
 FAVICON_CACHE_KEY_LENGTH: Final = 24
-FAVICON_USER_AGENT: Final = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) YaLoader"
-)
+FAVICON_USER_AGENT: Final = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) YaLoader"
 
 FAVICON_FILE_SUFFIXES: Final[tuple[str, ...]] = (
     ".png",

@@ -175,8 +175,7 @@ def has_excluded_directory(relative_path: Path, config: BundleConfig) -> bool:
 
 def matches_excluded_file_pattern(file_name: str, config: BundleConfig) -> bool:
     return any(
-        fnmatch.fnmatchcase(file_name.casefold(), pattern.casefold())
-        for pattern in config.excluded_file_patterns
+        fnmatch.fnmatchcase(file_name.casefold(), pattern.casefold()) for pattern in config.excluded_file_patterns
     )
 
 
@@ -241,9 +240,7 @@ def create_base64_bundle(zip_bundle_path: Path, output_path: Path, line_length: 
 
 
 def wrap_text(text: str, line_length: int) -> str:
-    return "\n".join(
-        text[index : index + line_length] for index in range(0, len(text), line_length)
-    )
+    return "\n".join(text[index : index + line_length] for index in range(0, len(text), line_length))
 
 
 if __name__ == "__main__":

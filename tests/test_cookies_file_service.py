@@ -12,9 +12,7 @@ from yaloader.application.services.cookies_file_service import (
 )
 
 VALID_COOKIES_TEXT = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tVALUE\n"
-VALID_INSTAGRAM_COOKIES_TEXT = (
-    "# Netscape HTTP Cookie File\n.instagram.com\tTRUE\t/\tTRUE\t0\tSESSIONID\tVALUE\n"
-)
+VALID_INSTAGRAM_COOKIES_TEXT = "# Netscape HTTP Cookie File\n.instagram.com\tTRUE\t/\tTRUE\t0\tSESSIONID\tVALUE\n"
 MIXED_COOKIES_TEXT = (
     "# Netscape HTTP Cookie File\n"
     "# comment should be skipped\n"

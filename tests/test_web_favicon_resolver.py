@@ -44,6 +44,4 @@ def test_resolver_returns_cached_icon_without_network(tmp_path: Path) -> None:
 
     resolver = WebFaviconResolver(cache_dir=tmp_path)
 
-    assert (
-        resolver.resolve_icon_path(url="https://www.instagram.com/reel/test/") == cached_icon_path
-    )
+    assert resolver.resolve_icon_path(url="https://www.instagram.com/reel/test/") == cached_icon_path
