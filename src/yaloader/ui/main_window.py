@@ -14,6 +14,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import QCloseEvent, QDesktopServices, QShowEvent
 from PyQt6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -24,6 +25,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from yaloader.application.dto.app_update import (
+    AppUpdateCheckResult,
+    AppUpdateInstallResult,
+)
 from yaloader.application.dto.browser_cookies import BrowserId
 from yaloader.application.dto.download_history_record import DownloadHistoryRecord
 from yaloader.application.dto.download_request import DownloadRequest
@@ -37,6 +42,7 @@ from yaloader.domain.source_platform import SourcePlatform, detect_source_platfo
 from yaloader.infrastructure.windows.explorer import reveal_path_in_file_manager
 from yaloader.infrastructure.ytdlp.runtime_manager import get_bundled_ytdlp_version
 from yaloader.services.app_container import AppContainer
+from yaloader.ui.app_update_dialogs import confirm_app_update_installation
 from yaloader.ui.controllers.app_update_controller import (
     AppUpdateController,
     AppUpdateControllerUpdate,
@@ -283,6 +289,7 @@ class MainWindow(QMainWindow):
         self._is_combined_tool_update_check_pending = False
         self._pending_managed_tool_update_checks: tuple[ToolUpdateCheckResult, ...] | None = None
         self._pending_ytdlp_update_check: ToolUpdateCheckResult | None = None
+        self._latest_app_update_result: AppUpdateCheckResult | None = None
         self._download_poll_timer = self.startTimer(DOWNLOAD_POLL_INTERVAL_MS)
 
         self._configure_window()
@@ -422,6 +429,7 @@ class MainWindow(QMainWindow):
         self._sync_start_queue_button_state()
 
     def _connect_signals(self) -> None:
+        self._header.app_update_requested.connect(self._handle_app_update_requested)
         self._input_panel.add_to_queue_button.clicked.connect(self._handle_add_to_queue_clicked)
         self._start_queue_button.clicked.connect(self._handle_start_or_cancel_queue_clicked)
         self._remove_from_queue_button.clicked.connect(self._handle_remove_selected_tasks_clicked)
@@ -1184,23 +1192,62 @@ class MainWindow(QMainWindow):
             )
         )
 
+    def _handle_app_update_requested(self) -> None:
+        update_result = self._latest_app_update_result
+
+        if update_result is None or update_result.release_info is None:
+            self._show_transient_status_message("Информация об обновлении YaLoader ещё не готова")
+            return
+
+        latest_version = update_result.latest_version or update_result.release_info.version
+
+        if not confirm_app_update_installation(
+            parent=self,
+            latest_version=latest_version,
+        ):
+            self._show_transient_status_message("Обновление YaLoader отменено")
+            return
+
+        self._apply_app_update(
+            update=self._app_update_controller.install_update(
+                release_info=update_result.release_info,
+            )
+        )
+
     def _apply_app_update(self, *, update: AppUpdateControllerUpdate) -> None:
         if update.status_message is not None:
             self._show_transient_status_message(update.status_message)
 
-        if update.result is None:
-            return
+        if update.result is not None:
+            self._handle_app_update_check_result(result=update.result)
 
-        if update.result.should_update and update.result.latest_version is not None:
+        if update.install_result is not None:
+            self._handle_app_update_install_result(install_result=update.install_result)
+
+    def _handle_app_update_check_result(self, *, result: AppUpdateCheckResult) -> None:
+        if result.should_update and result.latest_version is not None:
+            self._latest_app_update_result = result
             self._header.set_application_update_available(
-                latest_version=update.result.latest_version,
-                releases_url=update.result.releases_url,
+                latest_version=result.latest_version,
+                releases_url=result.releases_url,
             )
-            self._show_transient_status_message(update.result.message)
+            self._show_transient_status_message(result.message)
             return
 
-        if not update.result.is_success:
-            self._show_transient_status_message(update.result.message)
+        if not result.is_success:
+            self._show_transient_status_message(result.message)
+
+    def _handle_app_update_install_result(
+        self,
+        *,
+        install_result: AppUpdateInstallResult,
+    ) -> None:
+        if install_result.should_restart:
+            self._show_transient_status_message(install_result.message)
+            QApplication.quit()
+            return
+
+        self._show_transient_status_message(install_result.message)
 
     def _apply_environment_update(self, *, update: EnvironmentControllerUpdate) -> None:
         if update.settings is not None:

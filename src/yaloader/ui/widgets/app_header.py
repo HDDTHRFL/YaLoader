@@ -3,7 +3,7 @@ from __future__ import annotations
 import html
 from typing import Final, override
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QResizeEvent
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
@@ -33,6 +33,7 @@ SETTINGS_BUTTON_SUBTITLE_BOTTOM_OFFSET: Final = 0
 VERSION_LABEL_PREFIX: Final = "_ "
 VERSION_FONT_POINT_SIZE: Final = 8
 VERSION_LETTER_SPACING_PERCENT: Final = 108.0
+APP_UPDATE_LINK_HREF: Final = "yaloader://install-update"
 APP_UPDATE_LINK_TEXT: Final = "доступна новая версия"
 APP_UPDATE_LINK_COLOR: Final = "#FCD34D"
 
@@ -46,6 +47,8 @@ SUBTITLE_TEXT: Final = "Загрузка видео и аудио в макси�
 
 
 class AppHeader(QWidget):
+    app_update_requested = pyqtSignal()
+
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -75,15 +78,16 @@ class AppHeader(QWidget):
         releases_url: str,
     ) -> None:
         self._version_label.setTextFormat(Qt.TextFormat.RichText)
-        self._version_label.setOpenExternalLinks(True)
+        self._version_label.setOpenExternalLinks(False)
         self._version_label.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
         self._version_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._version_label.setToolTip(f"Открыть релизы YaLoader. Доступна версия {latest_version}")
+        self._version_label.setToolTip(
+            f"Обновить YaLoader до версии {latest_version}. Страница релиза: {releases_url}"
+        )
         self._version_label.setText(
             format_app_version_label_with_update(
                 current_version=APP_VERSION,
                 latest_version=latest_version,
-                releases_url=releases_url,
             )
         )
 
@@ -128,6 +132,7 @@ class AppHeader(QWidget):
         self._version_label.setStyleSheet(
             build_version_label_style_sheet(title_font_family=self._title_font_family)
         )
+        self._version_label.linkActivated.connect(self._handle_version_link_activated)
 
         self._subtitle_label.setObjectName("SubtitleLabel")
 
@@ -226,6 +231,12 @@ class AppHeader(QWidget):
 
         self.settings_button.move(x, y)
 
+    def _handle_version_link_activated(self, link: str) -> None:
+        if link != APP_UPDATE_LINK_HREF:
+            return
+
+        self.app_update_requested.emit()
+
 
 def format_app_version_label(*, version: str) -> str:
     normalized_version = version.strip()
@@ -240,16 +251,14 @@ def format_app_version_label_with_update(
     *,
     current_version: str,
     latest_version: str,
-    releases_url: str,
 ) -> str:
     base_label = html.escape(format_app_version_label(version=current_version))
-    safe_releases_url = html.escape(releases_url, quote=True)
     safe_latest_version = html.escape(latest_version)
 
     return (
-        f'{base_label} <a href="{safe_releases_url}" '
+        f'{base_label} <a href="{APP_UPDATE_LINK_HREF}" '
         f'style="color: {APP_UPDATE_LINK_COLOR}; text-decoration: underline;" '
-        f'title="Доступна версия {safe_latest_version}">'
+        f'title="Обновить до версии {safe_latest_version}">'
         f"[{APP_UPDATE_LINK_TEXT}]</a>"
     )
 

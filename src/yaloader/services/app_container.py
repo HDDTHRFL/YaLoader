@@ -26,6 +26,7 @@ from yaloader.infrastructure.tools.deno_installer import DenoPortableInstaller
 from yaloader.infrastructure.tools.executable_version_resolver import ToolExecutableVersionResolver
 from yaloader.infrastructure.tools.ffmpeg_installer import FfmpegPortableInstaller
 from yaloader.infrastructure.web.favicon_resolver import WebFaviconResolver
+from yaloader.infrastructure.windows.app_self_updater import WindowsAppSelfUpdater
 from yaloader.infrastructure.ytdlp.browser_cookies_exporter import (
     YtDlpBrowserCookiesExporter,
     load_youtube_dl_browser_cookies_factory,
@@ -112,6 +113,7 @@ def build_app_container() -> AppContainer:
         app_update_service=AppUpdateService(
             current_version=APP_VERSION,
             checker=GitHubReleaseAppUpdateChecker(),
+            installer=WindowsAppSelfUpdater(paths=paths),
         ),
         download_queue_service=DownloadQueueService(),
         download_speed_limit_state=download_speed_limit_state,
