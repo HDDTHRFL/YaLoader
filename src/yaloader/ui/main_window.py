@@ -37,6 +37,10 @@ from yaloader.domain.source_platform import SourcePlatform, detect_source_platfo
 from yaloader.infrastructure.windows.explorer import reveal_path_in_file_manager
 from yaloader.infrastructure.ytdlp.runtime_manager import get_bundled_ytdlp_version
 from yaloader.services.app_container import AppContainer
+from yaloader.ui.controllers.app_update_controller import (
+    AppUpdateController,
+    AppUpdateControllerUpdate,
+)
 from yaloader.ui.controllers.browser_cookies_controller import (
     BrowserCookiesController,
     BrowserCookiesControllerUpdate,
@@ -250,6 +254,9 @@ class MainWindow(QMainWindow):
         self._ytdlp_runtime_controller = YtDlpRuntimeController(
             service=container.ytdlp_runtime_service,
         )
+        self._app_update_controller = AppUpdateController(
+            service=container.app_update_service,
+        )
 
         self._is_history_panel_visible = self._settings.show_history_on_startup
         self._history_animation: QVariantAnimation | None = None
@@ -289,6 +296,7 @@ class MainWindow(QMainWindow):
                 downloads_dir=self._settings.downloads_dir,
             )
         )
+        self._apply_app_update(update=self._app_update_controller.check_update())
         self._reload_history_panel()
         self._sync_queue_controls_state()
         self._sync_history_panel_visibility()
@@ -365,6 +373,7 @@ class MainWindow(QMainWindow):
         self._browser_cookies_controller.shutdown()
         self._tool_installation_controller.shutdown()
         self._ytdlp_runtime_controller.shutdown()
+        self._app_update_controller.shutdown()
         super().closeEvent(event)
 
     @override
@@ -385,6 +394,7 @@ class MainWindow(QMainWindow):
         self._apply_browser_cookies_update(
             update=self._browser_cookies_controller.poll(),
         )
+        self._apply_app_update(update=self._app_update_controller.poll())
 
     def _configure_window(self) -> None:
         self.setWindowTitle(APP_DISPLAY_NAME)
@@ -1174,6 +1184,24 @@ class MainWindow(QMainWindow):
             )
         )
 
+    def _apply_app_update(self, *, update: AppUpdateControllerUpdate) -> None:
+        if update.status_message is not None:
+            self._show_transient_status_message(update.status_message)
+
+        if update.result is None:
+            return
+
+        if update.result.should_update and update.result.latest_version is not None:
+            self._header.set_application_update_available(
+                latest_version=update.result.latest_version,
+                releases_url=update.result.releases_url,
+            )
+            self._show_transient_status_message(update.result.message)
+            return
+
+        if not update.result.is_success:
+            self._show_transient_status_message(update.result.message)
+
     def _apply_environment_update(self, *, update: EnvironmentControllerUpdate) -> None:
         if update.settings is not None:
             self._settings = update.settings
@@ -1181,6 +1209,11 @@ class MainWindow(QMainWindow):
 
         if update.environment_status is not None:
             self._environment_panel.set_status(status=update.environment_status)
+
+            if not update.environment_status.downloads_dir.is_ok:
+                self._show_transient_status_message(
+                    f"Папка загрузок: {update.environment_status.downloads_dir.message}"
+                )
 
         if update.should_play_refresh_feedback:
             self._environment_panel.play_refresh_feedback()
@@ -1337,6 +1370,7 @@ class MainWindow(QMainWindow):
             return
 
         self._show_transient_status_message("Обновление инструментов отменено")
+        self._handle_refresh_environment_status_clicked()
 
     def _apply_ytdlp_runtime_update(
         self,

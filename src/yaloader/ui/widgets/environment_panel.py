@@ -176,7 +176,6 @@ class EnvironmentPanel(QFrame):
         self._deno_status_chip = StatusChip(self)
         self._ytdlp_status_chip = StatusChip(self)
         self._cookies_status_chip = StatusChip(self)
-        self._downloads_dir_status_chip = StatusChip(self)
         self._ytdlp_reset_handlers: list[Callable[[], None]] = []
 
         self._configure_widgets()
@@ -187,7 +186,6 @@ class EnvironmentPanel(QFrame):
         self._deno_status_chip.set_status(status.deno)
         self._set_ytdlp_status(status=status.ytdlp)
         self._cookies_status_chip.set_status(status.cookies)
-        self._downloads_dir_status_chip.set_status(status.downloads_dir)
         self._sync_prepare_system_button_status(status=status)
 
     def set_ytdlp_update_available(self, *, latest_version: str, is_external: bool) -> None:
@@ -340,7 +338,6 @@ class EnvironmentPanel(QFrame):
             self._deno_status_chip,
             self._ytdlp_status_chip,
             self._cookies_status_chip,
-            self._downloads_dir_status_chip,
         )
 
 

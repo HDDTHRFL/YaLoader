@@ -7,6 +7,7 @@ from yaloader.application.dto.tool_installation import ToolId
 from yaloader.application.ports.download_preparer import DownloadPreparer
 from yaloader.application.ports.downloader import Downloader
 from yaloader.application.ports.platform_icon_resolver import PlatformIconResolver
+from yaloader.application.services.app_update_service import AppUpdateService
 from yaloader.application.services.browser_cookies_service import BrowserCookiesService
 from yaloader.application.services.download_history_service import DownloadHistoryService
 from yaloader.application.services.download_queue_service import DownloadQueueService
@@ -17,9 +18,12 @@ from yaloader.application.services.prepared_download_cache import PreparedDownlo
 from yaloader.application.services.settings_service import SettingsService
 from yaloader.application.services.tool_installation_service import ToolInstallationService
 from yaloader.application.services.ytdlp_runtime_service import YtDlpRuntimeService
+from yaloader.config.app_info import APP_VERSION
 from yaloader.config.paths import AppPaths, build_default_app_paths, ensure_app_directories
+from yaloader.infrastructure.github.app_update_checker import GitHubReleaseAppUpdateChecker
 from yaloader.infrastructure.system.tool_locator import ToolLocatorProcessRunner
 from yaloader.infrastructure.tools.deno_installer import DenoPortableInstaller
+from yaloader.infrastructure.tools.executable_version_resolver import ToolExecutableVersionResolver
 from yaloader.infrastructure.tools.ffmpeg_installer import FfmpegPortableInstaller
 from yaloader.infrastructure.web.favicon_resolver import WebFaviconResolver
 from yaloader.infrastructure.ytdlp.browser_cookies_exporter import (
@@ -42,6 +46,7 @@ class AppContainer:
     environment_check_service: EnvironmentCheckService
     browser_cookies_service: BrowserCookiesService
     tool_installation_service: ToolInstallationService
+    app_update_service: AppUpdateService
     download_queue_service: DownloadQueueService
     download_speed_limit_state: DownloadSpeedLimitState
     download_history_service: DownloadHistoryService
@@ -84,6 +89,7 @@ def build_app_container() -> AppContainer:
             paths=paths,
             process_runner=tool_locator,
             ytdlp_runtime_provider=ytdlp_runtime_manager,
+            executable_version_resolver=ToolExecutableVersionResolver(),
         ),
         browser_cookies_service=BrowserCookiesService(
             exporter=YtDlpBrowserCookiesExporter(
@@ -102,6 +108,10 @@ def build_app_container() -> AppContainer:
             version_checkers={
                 ToolId.YTDLP: ytdlp_version_checker,
             },
+        ),
+        app_update_service=AppUpdateService(
+            current_version=APP_VERSION,
+            checker=GitHubReleaseAppUpdateChecker(),
         ),
         download_queue_service=DownloadQueueService(),
         download_speed_limit_state=download_speed_limit_state,

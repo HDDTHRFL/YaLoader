@@ -9,6 +9,7 @@ from loguru import logger
 
 from yaloader.application.dto.environment_status import EnvironmentItemStatus, EnvironmentStatus
 from yaloader.application.dto.ytdlp_runtime import YtDlpRuntimeInfo, YtDlpRuntimeSource
+from yaloader.application.ports.executable_version_resolver import ExecutableVersionResolver
 from yaloader.application.ports.process_runner import ProcessRunner
 from yaloader.application.ports.ytdlp_runtime import YtDlpRuntimeInfoProvider
 from yaloader.application.services.cookies_file_service import (
@@ -38,6 +39,7 @@ class EnvironmentCheckService:
     ytdlp_runtime_provider: YtDlpRuntimeInfoProvider = field(
         default_factory=PackageYtDlpRuntimeInfoProvider,
     )
+    executable_version_resolver: ExecutableVersionResolver | None = None
 
     def check(self, *, downloads_dir: Path) -> EnvironmentStatus:
         status = EnvironmentStatus(
@@ -86,9 +88,35 @@ class EnvironmentCheckService:
         return EnvironmentItemStatus(
             title=title,
             is_ok=True,
-            message="найден",
+            message=self._resolve_executable_version_message(
+                executable_name=executable_name,
+                executable_path=executable_path,
+            ),
             path=executable_path,
         )
+
+    def _resolve_executable_version_message(
+        self,
+        *,
+        executable_name: str,
+        executable_path: Path,
+    ) -> str:
+        if self.executable_version_resolver is None:
+            return "найден"
+
+        try:
+            return self.executable_version_resolver.resolve_version(
+                executable_name=executable_name,
+                executable_path=executable_path,
+            )
+        except Exception as error:
+            logger.warning(
+                "Failed to resolve executable version. executable_name={} path={} error={}",
+                executable_name,
+                executable_path,
+                error,
+            )
+            return "найден, версия не определена"
 
     def _check_ytdlp(self) -> EnvironmentItemStatus:
         try:

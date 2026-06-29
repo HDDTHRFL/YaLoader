@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 from typing import Final, override
 
 from PyQt6.QtCore import Qt
@@ -32,6 +33,8 @@ SETTINGS_BUTTON_SUBTITLE_BOTTOM_OFFSET: Final = 0
 VERSION_LABEL_PREFIX: Final = "_ "
 VERSION_FONT_POINT_SIZE: Final = 8
 VERSION_LETTER_SPACING_PERCENT: Final = 108.0
+APP_UPDATE_LINK_TEXT: Final = "доступна новая версия"
+APP_UPDATE_LINK_COLOR: Final = "#FCD34D"
 
 TITLE_FONT_FALLBACKS: Final = (
     "Death Stars",
@@ -64,6 +67,25 @@ class AppHeader(QWidget):
 
     def set_history_visible(self, *, is_visible: bool) -> None:
         self.history_toggle_button.setText("‹" if is_visible else "›")
+
+    def set_application_update_available(
+        self,
+        *,
+        latest_version: str,
+        releases_url: str,
+    ) -> None:
+        self._version_label.setTextFormat(Qt.TextFormat.RichText)
+        self._version_label.setOpenExternalLinks(True)
+        self._version_label.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        self._version_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._version_label.setToolTip(f"Открыть релизы YaLoader. Доступна версия {latest_version}")
+        self._version_label.setText(
+            format_app_version_label_with_update(
+                current_version=APP_VERSION,
+                latest_version=latest_version,
+                releases_url=releases_url,
+            )
+        )
 
     @override
     def resizeEvent(self, event: QResizeEvent | None) -> None:
@@ -212,6 +234,24 @@ def format_app_version_label(*, version: str) -> str:
         return VERSION_LABEL_PREFIX
 
     return f"{VERSION_LABEL_PREFIX}{normalized_version}"
+
+
+def format_app_version_label_with_update(
+    *,
+    current_version: str,
+    latest_version: str,
+    releases_url: str,
+) -> str:
+    base_label = html.escape(format_app_version_label(version=current_version))
+    safe_releases_url = html.escape(releases_url, quote=True)
+    safe_latest_version = html.escape(latest_version)
+
+    return (
+        f'{base_label} <a href="{safe_releases_url}" '
+        f'style="color: {APP_UPDATE_LINK_COLOR}; text-decoration: underline;" '
+        f'title="Доступна версия {safe_latest_version}">'
+        f"[{APP_UPDATE_LINK_TEXT}]</a>"
+    )
 
 
 def build_title_label_style_sheet(*, title_font_family: str) -> str:

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from yaloader.ui.widgets.app_header import VERSION_LABEL_PREFIX, format_app_version_label
+from yaloader.ui.widgets.app_header import format_app_version_label_with_update
 
 
-def test_format_app_version_label_adds_version_prefix() -> None:
-    assert format_app_version_label(version="1.0.0") == "_ 1.0.0"
+def test_format_app_version_label_with_update_contains_clickable_release_link() -> None:
+    label = format_app_version_label_with_update(
+        current_version="1.0.0",
+        latest_version="1.1.0",
+        releases_url="https://github.com/HDDTHRFL/YaLoader/releases",
+    )
 
-
-def test_format_app_version_label_strips_spaces() -> None:
-    assert format_app_version_label(version=" 1.0.1 ") == "_ 1.0.1"
-
-
-def test_format_app_version_label_handles_empty_version() -> None:
-    assert format_app_version_label(version=" ") == VERSION_LABEL_PREFIX
+    assert "_ 1.0.0" in label
+    assert "[доступна новая версия]" in label
+    assert "https://github.com/HDDTHRFL/YaLoader/releases" in label
+    assert "Доступна версия 1.1.0" in label

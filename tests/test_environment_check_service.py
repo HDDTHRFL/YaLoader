@@ -23,6 +23,20 @@ class FakeProcessRunner:
         return self._executables.get(executable_name)
 
 
+class FakeExecutableVersionResolver:
+    def __init__(self, versions: dict[str, str]) -> None:
+        self._versions = versions
+
+    def resolve_version(
+        self,
+        *,
+        executable_path: Path,
+        executable_name: str,
+    ) -> str:
+        _ = executable_path
+        return self._versions[executable_name]
+
+
 def test_environment_check_reports_missing_external_tools(tmp_path: Path) -> None:
     service = EnvironmentCheckService(
         paths=create_app_paths(tmp_path=tmp_path),
@@ -126,3 +140,26 @@ def test_environment_check_reports_disabled_external_ytdlp_runtime(tmp_path: Pat
 
     assert status.ytdlp.is_ok is True
     assert status.ytdlp.message == "2026.3.17 (встроенный | внешний отключён)"
+
+
+def test_environment_check_reports_ffmpeg_and_deno_versions(tmp_path: Path) -> None:
+    service = EnvironmentCheckService(
+        paths=create_app_paths(tmp_path=tmp_path),
+        process_runner=FakeProcessRunner(
+            executables={
+                "ffmpeg": Path("C:/Tools/ffmpeg.exe"),
+                "deno": Path("C:/Tools/deno.exe"),
+            }
+        ),
+        executable_version_resolver=FakeExecutableVersionResolver(
+            versions={
+                "ffmpeg": "8.1.2",
+                "deno": "2.9.0",
+            }
+        ),
+    )
+
+    status = service.check(downloads_dir=tmp_path / "downloads")
+
+    assert status.ffmpeg.message == "8.1.2"
+    assert status.deno.message == "2.9.0"
