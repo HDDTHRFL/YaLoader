@@ -13,6 +13,7 @@ def test_format_app_version_label_with_update_contains_internal_update_link() ->
     )
 
     assert "_ 1.0.0" in label
-    assert "[доступна новая версия]" in label
+    assert '_ 1.0.0&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="' in label
+    assert "[ доступна новая версия ]" in label
     assert APP_UPDATE_LINK_HREF in label
     assert "Обновить до версии 1.1.0" in label

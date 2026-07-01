@@ -34,7 +34,8 @@ VERSION_LABEL_PREFIX: Final = "_ "
 VERSION_FONT_POINT_SIZE: Final = 8
 VERSION_LETTER_SPACING_PERCENT: Final = 108.0
 APP_UPDATE_LINK_HREF: Final = "yaloader://install-update"
-APP_UPDATE_LINK_TEXT: Final = "доступна новая версия"
+APP_UPDATE_LINK_TEXT: Final = " доступна новая версия "
+APP_UPDATE_LINK_LEFT_SPACING_HTML: Final = "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
 APP_UPDATE_LINK_COLOR: Final = "#FCD34D"
 
 TITLE_FONT_FALLBACKS: Final = (
@@ -250,7 +251,7 @@ def format_app_version_label_with_update(
     safe_latest_version = html.escape(latest_version)
 
     return (
-        f'{base_label} <a href="{APP_UPDATE_LINK_HREF}" '
+        f'{base_label}{APP_UPDATE_LINK_LEFT_SPACING_HTML}<a href="{APP_UPDATE_LINK_HREF}" '
         f'style="color: {APP_UPDATE_LINK_COLOR}; text-decoration: underline;" '
         f'title="Обновить до версии {safe_latest_version}">'
         f"[{APP_UPDATE_LINK_TEXT}]</a>"

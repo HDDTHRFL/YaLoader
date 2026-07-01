@@ -65,7 +65,7 @@ def test_escape_batch_value_escapes_percent_sign() -> None:
     assert escape_batch_value(value="C:/Users/%USERNAME%/YaLoader.exe") == ("C:/Users/%%USERNAME%%/YaLoader.exe")
 
 
-def test_build_updater_command_text_waits_replaces_and_restarts() -> None:
+def test_build_updater_command_text_waits_replaces_and_restarts_with_clean_pyinstaller_environment() -> None:
     command_text = build_updater_command_text(
         current_process_id=1234,
         staged_executable=Path("C:/Temp/YaLoader.exe"),
@@ -77,4 +77,5 @@ def test_build_updater_command_text_waits_replaces_and_restarts() -> None:
     assert "PID eq %YALOADER_PID%" in command_text
     assert "copy /Y" in command_text
     assert "YaLoader.exe.previous" in command_text
-    assert 'start "" "%YALOADER_TARGET%"' in command_text
+    assert 'set "PYINSTALLER_RESET_ENVIRONMENT=1"' in command_text
+    assert 'start "" /D "%YALOADER_TARGET_DIR%" "%YALOADER_TARGET%"' in command_text

@@ -31,6 +31,9 @@ UPDATER_COMMAND_FILE_NAME: Final = "apply_yaloader_update.cmd"
 UPDATER_LOG_FILE_NAME: Final = "update.log"
 EXTRACTED_DIR_NAME: Final = "extracted"
 PREVIOUS_EXE_SUFFIX: Final = ".previous"
+PYINSTALLER_RESET_ENVIRONMENT_NAME: Final = "PYINSTALLER_RESET_ENVIRONMENT"
+PYINSTALLER_RESET_ENVIRONMENT_VALUE: Final = "1"
+UPDATED_APP_START_DELAY_SECONDS: Final = 2
 
 
 class AppSelfUpdateError(RuntimeError):
@@ -206,17 +209,18 @@ def build_updater_command_text(
             f'set "YALOADER_PID={current_process_id}"',
             f'set "YALOADER_SOURCE={escape_batch_value(value=str(staged_executable))}"',
             f'set "YALOADER_TARGET={escape_batch_value(value=str(target_executable))}"',
+            f'set "YALOADER_TARGET_DIR={escape_batch_value(value=str(target_executable.parent))}"',
             f'set "YALOADER_BACKUP={escape_batch_value(value=str(backup_executable))}"',
             f'set "YALOADER_LOG={escape_batch_value(value=str(log_file))}"',
             'echo YaLoader update started. > "%YALOADER_LOG%"',
             'echo Waiting for YaLoader process %YALOADER_PID%... >> "%YALOADER_LOG%"',
             ":wait_for_yaloader_exit",
-            'tasklist /FI "PID eq %YALOADER_PID%" 2>NUL | findstr /C:" %YALOADER_PID% " >NUL',
+            ('tasklist /FI "PID eq %YALOADER_PID%" 2>NUL | findstr /C:" %YALOADER_PID% " >NUL'),
             "if not errorlevel 1 (",
             "    timeout /t 1 /nobreak >NUL",
             "    goto wait_for_yaloader_exit",
             ")",
-            'if exist "%YALOADER_BACKUP%" del /f /q "%YALOADER_BACKUP%" >> "%YALOADER_LOG%" 2>&1',
+            ('if exist "%YALOADER_BACKUP%" del /f /q "%YALOADER_BACKUP%" >> "%YALOADER_LOG%" 2>&1'),
             ('if exist "%YALOADER_TARGET%" move /Y "%YALOADER_TARGET%" "%YALOADER_BACKUP%" >> "%YALOADER_LOG%" 2>&1'),
             'copy /Y "%YALOADER_SOURCE%" "%YALOADER_TARGET%" >> "%YALOADER_LOG%" 2>&1',
             "if errorlevel 1 (",
@@ -228,9 +232,11 @@ def build_updater_command_text(
             ),
             "    exit /b 1",
             ")",
-            'if exist "%YALOADER_BACKUP%" del /f /q "%YALOADER_BACKUP%" >> "%YALOADER_LOG%" 2>&1',
+            ('if exist "%YALOADER_BACKUP%" del /f /q "%YALOADER_BACKUP%" >> "%YALOADER_LOG%" 2>&1'),
             'echo Starting updated YaLoader. >> "%YALOADER_LOG%"',
-            'start "" "%YALOADER_TARGET%"',
+            f"timeout /t {UPDATED_APP_START_DELAY_SECONDS} /nobreak >NUL",
+            f'set "{PYINSTALLER_RESET_ENVIRONMENT_NAME}={PYINSTALLER_RESET_ENVIRONMENT_VALUE}"',
+            'start "" /D "%YALOADER_TARGET_DIR%" "%YALOADER_TARGET%"',
             "exit /b 0",
             "",
         )
