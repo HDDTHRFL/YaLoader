@@ -7,6 +7,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from threading import RLock
 from types import ModuleType
 from typing import Final
 
@@ -16,8 +17,11 @@ from yaloader.application.dto.ytdlp_runtime import YtDlpRuntimeInfo
 
 YTDLP_DISTRIBUTION_NAME: Final = "yt-dlp"
 YTDLP_IMPORT_NAME: Final = "yt_dlp"
+YTDLP_RUNTIME_ROOT_DIR_NAME: Final = "yt-dlp-runtimes"
 YTDLP_RUNTIME_CURRENT_DIR_NAME: Final = "current"
 YTDLP_RUNTIME_SCOPE_HASH_LENGTH: Final = 16
+
+_ytdlp_runtime_import_lock: Final = RLock()
 
 
 class YtDlpRuntimeError(RuntimeError):
@@ -90,15 +94,26 @@ class YtDlpRuntimeManager:
 
 def load_ytdlp_module_from_path(*, runtime_dir: Path) -> ModuleType:
     runtime_dir_text = str(runtime_dir.resolve())
-    remove_ytdlp_modules()
-    ensure_first_sys_path_entry(path_text=runtime_dir_text)
 
-    try:
-        return importlib.import_module(YTDLP_IMPORT_NAME)
-    except Exception:
-        remove_sys_path_entry(path_text=runtime_dir_text)
+    with _ytdlp_runtime_import_lock:
+        loaded_module = get_loaded_ytdlp_module()
+
+        if loaded_module is not None and is_module_loaded_from_directory(
+            module=loaded_module,
+            directory=runtime_dir,
+        ):
+            ensure_first_sys_path_entry(path_text=runtime_dir_text)
+            return loaded_module
+
         remove_ytdlp_modules()
-        raise
+        ensure_first_sys_path_entry(path_text=runtime_dir_text)
+
+        try:
+            return importlib.import_module(YTDLP_IMPORT_NAME)
+        except Exception:
+            remove_sys_path_entry(path_text=runtime_dir_text)
+            remove_ytdlp_modules()
+            raise
 
 
 def build_ytdlp_runtime_scope_id(*, executable_path: Path | None = None) -> str:
@@ -126,10 +141,17 @@ def get_bundled_ytdlp_version() -> str:
 
 
 def load_bundled_ytdlp_module() -> ModuleType:
-    remove_external_runtime_paths_from_sys_path()
-    remove_ytdlp_modules()
+    with _ytdlp_runtime_import_lock:
+        remove_external_runtime_paths_from_sys_path()
+        loaded_module = get_loaded_ytdlp_module()
 
-    return importlib.import_module(YTDLP_IMPORT_NAME)
+        if loaded_module is not None and not is_external_runtime_module(module=loaded_module):
+            return loaded_module
+
+        if loaded_module is not None:
+            remove_ytdlp_modules()
+
+        return importlib.import_module(YTDLP_IMPORT_NAME)
 
 
 def extract_ytdlp_module_version(*, module: ModuleType) -> str:
@@ -155,8 +177,58 @@ def validate_ytdlp_module(*, module: ModuleType) -> None:
 
 
 def cleanup_failed_external_runtime_import(*, runtime_dir: Path) -> None:
-    remove_sys_path_entry(path_text=str(runtime_dir.resolve()))
-    remove_ytdlp_modules()
+    with _ytdlp_runtime_import_lock:
+        remove_sys_path_entry(path_text=str(runtime_dir.resolve()))
+        remove_ytdlp_modules()
+
+
+def get_loaded_ytdlp_module() -> ModuleType | None:
+    module = sys.modules.get(YTDLP_IMPORT_NAME)
+
+    if isinstance(module, ModuleType):
+        return module
+
+    return None
+
+
+def is_external_runtime_module(*, module: ModuleType) -> bool:
+    module_file_path = get_module_file_path(module=module)
+
+    if module_file_path is None:
+        return False
+
+    return has_runtime_path_parts(path=module_file_path)
+
+
+def is_module_loaded_from_directory(*, module: ModuleType, directory: Path) -> bool:
+    module_file_path = get_module_file_path(module=module)
+
+    if module_file_path is None:
+        return False
+
+    try:
+        module_file_path.resolve().relative_to(directory.resolve())
+    except ValueError:
+        return False
+
+    return True
+
+
+def get_module_file_path(*, module: ModuleType) -> Path | None:
+    module_file = getattr(module, "__file__", None)
+
+    if isinstance(module_file, str) and module_file.strip():
+        return Path(module_file)
+
+    module_path = getattr(module, "__path__", None)
+
+    if isinstance(module_path, list) and module_path:
+        first_path = module_path[0]
+
+        if isinstance(first_path, str) and first_path.strip():
+            return Path(first_path)
+
+    return None
 
 
 def ensure_first_sys_path_entry(*, path_text: str) -> None:
@@ -170,9 +242,20 @@ def remove_sys_path_entry(*, path_text: str) -> None:
 
 
 def remove_external_runtime_paths_from_sys_path() -> None:
-    sys.path[:] = [
-        entry for entry in sys.path if YTDLP_RUNTIME_CURRENT_DIR_NAME not in normalize_sys_path_entry(value=entry)
-    ]
+    sys.path[:] = [entry for entry in sys.path if not is_external_runtime_sys_path_entry(value=entry)]
+
+
+def is_external_runtime_sys_path_entry(*, value: str) -> bool:
+    return has_runtime_path_parts(path=Path(value))
+
+
+def has_runtime_path_parts(*, path: Path) -> bool:
+    normalized_parts = {part.casefold() for part in path.parts}
+
+    return (
+        YTDLP_RUNTIME_ROOT_DIR_NAME.casefold() in normalized_parts
+        and YTDLP_RUNTIME_CURRENT_DIR_NAME.casefold() in normalized_parts
+    )
 
 
 def normalize_sys_path_entry(*, value: str) -> str:
