@@ -64,10 +64,11 @@ class MediaMetadataController:
         try:
             metadata = self._service.resolve(request=request)
         except Exception as error:
-            logger.opt(exception=error).warning(
-                "Failed to resolve media metadata. task_id={} url={} error={}",
+            logger.warning(
+                "Failed to resolve media metadata. task_id={} url={} error_type={} error={}",
                 task_id,
                 request.url,
+                type(error).__name__,
                 error,
             )
             self._events.put(

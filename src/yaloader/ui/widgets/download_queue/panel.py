@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from typing import Final
+
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from yaloader.ui.widgets.download_queue.columns import QUEUE_ROW_HEIGHT
 from yaloader.ui.widgets.download_queue.table import DownloadQueueTable
+
+REMOVE_SELECTED_QUEUE_ITEMS_TOOLTIP: Final = "клавиша Delete"
+CLEAR_DOWNLOAD_QUEUE_TOOLTIP: Final = "сочетание клавиш Shift + Delete"
 
 QUEUE_MINIMUM_VISIBLE_ROWS_NUMERATOR = 3
 QUEUE_MINIMUM_VISIBLE_ROWS_DENOMINATOR = 2
@@ -48,6 +53,9 @@ class DownloadQueuePanel(QFrame):
         self.start_queue_button.setObjectName("SuccessButton")
         self.remove_from_queue_button.setObjectName("SecondaryButton")
         self.clear_queue_button.setObjectName("SecondaryButton")
+
+        self.remove_from_queue_button.setToolTip(REMOVE_SELECTED_QUEUE_ITEMS_TOOLTIP)
+        self.clear_queue_button.setToolTip(CLEAR_DOWNLOAD_QUEUE_TOOLTIP)
 
     def _build_layout(self) -> None:
         layout = QVBoxLayout(self)

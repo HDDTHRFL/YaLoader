@@ -71,6 +71,14 @@ LONG_PRESS_SELECTION_DELAY_MS = 500
 LONG_PRESS_MOVE_TOLERANCE_PX = 4
 
 
+def is_remove_selected_tasks_key_event(*, event: QKeyEvent) -> bool:
+    return event.key() == Qt.Key.Key_Delete and event.modifiers() == Qt.KeyboardModifier.NoModifier
+
+
+def is_clear_queue_key_event(*, event: QKeyEvent) -> bool:
+    return event.key() == Qt.Key.Key_Delete and event.modifiers() == Qt.KeyboardModifier.ShiftModifier
+
+
 class DownloadQueueTable(QTableWidget):
     row_selection_mode_changed = pyqtSignal(bool)
 
@@ -84,6 +92,7 @@ class DownloadQueueTable(QTableWidget):
         self._on_download_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._on_cancel_tasks: Callable[[tuple[UUID, ...]], None] | None = None
         self._on_remove_tasks: Callable[[tuple[UUID, ...]], None] | None = None
+        self._on_clear_queue: Callable[[], None] | None = None
         self._on_url_dropped: Callable[[str], None] | None = None
         self._suppress_next_context_menu_event = False
         self._vertical_row_selection_anchor_row: int | None = None
@@ -224,6 +233,16 @@ class DownloadQueueTable(QTableWidget):
 
     @override
     def keyPressEvent(self, event: QKeyEvent | None) -> None:
+        if event is not None and is_clear_queue_key_event(event=event):
+            self._clear_queue_from_keyboard()
+            event.accept()
+            return
+
+        if event is not None and is_remove_selected_tasks_key_event(event=event):
+            self._remove_selected_tasks_from_keyboard()
+            event.accept()
+            return
+
         if event is not None and event.matches(QKeySequence.StandardKey.Copy):
             self._copy_selected_urls_to_clipboard()
             event.accept()
@@ -251,10 +270,12 @@ class DownloadQueueTable(QTableWidget):
         on_download_tasks: Callable[[tuple[UUID, ...]], None],
         on_cancel_tasks: Callable[[tuple[UUID, ...]], None],
         on_remove_tasks: Callable[[tuple[UUID, ...]], None],
+        on_clear_queue: Callable[[], None],
     ) -> None:
         self._on_download_tasks = on_download_tasks
         self._on_cancel_tasks = on_cancel_tasks
         self._on_remove_tasks = on_remove_tasks
+        self._on_clear_queue = on_clear_queue
 
     def set_url_drop_callback(self, *, on_url_dropped: Callable[[str], None]) -> None:
         self._on_url_dropped = on_url_dropped
@@ -890,6 +911,21 @@ class DownloadQueueTable(QTableWidget):
     def _remove_tasks(self, task_ids: tuple[UUID, ...]) -> None:
         if self._on_remove_tasks is not None:
             self._on_remove_tasks(task_ids)
+
+    def _remove_selected_tasks_from_keyboard(self) -> None:
+        selected_task_ids = self.get_selected_task_ids()
+
+        if not selected_task_ids:
+            return
+
+        self._remove_tasks(task_ids=selected_task_ids)
+
+    def _clear_queue_from_keyboard(self) -> None:
+        if self.rowCount() == 0:
+            return
+
+        if self._on_clear_queue is not None:
+            self._on_clear_queue()
 
     def _copy_selected_urls_to_clipboard(self) -> None:
         selected_tasks = self._get_tasks_by_ids(task_ids=self.get_selected_task_ids())

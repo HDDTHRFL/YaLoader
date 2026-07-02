@@ -360,9 +360,10 @@ class YtDlpDownloader:
             return DownloadResult.canceled(task_id=task.task_id)
         except Exception as error:
             error_message = self._build_error_message(error=error)
-            logger.opt(exception=error).warning(
-                "Download failed. task_id={} error={}",
+            logger.warning(
+                "Download failed. task_id={} error_type={} error={}",
                 task.task_id,
+                type(error).__name__,
                 error_message,
             )
 

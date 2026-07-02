@@ -408,6 +408,7 @@ class MainWindow(QMainWindow):
             on_download_tasks=self._start_tasks_download,
             on_cancel_tasks=self._cancel_tasks_download,
             on_remove_tasks=self._remove_tasks_from_queue,
+            on_clear_queue=self._handle_clear_queue_clicked,
         )
         self._queue_table.set_url_drop_callback(
             on_url_dropped=self._handle_queue_url_dropped,

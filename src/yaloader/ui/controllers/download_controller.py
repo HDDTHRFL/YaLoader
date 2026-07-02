@@ -516,10 +516,11 @@ class DownloadController:
             if cancellation_token.is_cancel_requested:
                 return DownloadPreparationResult(task_id=task.task_id, is_canceled=True)
 
-            logger.opt(exception=error).warning(
-                "Download preparation failed. task_id={} url={} error={}",
+            logger.warning(
+                "Download preparation failed. task_id={} url={} error_type={} error={}",
                 task.task_id,
                 task.url.value,
+                type(error).__name__,
                 error,
             )
             return DownloadPreparationResult(
@@ -542,9 +543,11 @@ class DownloadController:
             try:
                 result = future.result()
             except Exception as error:
-                logger.opt(exception=error).warning(
-                    "Download preparation future failed unexpectedly. task_id={}",
+                logger.warning(
+                    "Download preparation future failed unexpectedly. task_id={} error_type={} error={}",
                     task_id,
+                    type(error).__name__,
+                    error,
                 )
                 completed_preparation_task_ids.append(task_id)
                 status_message = "Подготовка загрузки не удалась. yt-dlp попробует скачать напрямую"
@@ -637,9 +640,11 @@ class DownloadController:
         try:
             result = future.result()
         except Exception as error:
-            logger.opt(exception=error).warning(
-                "Download preparation wait failed unexpectedly. task_id={}",
+            logger.warning(
+                "Download preparation wait failed unexpectedly. task_id={} error_type={} error={}",
                 task.task_id,
+                type(error).__name__,
+                error,
             )
             return None
 
