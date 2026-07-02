@@ -7,8 +7,8 @@ from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayou
 from yaloader.ui.widgets.download_queue.columns import QUEUE_ROW_HEIGHT
 from yaloader.ui.widgets.download_queue.table import DownloadQueueTable
 
-REMOVE_SELECTED_QUEUE_ITEMS_TOOLTIP: Final = "клавиша Delete"
-CLEAR_DOWNLOAD_QUEUE_TOOLTIP: Final = "сочетание клавиш Shift + Delete"
+REMOVE_SELECTED_QUEUE_ITEMS_TOOLTIP: Final = "Delete"
+CLEAR_DOWNLOAD_QUEUE_TOOLTIP: Final = "Shift + Delete"
 
 QUEUE_MINIMUM_VISIBLE_ROWS_NUMERATOR = 3
 QUEUE_MINIMUM_VISIBLE_ROWS_DENOMINATOR = 2
