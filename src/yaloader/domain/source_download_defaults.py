@@ -12,6 +12,7 @@ DEFAULT_VIDEO_OUTPUT_FORMAT: Final = OutputFormat.MP4
 AUDIO_ONLY_SOURCE_PLATFORMS: Final[frozenset[SourcePlatform]] = frozenset(
     {
         SourcePlatform.SOUNDCLOUD,
+        SourcePlatform.VK_AUDIO,
     }
 )
 

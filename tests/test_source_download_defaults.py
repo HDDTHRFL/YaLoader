@@ -178,3 +178,21 @@ def test_resolve_default_output_format_keeps_selected_format_for_unknown_source(
         )
         is OutputFormat.MP3
     )
+
+
+def test_is_audio_only_source_url_accepts_vk_audio() -> None:
+    assert is_audio_only_source_url(url="https://vk.com/audio133993362_456242612_cb6b8410a741a6993a") is True
+
+
+def test_is_video_capable_source_url_rejects_vk_audio() -> None:
+    assert is_video_capable_source_url(url="https://vk.com/audio133993362_456242612_cb6b8410a741a6993a") is False
+
+
+def test_resolve_default_output_format_uses_mp3_for_vk_audio_video_format() -> None:
+    assert (
+        resolve_default_output_format_for_source_url(
+            url="https://vk.com/audio133993362_456242612_cb6b8410a741a6993a",
+            selected_output_format=OutputFormat.MP4,
+        )
+        is DEFAULT_AUDIO_ONLY_OUTPUT_FORMAT
+    )

@@ -63,3 +63,10 @@ def test_build_media_source_key_returns_original_url_for_unknown_youtube_shape()
 def test_build_media_source_key_rejects_invalid_url() -> None:
     with pytest.raises(ValueError, match="http or https"):
         build_media_source_key(url="not-a-url")
+
+
+def test_build_media_source_key_normalizes_vk_audio_url() -> None:
+    assert (
+        build_media_source_key(url="https://vk.com/audio133993362_456242612_cb6b8410a741a6993a")
+        == "vkaudio:audio:133993362_456242612"
+    )

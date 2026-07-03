@@ -27,3 +27,9 @@ def test_bundle_config_includes_license_file() -> None:
     config = make_bundle_module.BundleConfig()
 
     assert "LICENSE" in config.included_file_names
+
+
+def test_bundle_config_excludes_temporary_debug_files() -> None:
+    config = make_bundle_module.BundleConfig()
+
+    assert ".tmp_*" in config.excluded_file_patterns

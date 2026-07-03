@@ -48,6 +48,9 @@ def build_media_source_key(url: str) -> str:
     if platform is SourcePlatform.RUTUBE:
         return build_rutube_source_key(url=media_url.value)
 
+    if platform is SourcePlatform.VK_AUDIO:
+        return build_vk_audio_source_key(url=media_url.value)
+
     if platform is SourcePlatform.VK_VIDEO:
         return build_vk_video_source_key(url=media_url.value)
 
@@ -93,6 +96,16 @@ def build_rutube_source_key(url: str) -> str:
         return f"rutube:video:{video_id}"
 
     return f"rutube:url:{url}"
+
+
+def build_vk_audio_source_key(url: str) -> str:
+    parsed_url = urlparse(url)
+    audio_id = extract_vk_audio_id(path=parsed_url.path)
+
+    if audio_id is not None:
+        return f"vkaudio:audio:{audio_id}"
+
+    return f"vkaudio:url:{url}"
 
 
 def build_vk_video_source_key(url: str) -> str:
@@ -238,6 +251,27 @@ def extract_rutube_video_id(*, path: str) -> str | None:
         return path_parts[2]
 
     return None
+
+
+def extract_vk_audio_id(*, path: str) -> str | None:
+    normalized_path = path.strip().casefold()
+
+    if not normalized_path.startswith("/audio"):
+        return None
+
+    audio_id_text = normalized_path.removeprefix("/audio").strip("/").split("/", maxsplit=1)[0]
+    audio_id_parts = audio_id_text.split("_")
+
+    if len(audio_id_parts) < 2:
+        return None
+
+    owner_id = audio_id_parts[0]
+    audio_id = audio_id_parts[1]
+
+    if not owner_id.removeprefix("-").isdigit() or not audio_id.isdigit():
+        return None
+
+    return f"{owner_id}_{audio_id}"
 
 
 def extract_vk_video_id(

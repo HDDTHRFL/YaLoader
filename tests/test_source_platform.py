@@ -74,3 +74,13 @@ def test_unknown_http_host_is_supported_as_ytdlp_auto_source_url() -> None:
 
 def test_non_http_source_url_is_not_supported() -> None:
     assert not is_supported_source_url(url="ftp://example.com/video")
+
+
+def test_detect_source_platform_for_vk_audio() -> None:
+    url = "https://vk.com/audio133993362_456242612_cb6b8410a741a6993a"
+
+    assert detect_source_platform(url=url) is SourcePlatform.VK_AUDIO
+
+
+def test_vk_audio_is_supported_source_url() -> None:
+    assert is_supported_source_url(url="https://vk.com/audio133993362_456242612_cb6b8410a741a6993a")

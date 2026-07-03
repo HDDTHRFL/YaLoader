@@ -41,6 +41,7 @@ class BundleConfig:
         {
             "*.cookies.txt",
             "*cookies*.txt",
+            ".tmp_*",
         }
     )
     included_file_names: frozenset[str] = frozenset(

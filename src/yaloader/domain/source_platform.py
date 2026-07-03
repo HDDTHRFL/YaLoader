@@ -21,6 +21,17 @@ RUTUBE_ALLOWED_HOSTS = frozenset(
     }
 )
 
+VK_AUDIO_ALLOWED_HOSTS = frozenset(
+    {
+        "vk.com",
+        "www.vk.com",
+        "m.vk.com",
+        "vk.ru",
+        "www.vk.ru",
+        "m.vk.ru",
+    }
+)
+
 VK_VIDEO_ALLOWED_HOSTS = frozenset(
     {
         "vk.com",
@@ -61,6 +72,7 @@ class SourcePlatform(StrEnum):
     YOUTUBE = "youtube"
     RUTUBE = "rutube"
     VK_VIDEO = "vkvideo"
+    VK_AUDIO = "vkaudio"
     TWITCH = "twitch"
     SOUNDCLOUD = "soundcloud"
     UNKNOWN = "unknown"
@@ -71,6 +83,7 @@ KNOWN_SOURCE_PLATFORMS = frozenset(
         SourcePlatform.YOUTUBE,
         SourcePlatform.RUTUBE,
         SourcePlatform.VK_VIDEO,
+        SourcePlatform.VK_AUDIO,
         SourcePlatform.TWITCH,
         SourcePlatform.SOUNDCLOUD,
     }
@@ -80,6 +93,8 @@ SOURCE_PLATFORM_LABELS = {
     SourcePlatform.YOUTUBE: "YouTube",
     SourcePlatform.RUTUBE: "Rutube",
     SourcePlatform.VK_VIDEO: "VK Video",
+    SourcePlatform.VK_AUDIO: "VK Audio",
+    SourcePlatform.VK_AUDIO: "VK Audio",
     SourcePlatform.TWITCH: "Twitch",
     SourcePlatform.SOUNDCLOUD: "SoundCloud",
     SourcePlatform.UNKNOWN: "Auto",
@@ -89,10 +104,29 @@ SOURCE_PLATFORM_QUEUE_LABELS = {
     SourcePlatform.YOUTUBE: "YouTube",
     SourcePlatform.RUTUBE: "Rutube",
     SourcePlatform.VK_VIDEO: "VK Video",
+    SourcePlatform.VK_AUDIO: "VK Audio",
     SourcePlatform.TWITCH: "Twitch",
     SourcePlatform.SOUNDCLOUD: "SoundCloud",
     SourcePlatform.UNKNOWN: "Auto",
 }
+
+
+def is_vk_audio_path(*, path: str) -> bool:
+    normalized_path = path.strip().casefold()
+
+    if not normalized_path.startswith("/audio"):
+        return False
+
+    audio_id_text = normalized_path.removeprefix("/audio").strip("/").split("/", maxsplit=1)[0]
+    audio_id_parts = audio_id_text.split("_")
+
+    if len(audio_id_parts) < 2:
+        return False
+
+    owner_id = audio_id_parts[0]
+    audio_id = audio_id_parts[1]
+
+    return owner_id.removeprefix("-").isdigit() and audio_id.isdigit()
 
 
 def detect_source_platform(*, url: str) -> SourcePlatform:
@@ -109,6 +143,9 @@ def detect_source_platform(*, url: str) -> SourcePlatform:
 
     if normalized_host in RUTUBE_ALLOWED_HOSTS:
         return SourcePlatform.RUTUBE
+
+    if normalized_host in VK_AUDIO_ALLOWED_HOSTS and is_vk_audio_path(path=parsed_url.path):
+        return SourcePlatform.VK_AUDIO
 
     if normalized_host in VK_VIDEO_ALLOWED_HOSTS:
         return SourcePlatform.VK_VIDEO
@@ -128,6 +165,10 @@ def is_youtube_url(url: str) -> bool:
 
 def is_rutube_url(url: str) -> bool:
     return detect_source_platform(url=url) is SourcePlatform.RUTUBE
+
+
+def is_vk_audio_url(url: str) -> bool:
+    return detect_source_platform(url=url) is SourcePlatform.VK_AUDIO
 
 
 def is_vk_video_url(url: str) -> bool:

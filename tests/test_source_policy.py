@@ -71,6 +71,6 @@ def test_validate_supported_media_url_returns_ytdlp_auto_http_url() -> None:
 def test_validate_supported_media_url_rejects_non_http_urls(url: str) -> None:
     with pytest.raises(
         ValueError,
-        match="Only YouTube, Rutube, VK Video, Twitch, SoundCloud",
+        match="Only YouTube, Rutube, VK Video, VK Audio, Twitch, SoundCloud",
     ):
         validate_supported_media_url(url=url)

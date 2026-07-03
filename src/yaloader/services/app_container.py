@@ -20,11 +20,20 @@ from yaloader.application.services.tool_installation_service import ToolInstalla
 from yaloader.application.services.ytdlp_runtime_service import YtDlpRuntimeService
 from yaloader.config.app_info import APP_VERSION
 from yaloader.config.paths import AppPaths, build_default_app_paths, ensure_app_directories
+from yaloader.infrastructure.download_router import (
+    RoutedDownloader,
+    RoutedDownloadPreparer,
+    RoutedMediaMetadataExtractor,
+)
 from yaloader.infrastructure.github.app_update_checker import GitHubReleaseAppUpdateChecker
 from yaloader.infrastructure.system.tool_locator import ToolLocatorProcessRunner
 from yaloader.infrastructure.tools.deno_installer import DenoPortableInstaller
 from yaloader.infrastructure.tools.executable_version_resolver import ToolExecutableVersionResolver
 from yaloader.infrastructure.tools.ffmpeg_installer import FfmpegPortableInstaller
+from yaloader.infrastructure.vk_audio.client import VkAudioClient
+from yaloader.infrastructure.vk_audio.download_preparer import VkAudioDownloadPreparer
+from yaloader.infrastructure.vk_audio.downloader import VkAudioDownloader
+from yaloader.infrastructure.vk_audio.metadata_extractor import VkAudioMetadataExtractor
 from yaloader.infrastructure.web.favicon_resolver import WebFaviconResolver
 from yaloader.infrastructure.windows.app_self_updater import WindowsAppSelfUpdater
 from yaloader.infrastructure.ytdlp.browser_cookies_exporter import (
@@ -81,6 +90,24 @@ def build_app_container() -> AppContainer:
     ytdlp_version_checker = YtDlpPackageVersionChecker(
         runtime_provider=ytdlp_runtime_manager,
     )
+    vk_audio_client = VkAudioClient(cookies_file=paths.cookies_file)
+    ytdlp_metadata_extractor = YtDlpMetadataExtractor.create_default(
+        cookies_file=paths.cookies_file,
+        process_runner=tool_locator,
+        runtime_manager=ytdlp_runtime_manager,
+    )
+    ytdlp_download_preparer = YtDlpDownloadPreparer.create_default(
+        cookies_file=paths.cookies_file,
+        process_runner=tool_locator,
+        runtime_manager=ytdlp_runtime_manager,
+    )
+    ytdlp_downloader = YtDlpDownloader.create_default(
+        cookies_file=paths.cookies_file,
+        speed_limit_provider=download_speed_limit_state,
+        prepared_download_cache=prepared_download_cache,
+        process_runner=tool_locator,
+        runtime_manager=ytdlp_runtime_manager,
+    )
 
     return AppContainer(
         paths=paths,
@@ -132,22 +159,20 @@ def build_app_container() -> AppContainer:
             ),
         ),
         media_metadata_service=MediaMetadataService(
-            extractor=YtDlpMetadataExtractor.create_default(
-                cookies_file=paths.cookies_file,
-                process_runner=tool_locator,
-                runtime_manager=ytdlp_runtime_manager,
+            extractor=RoutedMediaMetadataExtractor(
+                vk_audio_extractor=VkAudioMetadataExtractor(client=vk_audio_client),
+                fallback_extractor=ytdlp_metadata_extractor,
             ),
         ),
-        download_preparer=YtDlpDownloadPreparer.create_default(
-            cookies_file=paths.cookies_file,
-            process_runner=tool_locator,
-            runtime_manager=ytdlp_runtime_manager,
+        download_preparer=RoutedDownloadPreparer(
+            vk_audio_preparer=VkAudioDownloadPreparer(client=vk_audio_client),
+            fallback_preparer=ytdlp_download_preparer,
         ),
-        downloader=YtDlpDownloader.create_default(
-            cookies_file=paths.cookies_file,
-            speed_limit_provider=download_speed_limit_state,
-            prepared_download_cache=prepared_download_cache,
-            process_runner=tool_locator,
-            runtime_manager=ytdlp_runtime_manager,
+        downloader=RoutedDownloader(
+            vk_audio_downloader=VkAudioDownloader(
+                client=vk_audio_client,
+                prepared_download_cache=prepared_download_cache,
+            ),
+            fallback_downloader=ytdlp_downloader,
         ),
     )
