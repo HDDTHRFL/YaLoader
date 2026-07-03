@@ -25,3 +25,4 @@ _bundle/
 
 cookies.txt
 *.cookies.txt
+.tmp_*
