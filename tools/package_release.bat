@@ -1,7 +1,7 @@
-﻿@echo off
+@echo off
 setlocal EnableExtensions
 
-cd /d "%~dp0.."
+cd /d "%~dp0\.."
 
 echo Packaging YaLoader release
 uv run python scripts\package_release.py %*
