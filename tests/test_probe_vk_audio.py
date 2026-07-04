@@ -667,3 +667,141 @@ def test_build_output_file_stem_falls_back_to_audio_id() -> None:
     )
 
     assert probe_vk_audio.build_output_file_stem(media=media) == "vk_audio_1_2"
+
+
+def test_fill_vk_audio_track_user_ids_decodes_audio_api_unavailable_url() -> None:
+    direct_url = "https://psv4.userapi.com/audio/file.mp3?token=value"
+    encoded_url = build_encoded_audio_api_unavailable_url(direct_url=direct_url)
+    track = probe_vk_audio.VkAudioTrack(
+        owner_id="-2001247452",
+        audio_id="41247452",
+        direct_url=encoded_url,
+    )
+
+    tracks = probe_vk_audio.fill_vk_audio_track_user_ids(
+        tracks=(track,),
+        user_id=87387839,
+    )
+
+    assert tracks[0].user_id == 87387839
+    assert tracks[0].direct_url == direct_url
+
+
+def test_adapt_single_page_track_to_requested_audio_id_allows_short_vk_audio_url() -> None:
+    requested_audio_id = probe_vk_audio.VkAudioId(
+        owner_id="87387839",
+        audio_id="456239195",
+    )
+    track = probe_vk_audio.VkAudioTrack(
+        owner_id="-2001247452",
+        audio_id="41247452",
+        action_hash="action_hash",
+        url_hash="url_hash",
+    )
+
+    tracks = probe_vk_audio.adapt_single_page_track_to_requested_audio_id(
+        audio_id=requested_audio_id,
+        page_url="https://m.vk.com/audio87387839_456239195",
+        tracks=(track,),
+    )
+
+    assert len(tracks) == 1
+    assert tracks[0].matches(requested_audio_id)
+
+
+def test_select_direct_media_from_tracks_decodes_audio_api_unavailable_with_user_id() -> None:
+    direct_url = "https://psv4.userapi.com/audio/file.mp3?token=value"
+    encoded_url = build_encoded_audio_api_unavailable_url(direct_url=direct_url)
+    audio_id = probe_vk_audio.VkAudioId(
+        owner_id="87387839",
+        audio_id="456239195",
+    )
+    track = probe_vk_audio.VkAudioTrack(
+        owner_id="-2001247452",
+        audio_id="41247452",
+        direct_url=encoded_url,
+        source_owner_id="87387839",
+        source_audio_id="456239195",
+        user_id=87387839,
+    )
+
+    media = probe_vk_audio.select_direct_media_from_tracks(
+        audio_id=audio_id,
+        tracks=(track,),
+    )
+
+    assert media is not None
+    assert media.direct_url == direct_url
+
+
+def test_extract_vk_audio_user_id_from_stats_meta_text() -> None:
+    response_text = '{"statsMeta":{"platform":"mvk","id":87387839,"reloadVersion":42}}'
+
+    assert probe_vk_audio.extract_vk_audio_user_id(value=None, text=response_text) == 87387839
+
+
+def test_build_access_keyless_vk_audio_url_removes_access_key() -> None:
+    audio_id = probe_vk_audio.VkAudioId(
+        owner_id="87387839",
+        audio_id="456239195",
+        access_key="04c0778a82e0210a55",
+    )
+
+    url = probe_vk_audio.build_access_keyless_vk_audio_url(
+        url="https://vk.com/audio87387839_456239195_04c0778a82e0210a55",
+        audio_id=audio_id,
+    )
+
+    assert url == "https://vk.com/audio87387839_456239195"
+
+
+def test_build_vk_audio_page_request_headers_uses_plain_html_headers_for_mobile_pages() -> None:
+    headers = probe_vk_audio.build_vk_audio_page_request_headers(
+        url="https://m.vk.com/audio87387839_456239195",
+    )
+
+    assert headers["Accept"].startswith("text/html")
+    assert headers["Referer"] == "https://m.vk.com/audio"
+    assert "Mobile" in headers["User-Agent"]
+    assert "Origin" not in headers
+    assert "X-Requested-With" not in headers
+
+
+def test_build_vk_audio_page_request_headers_uses_plain_html_headers_for_desktop_pages() -> None:
+    headers = probe_vk_audio.build_vk_audio_page_request_headers(
+        url="https://vk.com/audio87387839_456239195",
+    )
+
+    assert headers["Accept"].startswith("text/html")
+    assert headers["Referer"] == "https://vk.com/"
+    assert "Windows NT" in headers["User-Agent"]
+    assert "Origin" not in headers
+    assert "X-Requested-With" not in headers
+
+
+def test_has_login_required_response_detects_mobile_json_redirect() -> None:
+    assert (
+        probe_vk_audio.has_login_required_response(
+            response_dump_parts=(
+                (
+                    "mobile page",
+                    r'{"location":"https:\/\/login.vk.com\/?act=login","version":"1","type":4}',
+                ),
+            )
+        )
+        is True
+    )
+
+
+def test_has_login_required_response_detects_desktop_payload_code_3() -> None:
+    assert (
+        probe_vk_audio.has_login_required_response(
+            response_dump_parts=(
+                (
+                    "desktop reload_audio",
+                    r'{"payload":["3",["\"hash\""]],"static":"dist\/web\/chunks\/vkcom-kit.js"}',
+                ),
+            )
+        )
+        is True
+    )

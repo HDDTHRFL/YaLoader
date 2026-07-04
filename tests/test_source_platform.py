@@ -84,3 +84,9 @@ def test_detect_source_platform_for_vk_audio() -> None:
 
 def test_vk_audio_is_supported_source_url() -> None:
     assert is_supported_source_url(url="https://vk.com/audio133993362_456242612_cb6b8410a741a6993a")
+
+
+def test_detect_source_platform_for_vk_audio_without_access_key() -> None:
+    url = "https://vk.com/audio87387839_456239195"
+
+    assert detect_source_platform(url=url) is SourcePlatform.VK_AUDIO

@@ -12,6 +12,7 @@ from PyQt6.QtCore import (
     QItemSelectionModel,
     QModelIndex,
     QPoint,
+    QRect,
     Qt,
     QTimer,
     pyqtSignal,
@@ -69,6 +70,23 @@ QUEUE_EMPTY_HINT_TEXT = "Вставьте ссылку в поле «Ссылк�
 QUEUE_EMPTY_HINT_MARGIN = 36
 LONG_PRESS_SELECTION_DELAY_MS = 500
 LONG_PRESS_MOVE_TOLERANCE_PX = 4
+
+
+def build_queue_empty_hint_label_rect(
+    *,
+    viewport_geometry: QRect,
+    margin: int = QUEUE_EMPTY_HINT_MARGIN,
+) -> QRect:
+    safe_margin = max(0, margin)
+    horizontal_margin = safe_margin if viewport_geometry.width() > safe_margin * 2 else 0
+    vertical_margin = safe_margin if viewport_geometry.height() > safe_margin * 2 else 0
+
+    return viewport_geometry.adjusted(
+        horizontal_margin,
+        vertical_margin,
+        -horizontal_margin,
+        -vertical_margin,
+    )
 
 
 def is_remove_selected_tasks_key_event(*, event: QKeyEvent) -> bool:
@@ -426,6 +444,9 @@ class DownloadQueueTable(QTableWidget):
         self.resize_columns_to_viewport()
         self._sync_empty_hint_visibility()
 
+        if len(tasks) == 0:
+            QTimer.singleShot(0, self._sync_empty_hint_visibility)
+
     def has_tasks(self) -> bool:
         return self.rowCount() > 0
 
@@ -663,8 +684,7 @@ class DownloadQueueTable(QTableWidget):
         return is_row_selected(table=self, row_index=row_index)
 
     def _build_empty_hint_label(self) -> QLabel:
-        viewport = cast(QWidget, self.viewport())
-        label = QLabel(QUEUE_EMPTY_HINT_TEXT, viewport)
+        label = QLabel(QUEUE_EMPTY_HINT_TEXT, self)
         label.setObjectName("QueueEmptyHintLabel")
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -676,19 +696,30 @@ class DownloadQueueTable(QTableWidget):
         return QueueDropHighlightOverlay(parent=cast(QWidget, self.viewport()))
 
     def _sync_empty_hint_visibility(self) -> None:
-        self._empty_hint_label.setVisible(self.rowCount() == 0)
-        self._position_empty_hint_label()
+        is_empty = self.rowCount() == 0
+        self._empty_hint_label.setVisible(is_empty)
 
-        if self._empty_hint_label.isVisible():
-            self._empty_hint_label.raise_()
+        if not is_empty:
+            return
+
+        self._reset_empty_queue_scroll_position()
+        self._position_empty_hint_label()
+        self._empty_hint_label.raise_()
+
+    def _reset_empty_queue_scroll_position(self) -> None:
+        if self.rowCount() != 0:
+            return
+
+        vertical_scroll_bar = cast(QScrollBar, self.verticalScrollBar())
+        horizontal_scroll_bar = cast(QScrollBar, self.horizontalScrollBar())
+
+        vertical_scroll_bar.setValue(0)
+        horizontal_scroll_bar.setValue(0)
 
     def _position_empty_hint_label(self) -> None:
         viewport = cast(QWidget, self.viewport())
-        label_rect = viewport.rect().adjusted(
-            QUEUE_EMPTY_HINT_MARGIN,
-            QUEUE_EMPTY_HINT_MARGIN,
-            -QUEUE_EMPTY_HINT_MARGIN,
-            -QUEUE_EMPTY_HINT_MARGIN,
+        label_rect = build_queue_empty_hint_label_rect(
+            viewport_geometry=viewport.geometry(),
         )
         self._empty_hint_label.setGeometry(label_rect)
 

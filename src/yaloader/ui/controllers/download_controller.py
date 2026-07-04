@@ -407,6 +407,7 @@ class DownloadController:
             )
 
         progress_events = (*progress_events, *self._drain_progress_events())
+        self._apply_cached_prepared_download_metadata(task_id=result.task_id)
         updated_task = self._apply_download_result(result=result)
         updated_tasks = (updated_task,) if updated_task is not None else ()
         should_reload_history = False
@@ -582,11 +583,7 @@ class DownloadController:
         if current_task is None:
             return None
 
-        if current_task.status in {
-            DownloadStatus.RUNNING,
-            DownloadStatus.COMPLETED,
-            DownloadStatus.CANCELED,
-        }:
+        if current_task.status is DownloadStatus.CANCELED:
             return None
 
         return self._queue_service.apply_metadata(
@@ -723,6 +720,17 @@ class DownloadController:
                 continue
 
             progress_events.append(progress)
+
+    def _apply_cached_prepared_download_metadata(self, *, task_id: UUID) -> DownloadTask | None:
+        if self._prepared_download_cache is None:
+            return None
+
+        prepared_download = self._prepared_download_cache.get(task_id=task_id)
+
+        if prepared_download is None:
+            return None
+
+        return self._apply_prepared_download(prepared_download)
 
     def _apply_download_result(self, *, result: DownloadResult) -> DownloadTask | None:
         current_task = self._queue_service.get_task(task_id=result.task_id)

@@ -115,6 +115,48 @@ def test_start_tasks_while_active_prepares_new_pending_task_without_parallel_dow
         controller.shutdown()
 
 
+def test_running_task_accepts_prepared_metadata(
+    tmp_path: Path,
+) -> None:
+    queue_service = DownloadQueueService()
+    history_service = DownloadHistoryService(history_file=tmp_path / "history.json")
+    downloader = BlockingDownloader()
+    preparer = RecordingDownloadPreparer()
+    prepared_download_cache = PreparedDownloadCache()
+    controller = DownloadController(
+        queue_service=queue_service,
+        history_service=history_service,
+        downloader=downloader,
+        download_preparer=preparer,
+        prepared_download_cache=prepared_download_cache,
+    )
+    task = queue_service.add_download(
+        request=create_video_request(
+            target_dir=tmp_path,
+            url="https://www.youtube.com/watch?v=pending001",
+        )
+    )
+
+    try:
+        start_update = controller.start_tasks(task_ids=(task.task_id,))
+
+        assert start_update.prepared_task_ids == (task.task_id,)
+        assert wait_until(lambda: downloader.started.is_set())
+        assert wait_until(lambda: prepared_download_cache.contains(task_id=task.task_id))
+
+        preparation_update = controller.poll()
+
+        assert task.task_id in preparation_update.completed_preparation_task_ids
+
+        prepared_task = require_task(queue_service=queue_service, task_id=task.task_id)
+
+        assert prepared_task.status is DownloadStatus.RUNNING
+        assert prepared_task.title == "Prepared 001"
+    finally:
+        controller.cancel_tasks_download(task_ids=(task.task_id,))
+        controller.shutdown()
+
+
 def test_cancel_prepared_running_task_removes_prepared_cache_entry(
     tmp_path: Path,
 ) -> None:
