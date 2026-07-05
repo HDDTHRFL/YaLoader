@@ -69,11 +69,32 @@ def test_build_expected_release_archive_path_uses_self_update_asset_name(tmp_pat
     assert archive_path == tmp_path / "dist" / "release" / "YaLoader-v1.2.3-windows-x64.zip"
 
 
-def test_validate_release_archive_accepts_root_executable(tmp_path: Path) -> None:
+def test_build_archive_checksum_path_uses_asset_name(tmp_path: Path) -> None:
+    archive_path = tmp_path / "dist" / "release" / "YaLoader-v1.2.3-windows-x64.zip"
+
+    assert check_release_ready.build_archive_checksum_path(archive_path=archive_path) == archive_path.with_name(
+        "YaLoader-v1.2.3-windows-x64.zip.sha256"
+    )
+
+
+def test_validate_release_archive_accepts_required_root_files(tmp_path: Path) -> None:
     archive_path = tmp_path / "YaLoader-v1.2.3-windows-x64.zip"
+    entries = {
+        "YaLoader.exe": b"fake executable",
+        "README.md": b"readme",
+        "README_RU.md": "описание".encode(),
+        "LICENSE": b"license",
+    }
+    checksum_text = "".join(
+        f"{check_release_ready.calculate_bytes_sha256(value=content)}  {entry_name}\n"
+        for entry_name, content in entries.items()
+    )
 
     with ZipFile(archive_path, mode="w") as archive:
-        archive.writestr("YaLoader.exe", b"fake executable")
+        for entry_name, content in entries.items():
+            archive.writestr(entry_name, content)
+
+        archive.writestr("SHA256SUMS.txt", checksum_text)
 
     check_release_ready.validate_release_archive(archive_path=archive_path)
 
@@ -86,6 +107,74 @@ def test_validate_release_archive_rejects_nested_executable(tmp_path: Path) -> N
 
     with pytest.raises(check_release_ready.ReleaseReadinessError):
         check_release_ready.validate_release_archive(archive_path=archive_path)
+
+
+def test_parse_sha256sums_text_reads_valid_lines() -> None:
+    checksums = check_release_ready.parse_sha256sums_text(
+        text="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  YaLoader.exe\n",
+    )
+
+    assert checksums == {
+        "YaLoader.exe": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    }
+
+
+def test_parse_sha256sums_text_rejects_invalid_digest() -> None:
+    with pytest.raises(check_release_ready.ReleaseReadinessError):
+        check_release_ready.parse_sha256sums_text(text="not-a-sha  YaLoader.exe\n")
+
+
+def test_validate_archive_checksum_file_accepts_matching_hash(tmp_path: Path) -> None:
+    archive_path = tmp_path / "YaLoader-v1.2.3-windows-x64.zip"
+    checksum_path = tmp_path / "YaLoader-v1.2.3-windows-x64.zip.sha256"
+
+    checksum_path.write_text(f"{'a' * 64}  {archive_path.name}\n", encoding="utf-8")
+
+    check_release_ready.validate_archive_checksum_file(
+        checksum_path=checksum_path,
+        archive_path=archive_path,
+        archive_sha256="a" * 64,
+    )
+
+
+def test_validate_archive_checksum_file_rejects_mismatched_hash(tmp_path: Path) -> None:
+    archive_path = tmp_path / "YaLoader-v1.2.3-windows-x64.zip"
+    checksum_path = tmp_path / "YaLoader-v1.2.3-windows-x64.zip.sha256"
+
+    checksum_path.write_text(f"{'b' * 64}  {archive_path.name}\n", encoding="utf-8")
+
+    with pytest.raises(check_release_ready.ReleaseReadinessError):
+        check_release_ready.validate_archive_checksum_file(
+            checksum_path=checksum_path,
+            archive_path=archive_path,
+            archive_sha256="a" * 64,
+        )
+
+
+def test_validate_github_release_description_file_accepts_asset_and_hash(tmp_path: Path) -> None:
+    description_path = tmp_path / "GITHUB_RELEASE_DESCRIPTION-v1.2.3.md"
+    description_path.write_text(
+        f"Asset: YaLoader-v1.2.3-windows-x64.zip\nSHA-256: {'a' * 64}\n",
+        encoding="utf-8",
+    )
+
+    check_release_ready.validate_github_release_description_file(
+        description_path=description_path,
+        asset_name="YaLoader-v1.2.3-windows-x64.zip",
+        archive_sha256="a" * 64,
+    )
+
+
+def test_validate_github_release_description_file_rejects_missing_hash(tmp_path: Path) -> None:
+    description_path = tmp_path / "GITHUB_RELEASE_DESCRIPTION-v1.2.3.md"
+    description_path.write_text("Asset: YaLoader-v1.2.3-windows-x64.zip\n", encoding="utf-8")
+
+    with pytest.raises(check_release_ready.ReleaseReadinessError):
+        check_release_ready.validate_github_release_description_file(
+            description_path=description_path,
+            asset_name="YaLoader-v1.2.3-windows-x64.zip",
+            archive_sha256="a" * 64,
+        )
 
 
 def test_calculate_file_sha256(tmp_path: Path) -> None:

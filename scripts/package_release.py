@@ -23,6 +23,21 @@ BUILD_DIR_NAME: Final = "build"
 RELEASE_DIR_NAME: Final = "release"
 PYINSTALLER_SPEC_PATH: Final = Path("specs") / "yaloader.spec"
 FILE_READ_CHUNK_SIZE_BYTES: Final = 1024 * 1024
+SHA256_HEX_LENGTH: Final = 64
+
+RELEASE_ARCHIVE_INCLUDED_ROOT_FILES: Final[tuple[str, ...]] = (
+    "README.md",
+    "README_RU.md",
+    "LICENSE",
+)
+RELEASE_ARCHIVE_CHECKSUMS_FILE_NAME: Final = "SHA256SUMS.txt"
+RELEASE_ARCHIVE_REQUIRED_ENTRIES: Final[tuple[str, ...]] = (
+    YALOADER_EXE_FILE_NAME,
+    *RELEASE_ARCHIVE_INCLUDED_ROOT_FILES,
+    RELEASE_ARCHIVE_CHECKSUMS_FILE_NAME,
+)
+ARCHIVE_CHECKSUM_FILE_SUFFIX: Final = ".sha256"
+GITHUB_RELEASE_DESCRIPTION_FILE_NAME_TEMPLATE: Final = "GITHUB_RELEASE_DESCRIPTION-v{version}.md"
 
 
 class PackageReleaseError(RuntimeError):
@@ -35,10 +50,18 @@ class PackageReleaseResult:
     executable_path: Path
     archive_path: Path
     archive_sha256: str
+    archive_checksum_path: Path
+    github_release_description_path: Path
 
     @property
     def asset_name(self) -> str:
         return self.archive_path.name
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseArchiveEntry:
+    source_path: Path
+    archive_name: str
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -97,17 +120,31 @@ def package_release(*, project_root: Path, skip_verify: bool = False) -> Package
     )
 
     create_release_archive(
+        project_root=project_root,
         executable_path=executable_path,
         archive_path=archive_path,
     )
     validate_release_archive(archive_path=archive_path)
+
     archive_sha256 = calculate_file_sha256(file_path=archive_path)
+    archive_checksum_path = write_archive_checksum_file(
+        archive_path=archive_path,
+        archive_sha256=archive_sha256,
+    )
+    github_release_description_path = write_github_release_description_file(
+        release_dir=release_dir,
+        version=version,
+        asset_name=archive_path.name,
+        archive_sha256=archive_sha256,
+    )
 
     return PackageReleaseResult(
         version=version,
         executable_path=executable_path,
         archive_path=archive_path,
         archive_sha256=archive_sha256,
+        archive_checksum_path=archive_checksum_path,
+        github_release_description_path=github_release_description_path,
     )
 
 
@@ -139,6 +176,14 @@ def build_release_archive_path(*, release_dir: Path, version: str) -> Path:
     archive_name = build_yaloader_windows_x64_archive_name(version=version)
 
     return release_dir / archive_name
+
+
+def build_archive_checksum_path(*, archive_path: Path) -> Path:
+    return archive_path.with_name(f"{archive_path.name}{ARCHIVE_CHECKSUM_FILE_SUFFIX}")
+
+
+def build_github_release_description_path(*, release_dir: Path, version: str) -> Path:
+    return release_dir / GITHUB_RELEASE_DESCRIPTION_FILE_NAME_TEMPLATE.format(version=version)
 
 
 def run_project_verification(*, project_root: Path) -> None:
@@ -179,20 +224,65 @@ def run_pyinstaller(*, project_root: Path) -> None:
     )
 
 
-def create_release_archive(*, executable_path: Path, archive_path: Path) -> None:
-    if not executable_path.is_file():
-        raise PackageReleaseError(f"executable not found: {executable_path}")
-
+def create_release_archive(
+    *,
+    project_root: Path,
+    executable_path: Path,
+    archive_path: Path,
+) -> None:
+    entries = build_release_archive_entries(
+        project_root=project_root,
+        executable_path=executable_path,
+    )
     archive_path.parent.mkdir(parents=True, exist_ok=True)
 
     if archive_path.exists():
         archive_path.unlink()
 
     with ZipFile(archive_path, mode="w", compression=ZIP_DEFLATED, compresslevel=9) as archive:
-        archive.write(
-            filename=executable_path,
-            arcname=YALOADER_EXE_FILE_NAME,
+        for entry in entries:
+            archive.write(
+                filename=entry.source_path,
+                arcname=entry.archive_name,
+            )
+
+        archive.writestr(
+            zinfo_or_arcname=RELEASE_ARCHIVE_CHECKSUMS_FILE_NAME,
+            data=build_archive_entry_checksums_text(entries=entries),
         )
+
+
+def build_release_archive_entries(*, project_root: Path, executable_path: Path) -> tuple[ReleaseArchiveEntry, ...]:
+    if not executable_path.is_file():
+        raise PackageReleaseError(f"executable not found: {executable_path}")
+
+    entries: list[ReleaseArchiveEntry] = [
+        ReleaseArchiveEntry(
+            source_path=executable_path,
+            archive_name=YALOADER_EXE_FILE_NAME,
+        )
+    ]
+
+    for file_name in RELEASE_ARCHIVE_INCLUDED_ROOT_FILES:
+        source_path = project_root / file_name
+
+        if not source_path.is_file():
+            raise PackageReleaseError(f"release file not found: {source_path}")
+
+        entries.append(
+            ReleaseArchiveEntry(
+                source_path=source_path,
+                archive_name=file_name,
+            )
+        )
+
+    return tuple(entries)
+
+
+def build_archive_entry_checksums_text(*, entries: Sequence[ReleaseArchiveEntry]) -> str:
+    lines = [f"{calculate_file_sha256(file_path=entry.source_path)}  {entry.archive_name}" for entry in entries]
+
+    return "\n".join(lines) + "\n"
 
 
 def validate_release_archive(*, archive_path: Path) -> None:
@@ -202,17 +292,161 @@ def validate_release_archive(*, archive_path: Path) -> None:
     with ZipFile(archive_path) as archive:
         names = tuple(archive.namelist())
 
-    if YALOADER_EXE_FILE_NAME not in names:
-        raise PackageReleaseError(f"{YALOADER_EXE_FILE_NAME} not found in release archive: {archive_path}")
+        missing_entries = tuple(
+            entry_name for entry_name in RELEASE_ARCHIVE_REQUIRED_ENTRIES if entry_name not in names
+        )
 
-    unexpected_executables = tuple(
-        name for name in names if Path(name).name.casefold() == YALOADER_EXE_FILE_NAME.casefold()
+        if missing_entries:
+            raise PackageReleaseError(f"release archive misses required entries: {missing_entries}")
+
+        unexpected_executables = tuple(
+            name for name in names if Path(name).name.casefold() == YALOADER_EXE_FILE_NAME.casefold()
+        )
+
+        if unexpected_executables != (YALOADER_EXE_FILE_NAME,):
+            raise PackageReleaseError(
+                f"release archive must contain exactly one root {YALOADER_EXE_FILE_NAME}: {unexpected_executables}"
+            )
+
+        validate_archive_entry_checksums(
+            archive=archive,
+            required_entry_names=RELEASE_ARCHIVE_REQUIRED_ENTRIES[:-1],
+        )
+
+
+def validate_archive_entry_checksums(
+    *,
+    archive: ZipFile,
+    required_entry_names: Sequence[str],
+) -> None:
+    checksum_text = archive.read(RELEASE_ARCHIVE_CHECKSUMS_FILE_NAME).decode("utf-8")
+    checksums = parse_sha256sums_text(text=checksum_text)
+
+    for entry_name in required_entry_names:
+        expected_sha256 = checksums.get(entry_name)
+
+        if expected_sha256 is None:
+            raise PackageReleaseError(f"{RELEASE_ARCHIVE_CHECKSUMS_FILE_NAME} does not contain {entry_name}")
+
+        actual_sha256 = calculate_bytes_sha256(value=archive.read(entry_name))
+
+        if actual_sha256 != expected_sha256:
+            raise PackageReleaseError(
+                f"archive checksum mismatch for {entry_name}: expected {expected_sha256}, actual {actual_sha256}"
+            )
+
+
+def parse_sha256sums_text(*, text: str) -> dict[str, str]:
+    checksums: dict[str, str] = {}
+
+    for raw_line in text.splitlines():
+        normalized_line = raw_line.strip()
+
+        if not normalized_line:
+            continue
+
+        parts = normalized_line.split(maxsplit=1)
+
+        if len(parts) != 2:
+            raise PackageReleaseError(f"invalid SHA256SUMS line: {raw_line!r}")
+
+        digest, entry_name = parts
+        normalized_entry_name = entry_name.strip()
+
+        if not is_sha256_hex_digest(value=digest):
+            raise PackageReleaseError(f"invalid SHA-256 digest for {normalized_entry_name}: {digest}")
+
+        checksums[normalized_entry_name] = digest.casefold()
+
+    return checksums
+
+
+def is_sha256_hex_digest(*, value: str) -> bool:
+    if len(value) != SHA256_HEX_LENGTH:
+        return False
+
+    return all(character in "0123456789abcdefABCDEF" for character in value)
+
+
+def write_archive_checksum_file(*, archive_path: Path, archive_sha256: str) -> Path:
+    checksum_path = build_archive_checksum_path(archive_path=archive_path)
+    checksum_path.write_text(
+        f"{archive_sha256}  {archive_path.name}\n",
+        encoding="utf-8",
+        newline="\n",
     )
 
-    if unexpected_executables != (YALOADER_EXE_FILE_NAME,):
-        raise PackageReleaseError(
-            f"release archive must contain exactly one root {YALOADER_EXE_FILE_NAME}: {unexpected_executables}"
-        )
+    return checksum_path
+
+
+def write_github_release_description_file(
+    *,
+    release_dir: Path,
+    version: str,
+    asset_name: str,
+    archive_sha256: str,
+) -> Path:
+    description_path = build_github_release_description_path(
+        release_dir=release_dir,
+        version=version,
+    )
+    description_path.write_text(
+        build_github_release_description(
+            version=version,
+            asset_name=asset_name,
+            archive_sha256=archive_sha256,
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    return description_path
+
+
+def build_github_release_description(
+    *,
+    version: str,
+    asset_name: str,
+    archive_sha256: str,
+) -> str:
+    archive_contents = "\n".join(f"- `{entry_name}`" for entry_name in RELEASE_ARCHIVE_REQUIRED_ENTRIES)
+
+    return (
+        f"# YaLoader v{version}\n"
+        "\n"
+        "## Что изменилось\n"
+        "\n"
+        "- Улучшена обработка VK Audio ссылок, включая страницы, где прямые данные трека не отдавались "
+        "стандартным способом.\n"
+        "- Улучшена подготовка релизной сборки: архив теперь содержит исполняемый файл, "
+        "пользовательскую документацию, лицензию и контрольные суммы.\n"
+        "- Добавлена отдельная проверка готовности релиза перед публикацией на GitHub Releases.\n"
+        "- Улучшена устойчивость перезапуска приложения после self-update в PyInstaller-сборке.\n"
+        "\n"
+        "## Release asset\n"
+        "\n"
+        f"- Asset: `{asset_name}`\n"
+        f"- SHA-256: `{archive_sha256}`\n"
+        "\n"
+        "## Состав архива\n"
+        "\n"
+        f"{archive_contents}\n"
+        "\n"
+        "## Установка\n"
+        "\n"
+        "1. Скачайте архив из GitHub Release assets.\n"
+        "2. Распакуйте архив в отдельную папку.\n"
+        "3. Запустите `YaLoader.exe`.\n"
+        "4. При первом запуске проверьте блок состояния системы и подготовьте FFmpeg/Deno, "
+        "если приложение попросит это сделать.\n"
+        "\n"
+        "## Важно\n"
+        "\n"
+        "- Windows может показать SmartScreen-предупреждение, потому что сборка может быть "
+        "не подписана цифровым сертификатом.\n"
+        "- Не публикуйте и не отправляйте никому свой `cookies.txt`.\n"
+        "- Для контента, который требует входа в аккаунт, используйте актуальный `cookies.txt` из браузера.\n"
+    )
 
 
 def calculate_file_sha256(*, file_path: Path) -> str:
@@ -223,6 +457,10 @@ def calculate_file_sha256(*, file_path: Path) -> str:
             digest.update(chunk)
 
     return digest.hexdigest()
+
+
+def calculate_bytes_sha256(*, value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
 
 
 def run_command(
@@ -249,13 +487,17 @@ def remove_directory_if_exists(*, directory_path: Path) -> None:
 
 def print_package_release_result(*, result: PackageReleaseResult) -> None:
     sys.stdout.write("\nRelease package created successfully.\n")
-    sys.stdout.write(f"Version:       {result.version}\n")
-    sys.stdout.write(f"Executable:    {result.executable_path}\n")
-    sys.stdout.write(f"Archive:       {result.archive_path}\n")
-    sys.stdout.write(f"Asset name:    {result.asset_name}\n")
-    sys.stdout.write(f"SHA-256:       {result.archive_sha256}\n")
+    sys.stdout.write(f"Version:              {result.version}\n")
+    sys.stdout.write(f"Executable:           {result.executable_path}\n")
+    sys.stdout.write(f"Archive:              {result.archive_path}\n")
+    sys.stdout.write(f"Asset name:           {result.asset_name}\n")
+    sys.stdout.write(f"Archive checksum:     {result.archive_checksum_path}\n")
+    sys.stdout.write(f"GitHub description:   {result.github_release_description_path}\n")
+    sys.stdout.write(f"SHA-256:              {result.archive_sha256}\n")
     sys.stdout.write("\nUpload this file to GitHub Release assets:\n")
     sys.stdout.write(f"{result.archive_path}\n")
+    sys.stdout.write("\nCopy this file content to GitHub Release description:\n")
+    sys.stdout.write(f"{result.github_release_description_path}\n")
 
 
 if __name__ == "__main__":
