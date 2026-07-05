@@ -45,15 +45,6 @@ Local development requires:
 
 For normal application use, FFmpeg and Deno can be prepared by the application itself in portable form. For development, it is still important to test scenarios where tools are missing, already installed, or require reinstallation.
 
-## Quick start
-
-```powershell
-git clone <repository-url>
-cd yaloader
-uv sync
-uv run yaloader
-```
-
 ## Project structure
 
 ```text
@@ -341,67 +332,3 @@ Copy the generated GitHub release description into the GitHub Release body and u
 ```
 
 The bundle is created in `_bundle/`. This directory must not be committed.
-
-## Adding a new feature
-
-Recommended order:
-
-1. Add or update domain rules if there is business logic.
-2. Add or update DTOs in `application/dto`.
-3. Add a port in `application/ports` if an infrastructure dependency is needed.
-4. Implement the infrastructure adapter.
-5. Wire dependencies in `services/app_container.py`.
-6. Add controller/UI integration.
-7. Add tests.
-8. Run all checks.
-
-## Adding a new setting
-
-Recommended order:
-
-1. Add a field to `AppSettings`.
-2. Add an update method to `SettingsService`.
-3. Connect the setting to the required service or controller.
-4. Add the UI control after application behavior exists.
-5. Add tests for saving and applying the setting.
-
-## Adding a new backend or external integration
-
-Do not connect a backend directly to widgets.
-
-Recommended order:
-
-1. Add or extend an application port.
-2. Implement an adapter in `infrastructure`.
-3. Add DTOs if needed.
-4. Wire the implementation through `AppContainer`.
-5. Keep the UI independent from backend-specific details.
-
-## Naming style
-
-Names should be clear and production-style.
-
-Avoid unclear abbreviations:
-
-- `tmp`;
-- `obj`;
-- `val`;
-- `data` when a more specific name can be used.
-
-Short names are acceptable only in a very small local context where the meaning is obvious.
-
-## Git commit style
-
-A commit should describe one logical step.
-
-Examples:
-
-```text
-Add local secret scanning before publishing
-Refine local secret scanning rules
-Add source-available non-commercial license
-Expose portable tools to yt-dlp runtime
-Improve public project documentation
-```
-
-Do not add extra commands to the same block after the `git commit ...` command.
