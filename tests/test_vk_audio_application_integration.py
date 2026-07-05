@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from yaloader.application.dto.download_progress import DownloadProgress
 from yaloader.application.dto.download_request import DownloadRequest
+from yaloader.application.dto.download_result import DownloadResult
 from yaloader.application.dto.media_metadata import MediaMetadataProbe
+from yaloader.application.dto.prepared_download import PreparedDownload
 from yaloader.application.services.download_queue_service import DownloadQueueService
 from yaloader.application.services.prepared_download_cache import PreparedDownloadCache
+from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.enums import DownloadMode, DownloadStatus, OutputFormat, VideoQuality
 from yaloader.infrastructure.download_router import (
     RoutedDownloader,
     RoutedDownloadPreparer,
     RoutedMediaMetadataExtractor,
 )
-from yaloader.infrastructure.vk_audio.client import VkAudioDirectMedia, VkAudioId
+from yaloader.infrastructure.vk_audio.client import VkAudioDirectMedia, VkAudioId, VkAudioProbeError
 from yaloader.infrastructure.vk_audio.download_preparer import (
     VkAudioDownloadPreparer,
     is_vk_audio_raw_info,
@@ -21,6 +27,8 @@ from yaloader.infrastructure.vk_audio.download_preparer import (
 from yaloader.infrastructure.vk_audio.downloader import VkAudioDownloader
 
 VK_AUDIO_URL = "https://vk.com/audio133993362_456242612_cb6b8410a741a6993a"
+PUBLIC_NEGATIVE_VK_AUDIO_URL = "https://vk.com/audio-2001247451_41247451"
+PUBLIC_NEGATIVE_VK_AUDIO_ACCESS_KEY_URL = "https://vk.com/audio-2001247451_41247451_c98d766105ddecb1b3"
 
 
 class FakeVkAudioClient:
@@ -55,12 +63,16 @@ class FakeVkAudioClient:
 
 
 class FakeMetadataExtractor:
-    def __init__(self, title: str) -> None:
+    def __init__(self, title: str, should_fail: bool = False) -> None:
         self.title = title
+        self.should_fail = should_fail
         self.calls = 0
 
     def extract(self, request: DownloadRequest) -> MediaMetadataProbe:
         self.calls += 1
+
+        if self.should_fail:
+            raise VkAudioProbeError("metadata failed")
 
         return MediaMetadataProbe(
             url=request.url,
@@ -69,29 +81,53 @@ class FakeMetadataExtractor:
 
 
 class FakeDownloadPreparer:
-    def __init__(self, title: str) -> None:
+    def __init__(self, title: str, should_fail: bool = False) -> None:
         self.title = title
+        self.should_fail = should_fail
         self.calls = 0
 
-    def prepare(self, task, cancellation_token=None):
+    def prepare(
+        self,
+        task: DownloadTask,
+        cancellation_token: Any = None,
+    ) -> PreparedDownload:
         self.calls += 1
 
-        return task
+        if self.should_fail:
+            raise VkAudioProbeError("preparation failed")
+
+        return PreparedDownload(
+            task_id=task.task_id,
+            url=task.url.value,
+            title=self.title,
+        )
 
 
 class FakeDownloader:
-    def __init__(self) -> None:
+    def __init__(self, status: DownloadStatus = DownloadStatus.COMPLETED) -> None:
+        self.status = status
         self.calls = 0
 
-    def download(self, task, progress_callback=None, cancellation_token=None):
+    def download(
+        self,
+        task: DownloadTask,
+        progress_callback: Any = None,
+        cancellation_token: Any = None,
+    ) -> DownloadResult:
         self.calls += 1
 
-        return DownloadStatus.COMPLETED
+        if self.status is DownloadStatus.FAILED:
+            return DownloadResult.failed(
+                task_id=task.task_id,
+                error_message="download failed",
+            )
+
+        return DownloadResult.completed(task_id=task.task_id)
 
 
-def build_vk_audio_task(*, target_dir: Path):
+def build_vk_audio_task(*, target_dir: Path, url: str = VK_AUDIO_URL) -> DownloadTask:
     request = DownloadRequest(
-        url=VK_AUDIO_URL,
+        url=url,
         target_dir=target_dir,
         mode=DownloadMode.AUDIO,
         output_format=OutputFormat.MP3,
@@ -162,6 +198,28 @@ def test_routed_metadata_extractor_uses_vk_audio_extractor_for_vk_audio_url(tmp_
     assert fallback_extractor.calls == 0
 
 
+def test_routed_metadata_extractor_keeps_unresolved_title_for_public_vk_audio_url(tmp_path: Path) -> None:
+    request = DownloadRequest(
+        url=PUBLIC_NEGATIVE_VK_AUDIO_URL,
+        target_dir=tmp_path,
+        mode=DownloadMode.AUDIO,
+        output_format=OutputFormat.MP3,
+        video_quality=VideoQuality.BEST,
+    )
+    vk_extractor = FakeMetadataExtractor(title="vk", should_fail=True)
+    fallback_extractor = FakeMetadataExtractor(title="fallback")
+    router = RoutedMediaMetadataExtractor(
+        vk_audio_extractor=vk_extractor,
+        fallback_extractor=fallback_extractor,
+    )
+
+    metadata = router.extract(request)
+
+    assert metadata.title is None
+    assert vk_extractor.calls == 1
+    assert fallback_extractor.calls == 0
+
+
 def test_routed_metadata_extractor_uses_fallback_for_regular_url(tmp_path: Path) -> None:
     request = DownloadRequest(
         url="https://www.youtube.com/watch?v=test",
@@ -193,7 +251,27 @@ def test_routed_preparer_uses_vk_audio_preparer_for_vk_audio_url(tmp_path: Path)
         fallback_preparer=fallback_preparer,
     )
 
-    router.prepare(task=task)
+    prepared_download = router.prepare(task=task)
+
+    assert prepared_download.title == "vk"
+    assert vk_preparer.calls == 1
+    assert fallback_preparer.calls == 0
+
+
+def test_routed_preparer_does_not_fall_back_for_unresolved_public_vk_audio_url(tmp_path: Path) -> None:
+    task = build_vk_audio_task(
+        target_dir=tmp_path,
+        url=PUBLIC_NEGATIVE_VK_AUDIO_ACCESS_KEY_URL,
+    )
+    vk_preparer = FakeDownloadPreparer(title="vk", should_fail=True)
+    fallback_preparer = FakeDownloadPreparer(title="fallback")
+    router = RoutedDownloadPreparer(
+        vk_audio_preparer=vk_preparer,
+        fallback_preparer=fallback_preparer,
+    )
+
+    with pytest.raises(VkAudioProbeError, match="preparation failed"):
+        router.prepare(task=task)
 
     assert vk_preparer.calls == 1
     assert fallback_preparer.calls == 0
@@ -208,7 +286,27 @@ def test_routed_downloader_uses_vk_audio_downloader_for_vk_audio_url(tmp_path: P
         fallback_downloader=fallback_downloader,
     )
 
-    router.download(task=task)
+    result = router.download(task=task)
 
+    assert result.status is DownloadStatus.COMPLETED
+    assert vk_downloader.calls == 1
+    assert fallback_downloader.calls == 0
+
+
+def test_routed_downloader_does_not_fall_back_for_unresolved_public_vk_audio_url(tmp_path: Path) -> None:
+    task = build_vk_audio_task(
+        target_dir=tmp_path,
+        url=PUBLIC_NEGATIVE_VK_AUDIO_ACCESS_KEY_URL,
+    )
+    vk_downloader = FakeDownloader(status=DownloadStatus.FAILED)
+    fallback_downloader = FakeDownloader(status=DownloadStatus.COMPLETED)
+    router = RoutedDownloader(
+        vk_audio_downloader=vk_downloader,
+        fallback_downloader=fallback_downloader,
+    )
+
+    result = router.download(task=task)
+
+    assert result.status is DownloadStatus.FAILED
     assert vk_downloader.calls == 1
     assert fallback_downloader.calls == 0

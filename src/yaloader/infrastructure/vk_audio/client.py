@@ -24,6 +24,9 @@ VK_MOBILE_AUDIO_RELOAD_URLS: Final = (
 VK_AUDIO_URL_RE: Final = re.compile(
     r"^/audio(?P<owner_id>-?\d+)_(?P<audio_id>\d+)(?:_(?P<access_key>[A-Za-z0-9]+))?/?$"
 )
+
+VK_AUDIO_HASH_CANDIDATE_RE: Final = re.compile(r"^[A-Za-z0-9_-]{3,128}$")
+MAX_DESKTOP_HASH_RELOAD_ATTEMPTS: Final = 12
 VK_AUDIO_STATS_META_USER_ID_RE: Final = re.compile(
     r'"statsMeta"\s*:\s*\{[^{}]*"id"\s*:\s*(?P<user_id>\d{1,18})',
     re.DOTALL,
@@ -122,6 +125,10 @@ class VkAudioProbeError(RuntimeError):
     pass
 
 
+class VkAudioUnsupportedPublicCatalogLinkError(VkAudioProbeError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class VkAudioId:
     owner_id: str
@@ -188,10 +195,17 @@ class VkAudioTrack:
         return candidates[0]
 
     def matches(self, audio_id: VkAudioId) -> bool:
-        if self.owner_id == audio_id.owner_id and self.audio_id == audio_id.audio_id:
-            return True
+        for candidate_audio_id in build_vk_audio_equivalent_ids(audio_id=audio_id):
+            if self.owner_id == candidate_audio_id.owner_id and self.audio_id == candidate_audio_id.audio_id:
+                return True
 
-        return self.source_owner_id == audio_id.owner_id and self.source_audio_id == audio_id.audio_id
+            if (
+                self.source_owner_id == candidate_audio_id.owner_id
+                and self.source_audio_id == candidate_audio_id.audio_id
+            ):
+                return True
+
+        return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +215,29 @@ class VkAudioDirectMedia:
     title: str | None = None
     artist: str | None = None
     duration_seconds: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class NetscapeCookie:
+    domain: str
+    include_subdomains: bool
+    path: str
+    is_secure: bool
+    expires_at: int | None
+    name: str
+    value: str
+
+    @property
+    def normalized_domain(self) -> str:
+        normalized_domain = self.domain.strip()
+
+        if not normalized_domain:
+            return ""
+
+        if self.include_subdomains and not normalized_domain.startswith("."):
+            return f".{normalized_domain}"
+
+        return normalized_domain
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,6 +281,23 @@ class VkAudioDataHtmlParser(HTMLParser):
             self.audio_data_values.append(value)
 
 
+def ensure_vk_audio_link_is_supported(*, audio_id: VkAudioId) -> None:
+    if not is_unsupported_vk_audio_public_catalog_link(audio_id=audio_id):
+        return
+
+    raise VkAudioUnsupportedPublicCatalogLinkError(
+        "Ссылка VK Audio из публичного каталога сейчас не поддерживается. "
+        "VK не отдаёт данные трека для ссылок вида audio-200... через доступные HTTP endpoints без "
+        "браузерного JS-контекста. "
+        "Скопируйте обычную ссылку на сам трек из своих аудиозаписей, обычно вида "
+        "https://vk.com/audio87387839_456239195."
+    )
+
+
+def is_unsupported_vk_audio_public_catalog_link(*, audio_id: VkAudioId) -> bool:
+    return audio_id.owner_id.startswith("-200")
+
+
 def resolve_vk_audio_direct_media(
     *,
     url: str,
@@ -252,6 +306,7 @@ def resolve_vk_audio_direct_media(
     dump_response_file: Path | None = None,
 ) -> VkAudioDirectMedia:
     audio_id = parse_vk_audio_id(url=url)
+    ensure_vk_audio_link_is_supported(audio_id=audio_id)
 
     if audio_id.access_key is not None:
         access_keyless_media = resolve_access_keyless_vk_audio_direct_media(
@@ -281,8 +336,24 @@ def resolve_vk_audio_direct_media_attempt(
     timeout_seconds: float,
     dump_response_file: Path | None = None,
 ) -> VkAudioDirectMedia:
+    ensure_vk_audio_link_is_supported(audio_id=audio_id)
+
     cookies = load_vk_audio_cookies(cookies_file=cookies_file)
     response_dump_parts: list[tuple[str, str]] = []
+
+    direct_media = resolve_from_mobile_playlist_load_section(
+        audio_id=audio_id,
+        cookies=cookies,
+        timeout_seconds=timeout_seconds,
+        response_dump_parts=response_dump_parts,
+    )
+
+    if direct_media is not None:
+        dump_vk_responses_if_requested(
+            dump_response_file=dump_response_file,
+            response_dump_parts=response_dump_parts,
+        )
+        return direct_media
 
     direct_media = resolve_from_desktop_reload_audio(
         audio_id=audio_id,
@@ -366,25 +437,29 @@ def resolve_vk_audio_direct_media_attempt(
         response_dump_parts=response_dump_parts,
     )
 
-    if has_login_required_response(response_dump_parts=response_dump_parts):
-        raise VkAudioProbeError(
-            "VK просит авторизацию и не отдаёт данные аудиозаписи. "
-            "Обновите cookies.txt из браузера, где выполнен вход в VK, и попробуйте снова."
-        )
-
-    if has_audio_api_unavailable_response(response_dump_parts=response_dump_parts):
-        raise VkAudioProbeError(
-            "VK отдал audio_api_unavailable вместо прямой media URL. "
-            "Это уже следующий уровень защиты: нужно добавить decoder для VK audio_api_unavailable."
-        )
-
     if has_bad_hash_response(response_dump_parts=response_dump_parts):
         diagnostics_text = build_dump_response_marker_diagnostics_text(
             response_dump_parts=response_dump_parts,
         )
         raise VkAudioProbeError(
-            "VK reload_audio вернул bad_hash, а мобильный fallback не нашёл полный audio hash. "
-            "Нужно получить HTML-блок data-audio с actionHash/urlHash или другой рабочий источник hashes. "
+            "VK reload_audio вернул bad_hash, и повторный запрос с hash-кандидатами не дал прямую media URL. "
+            "Нужно уточнить порядок hash-кандидатов или другой источник полного audio id. "
+            f"Диагностика: {diagnostics_text}"
+        )
+
+    if has_audio_api_unavailable_response(response_dump_parts=response_dump_parts):
+        raise VkAudioProbeError(
+            "VK отдал audio_api_unavailable вместо прямой media URL. "
+            "Нужно доработать decoder для текущего формата VK audio_api_unavailable."
+        )
+
+    if has_login_required_response(response_dump_parts=response_dump_parts):
+        diagnostics_text = build_dump_response_marker_diagnostics_text(
+            response_dump_parts=response_dump_parts,
+        )
+        raise VkAudioProbeError(
+            "VK перенаправил один из проверочных запросов на login, но это не обязательно означает проблему cookies. "
+            "Если desktop reload_audio вернул bad_hash, приоритет имеет bad_hash диагностика. "
             f"Диагностика: {diagnostics_text}"
         )
 
@@ -456,7 +531,7 @@ def build_access_keyless_vk_audio_url(
 def resolve_from_desktop_reload_audio(
     *,
     audio_id: VkAudioId,
-    cookies: Mapping[str, str],
+    cookies: httpx.Cookies,
     timeout_seconds: float,
     response_dump_parts: list[tuple[str, str]],
 ) -> VkAudioDirectMedia | None:
@@ -472,6 +547,71 @@ def resolve_from_desktop_reload_audio(
     except VkAudioProbeError:
         return None
 
+    direct_media = resolve_direct_media_from_payload(audio_id=audio_id, payload=payload)
+
+    if direct_media is not None:
+        return direct_media
+
+    hash_audio_ids = collect_desktop_hash_reload_audio_ids(
+        audio_id=audio_id,
+        payload=payload,
+    )
+
+    direct_media = resolve_from_mobile_reload_audio_ids(
+        audio_id=audio_id,
+        audio_ids=hash_audio_ids,
+        cookies=cookies,
+        timeout_seconds=timeout_seconds,
+        response_dump_parts=response_dump_parts,
+    )
+
+    if direct_media is not None:
+        return direct_media
+
+    for hash_audio_id in hash_audio_ids:
+        hash_response_text = request_vk_desktop_audio_reload_by_id(
+            audio_id_value=hash_audio_id,
+            cookies=cookies,
+            timeout_seconds=timeout_seconds,
+        )
+        response_dump_parts.append(
+            (
+                f"desktop reload_audio hash id={redact_audio_hash_id(value=hash_audio_id)}",
+                hash_response_text,
+            )
+        )
+
+        try:
+            hash_payload = parse_vk_al_json_payload(text=hash_response_text)
+        except VkAudioProbeError:
+            continue
+
+        direct_media = resolve_direct_media_from_payload(audio_id=audio_id, payload=hash_payload)
+
+        if direct_media is not None:
+            return direct_media
+
+    return None
+
+
+def resolve_direct_media_from_payload(
+    *,
+    audio_id: VkAudioId,
+    payload: object,
+) -> VkAudioDirectMedia | None:
+    fallback_user_id = extract_vk_audio_user_id(
+        value=payload,
+        text=json.dumps(payload, ensure_ascii=False),
+    )
+    tracks = fill_vk_audio_track_user_ids(
+        tracks=extract_audio_tracks_from_unknown_value(value=payload),
+        user_id=fallback_user_id,
+    )
+    direct_media = select_direct_media_from_tracks(audio_id=audio_id, tracks=tracks)
+
+    if direct_media is not None:
+        return direct_media
+
     direct_url = find_direct_audio_url(value=payload)
 
     if direct_url is None:
@@ -483,10 +623,314 @@ def resolve_from_desktop_reload_audio(
     )
 
 
+def collect_desktop_hash_reload_audio_ids(
+    *,
+    audio_id: VkAudioId,
+    payload: object,
+) -> tuple[str, ...]:
+    full_id_candidates = collect_vk_audio_full_id_candidates(
+        audio_id=audio_id,
+        value=payload,
+    )
+
+    if full_id_candidates:
+        return full_id_candidates[:MAX_DESKTOP_HASH_RELOAD_ATTEMPTS]
+
+    hash_candidates = collect_vk_audio_hash_candidates(value=payload)
+
+    if audio_id.access_key is not None:
+        hash_candidates = (*hash_candidates, audio_id.access_key)
+
+    unique_hash_candidates = tuple(dict.fromkeys(hash_candidates))
+    audio_ids: list[str] = []
+
+    for first_hash in unique_hash_candidates:
+        for second_hash in unique_hash_candidates:
+            if first_hash == second_hash:
+                continue
+
+            audio_ids.append(f"{audio_id.base_value}_{first_hash}_{second_hash}")
+
+            if len(audio_ids) >= MAX_DESKTOP_HASH_RELOAD_ATTEMPTS:
+                return tuple(audio_ids)
+
+    return tuple(audio_ids)
+
+
+def collect_vk_audio_full_id_candidates(
+    *,
+    audio_id: VkAudioId,
+    value: object,
+) -> tuple[str, ...]:
+    candidates: list[str] = []
+
+    for string_value in iter_string_values(value=value):
+        normalized_candidate = normalize_vk_audio_full_id_candidate(
+            audio_id=audio_id,
+            value=string_value,
+        )
+
+        if normalized_candidate is not None:
+            candidates.append(normalized_candidate)
+
+    return tuple(dict.fromkeys(candidates))
+
+
+def normalize_vk_audio_full_id_candidate(
+    *,
+    audio_id: VkAudioId,
+    value: str,
+) -> str | None:
+    normalized_value = normalize_vk_audio_payload_string(value=value)
+
+    if not normalized_value.startswith(f"{audio_id.base_value}_"):
+        return None
+
+    parts = normalized_value.split("_")
+
+    if len(parts) < 4:
+        return None
+
+    if parts[0] != audio_id.owner_id or parts[1] != audio_id.audio_id:
+        return None
+
+    if not all(is_vk_audio_hash_candidate(value=part) for part in parts[2:]):
+        return None
+
+    return normalized_value
+
+
+def collect_vk_audio_hash_candidates(*, value: object) -> tuple[str, ...]:
+    candidates: list[str] = []
+
+    for string_value in iter_string_values(value=value):
+        normalized_candidate = normalize_vk_audio_hash_candidate(value=string_value)
+
+        if normalized_candidate is not None:
+            candidates.append(normalized_candidate)
+
+    return tuple(dict.fromkeys(candidates))
+
+
+def normalize_vk_audio_hash_candidate(*, value: str) -> str | None:
+    normalized_value = normalize_vk_audio_payload_string(value=value)
+
+    if not is_vk_audio_hash_candidate(value=normalized_value):
+        return None
+
+    return normalized_value
+
+
+def normalize_vk_audio_payload_string(*, value: str) -> str:
+    normalized_value = repeatedly_unescape_html(value=value).strip()
+
+    for _ in range(5):
+        previous_value = normalized_value
+
+        unwrapped_value = strip_vk_audio_payload_wrapper(value=normalized_value)
+
+        if unwrapped_value != normalized_value:
+            normalized_value = unwrapped_value
+        elif (
+            len(normalized_value) >= 2
+            and normalized_value[0] == normalized_value[-1]
+            and normalized_value[0] in {"'", '"'}
+        ):
+            try:
+                decoded_value = json.loads(normalized_value)
+            except json.JSONDecodeError:
+                decoded_value = normalized_value[1:-1]
+
+            if isinstance(decoded_value, str):
+                normalized_value = decoded_value.strip()
+
+        if normalized_value == previous_value:
+            return normalized_value
+
+    return normalized_value
+
+
+def strip_vk_audio_payload_wrapper(*, value: str) -> str:
+    for escaped_quote in ('\\"', "\\'"):
+        if value.startswith(escaped_quote) and value.endswith(escaped_quote):
+            return value[len(escaped_quote) : -len(escaped_quote)].strip()
+
+    return value
+
+
+def is_wrapped_vk_audio_payload_string(*, value: str) -> bool:
+    wrapped_quote_markers = ('\\"', "\\'")
+
+    return any(value.startswith(marker) and value.endswith(marker) for marker in wrapped_quote_markers)
+
+
+def is_vk_audio_hash_candidate(*, value: str) -> bool:
+    if VK_AUDIO_HASH_CANDIDATE_RE.fullmatch(value) is None:
+        return False
+
+    return not value.isdigit()
+
+
+def redact_audio_hash_id(*, value: str) -> str:
+    parts = value.split("_")
+
+    if len(parts) <= 2:
+        return value
+
+    return "_".join((*parts[:2], "<hash>", "<hash>"))
+
+
+def build_vk_audio_equivalent_ids(*, audio_id: VkAudioId) -> tuple[VkAudioId, ...]:
+    equivalent_audio_ids = [audio_id]
+    decoded_owner_id = decode_public_catalog_audio_owner_id(owner_id=audio_id.owner_id)
+
+    if decoded_owner_id is not None:
+        equivalent_audio_ids.append(
+            VkAudioId(
+                owner_id=decoded_owner_id,
+                audio_id=audio_id.audio_id,
+                access_key=audio_id.access_key,
+            )
+        )
+
+    return tuple(dict.fromkeys(equivalent_audio_ids))
+
+
+def decode_public_catalog_audio_owner_id(*, owner_id: str) -> str | None:
+    if not owner_id.startswith("-200"):
+        return None
+
+    decoded_owner_id = owner_id.removeprefix("-200")
+
+    if not decoded_owner_id.isdigit():
+        return None
+
+    if not decoded_owner_id:
+        return None
+
+    return decoded_owner_id
+
+
+def resolve_from_mobile_playlist_load_section(
+    *,
+    audio_id: VkAudioId,
+    cookies: httpx.Cookies,
+    timeout_seconds: float,
+    response_dump_parts: list[tuple[str, str]],
+) -> VkAudioDirectMedia | None:
+    if not is_probable_vk_audio_playlist_id(audio_id=audio_id):
+        return None
+
+    for request_audio_id in build_vk_audio_equivalent_ids(audio_id=audio_id):
+        tracks = collect_tracks_from_mobile_playlist_load_section(
+            audio_id=request_audio_id,
+            cookies=cookies,
+            timeout_seconds=timeout_seconds,
+            response_dump_parts=response_dump_parts,
+        )
+
+        direct_media = select_direct_media_from_tracks(audio_id=audio_id, tracks=tracks)
+
+        if direct_media is not None:
+            return direct_media
+
+        direct_media = select_first_direct_media_from_playlist_tracks(
+            playlist_audio_id=audio_id,
+            tracks=tracks,
+        )
+
+        if direct_media is not None:
+            return direct_media
+
+    return None
+
+
+def collect_tracks_from_mobile_playlist_load_section(
+    *,
+    audio_id: VkAudioId,
+    cookies: httpx.Cookies,
+    timeout_seconds: float,
+    response_dump_parts: list[tuple[str, str]],
+) -> tuple[VkAudioTrack, ...]:
+    tracks: list[VkAudioTrack] = []
+
+    for load_section_url in VK_MOBILE_AUDIO_RELOAD_URLS:
+        response_text = request_vk_mobile_audio_load_section(
+            load_section_url=load_section_url,
+            owner_id=audio_id.owner_id,
+            playlist_id=audio_id.audio_id,
+            access_hash=audio_id.access_key,
+            cookies=cookies,
+            timeout_seconds=timeout_seconds,
+        )
+
+        try:
+            payload = parse_json_response(text=response_text)
+        except VkAudioProbeError:
+            response_dump_parts.append((f"mobile playlist load_section {load_section_url} tracks=0", response_text))
+            continue
+
+        fallback_user_id = extract_vk_audio_user_id(
+            value=payload,
+            text=response_text,
+        )
+        extracted_tracks = list(extract_audio_tracks_from_unknown_value(value=payload))
+
+        for html_fragment in extract_load_section_html_fragments(payload=payload):
+            extracted_tracks.extend(extract_audio_tracks_from_html(html_text=html_fragment))
+
+        extracted_tracks = list(
+            fill_vk_audio_track_user_ids(
+                tracks=deduplicate_audio_tracks(tracks=extracted_tracks),
+                user_id=fallback_user_id,
+            )
+        )
+
+        response_dump_parts.append(
+            (
+                build_track_diagnostic_source(
+                    source=f"mobile playlist load_section {load_section_url}",
+                    audio_id=audio_id,
+                    tracks=extracted_tracks,
+                ),
+                response_text,
+            )
+        )
+        tracks.extend(extracted_tracks)
+
+    return tuple(deduplicate_audio_tracks(tracks=tracks))
+
+
+def select_first_direct_media_from_playlist_tracks(
+    *,
+    playlist_audio_id: VkAudioId,
+    tracks: Iterable[VkAudioTrack],
+) -> VkAudioDirectMedia | None:
+    for track in tracks:
+        direct_url = resolve_track_direct_url(track=track)
+
+        if direct_url is None:
+            continue
+
+        return VkAudioDirectMedia(
+            audio_id=playlist_audio_id,
+            direct_url=direct_url,
+            title=track.title,
+            artist=track.artist,
+            duration_seconds=track.duration_seconds,
+        )
+
+    return None
+
+
+def is_probable_vk_audio_playlist_id(*, audio_id: VkAudioId) -> bool:
+    return audio_id.owner_id.startswith("-200")
+
+
 def resolve_from_mobile_reload_audio(
     *,
     audio_id: VkAudioId,
-    cookies: Mapping[str, str],
+    cookies: httpx.Cookies,
     timeout_seconds: float,
     response_dump_parts: list[tuple[str, str]],
 ) -> VkAudioDirectMedia | None:
@@ -505,7 +949,7 @@ def resolve_from_mobile_reload_audio_ids(
     *,
     audio_id: VkAudioId,
     audio_ids: Iterable[str],
-    cookies: Mapping[str, str],
+    cookies: httpx.Cookies,
     timeout_seconds: float,
     response_dump_parts: list[tuple[str, str]],
 ) -> VkAudioDirectMedia | None:
@@ -572,18 +1016,21 @@ def build_mobile_reload_audio_id_groups(*, audio_ids: tuple[str, ...]) -> tuple[
 
 
 def build_initial_mobile_audio_id_candidates(*, audio_id: VkAudioId) -> tuple[str, ...]:
-    candidates = [audio_id.base_value]
+    candidates: list[str] = []
 
-    if audio_id.access_key is not None:
-        candidates.append(audio_id.value)
+    for candidate_audio_id in build_vk_audio_equivalent_ids(audio_id=audio_id):
+        candidates.append(candidate_audio_id.base_value)
 
-    return tuple(candidates)
+        if candidate_audio_id.access_key is not None:
+            candidates.append(candidate_audio_id.value)
+
+    return tuple(dict.fromkeys(candidates))
 
 
 def resolve_from_mobile_load_section(
     *,
     audio_id: VkAudioId,
-    cookies: Mapping[str, str],
+    cookies: httpx.Cookies,
     timeout_seconds: float,
     response_dump_parts: list[tuple[str, str]],
 ) -> VkAudioDirectMedia | None:
@@ -615,7 +1062,7 @@ def resolve_from_mobile_load_section(
 def collect_tracks_from_mobile_load_section(
     *,
     audio_id: VkAudioId,
-    cookies: Mapping[str, str],
+    cookies: httpx.Cookies,
     timeout_seconds: float,
     response_dump_parts: list[tuple[str, str]],
 ) -> tuple[VkAudioTrack, ...]:
@@ -875,7 +1322,7 @@ def collect_tracks_from_audio_pages(
     *,
     url: str,
     audio_id: VkAudioId,
-    cookies: Mapping[str, str],
+    cookies: httpx.Cookies,
     timeout_seconds: float,
     response_dump_parts: list[tuple[str, str]],
 ) -> tuple[VkAudioTrack, ...]:
@@ -1003,42 +1450,83 @@ def resolve_cookies_file(*, cookies_file: Path | None) -> Path:
     return resolved_cookies_file
 
 
-def load_vk_audio_cookies(*, cookies_file: Path) -> dict[str, str]:
+def load_vk_audio_cookies(*, cookies_file: Path) -> httpx.Cookies:
     cookies = load_netscape_cookies(cookies_file=cookies_file)
 
-    for name, value in VK_AUDIO_DEFAULT_COOKIES.items():
-        cookies.setdefault(name, value)
-
-    if not cookies:
+    if not has_any_cookie(cookies=cookies):
         raise VkAudioProbeError(f"cookies.txt не содержит cookies для запроса VK Audio: {cookies_file}")
+
+    add_vk_audio_default_cookies(cookies=cookies)
 
     return cookies
 
 
-def load_netscape_cookies(*, cookies_file: Path) -> dict[str, str]:
+def load_netscape_cookies(*, cookies_file: Path) -> httpx.Cookies:
     try:
         lines = cookies_file.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as error:
         raise VkAudioProbeError(f"не удалось прочитать cookies.txt: {error}") from error
 
-    cookies: dict[str, str] = {}
+    cookies = httpx.Cookies()
 
     for line in lines:
-        parsed_cookie = parse_netscape_cookie_line(line=line)
+        parsed_cookie = parse_netscape_cookie(line=line)
 
         if parsed_cookie is None:
             continue
 
-        name, value = parsed_cookie
-        cookies[name] = value
+        set_netscape_cookie(cookies=cookies, cookie=parsed_cookie)
 
     return cookies
 
 
-def parse_netscape_cookie_line(*, line: str) -> tuple[str, str] | None:
+def add_vk_audio_default_cookies(*, cookies: httpx.Cookies) -> None:
+    for name, value in VK_AUDIO_DEFAULT_COOKIES.items():
+        if has_cookie_with_name(cookies=cookies, name=name):
+            continue
+
+        cookies.set(name, value)
+
+
+def has_cookie_with_name(*, cookies: httpx.Cookies, name: str) -> bool:
+    try:
+        return cookies.get(name) is not None
+    except httpx.CookieConflict:
+        return True
+
+
+def has_any_cookie(*, cookies: httpx.Cookies) -> bool:
+    return any(True for _ in cookies.jar)
+
+
+def set_netscape_cookie(*, cookies: httpx.Cookies, cookie: NetscapeCookie) -> None:
+    normalized_domain = cookie.normalized_domain
+
+    if normalized_domain:
+        cookies.set(
+            cookie.name,
+            cookie.value,
+            domain=normalized_domain,
+            path=cookie.path,
+        )
+        return
+
+    cookies.set(
+        cookie.name,
+        cookie.value,
+        path=cookie.path,
+    )
+
+
+def parse_netscape_cookie(*, line: str) -> NetscapeCookie | None:
     normalized_line = line.strip()
 
-    if not normalized_line or normalized_line.startswith("#"):
+    if not normalized_line:
+        return None
+
+    if normalized_line.startswith("#HttpOnly_"):
+        normalized_line = normalized_line.removeprefix("#HttpOnly_")
+    elif normalized_line.startswith("#"):
         return None
 
     fields = normalized_line.split("\t")
@@ -1049,19 +1537,48 @@ def parse_netscape_cookie_line(*, line: str) -> tuple[str, str] | None:
     if len(fields) < 7:
         return None
 
+    domain = fields[0].strip()
+    include_subdomains = fields[1].strip().casefold() == "true"
+    path = fields[2].strip() or "/"
+    is_secure = fields[3].strip().casefold() == "true"
+    expires_at = parse_optional_cookie_expires_at(value=fields[4].strip())
     name = fields[5].strip()
     value = fields[6].strip()
 
     if not name:
         return None
 
-    return name, value
+    return NetscapeCookie(
+        domain=domain,
+        include_subdomains=include_subdomains,
+        path=path,
+        is_secure=is_secure,
+        expires_at=expires_at,
+        name=name,
+        value=value,
+    )
+
+
+def parse_optional_cookie_expires_at(*, value: str) -> int | None:
+    if not value or not value.isdigit():
+        return None
+
+    return int(value)
+
+
+def parse_netscape_cookie_line(*, line: str) -> tuple[str, str] | None:
+    parsed_cookie = parse_netscape_cookie(line=line)
+
+    if parsed_cookie is None:
+        return None
+
+    return parsed_cookie.name, parsed_cookie.value
 
 
 def request_vk_desktop_audio_reload(
     *,
     audio_id: VkAudioId,
-    cookies: Mapping[str, str],
+    cookies: httpx.Cookies,
     timeout_seconds: float,
 ) -> str:
     return request_text(
@@ -1078,11 +1595,33 @@ def request_vk_desktop_audio_reload(
     )
 
 
+def request_vk_desktop_audio_reload_by_id(
+    *,
+    audio_id_value: str,
+    cookies: httpx.Cookies,
+    timeout_seconds: float,
+) -> str:
+    return request_text(
+        url=VK_DESKTOP_AUDIO_RELOAD_URL,
+        method="POST",
+        cookies=cookies,
+        headers=VK_AUDIO_REQUEST_HEADERS,
+        timeout_seconds=timeout_seconds,
+        data={
+            "al": "1",
+            "ids": audio_id_value,
+        },
+        error_context="VK desktop reload_audio",
+    )
+
+
 def request_vk_mobile_audio_load_section(
     *,
     load_section_url: str,
     owner_id: str,
-    cookies: Mapping[str, str],
+    playlist_id: str = "-1",
+    access_hash: str | None = None,
+    cookies: httpx.Cookies,
     timeout_seconds: float,
 ) -> str:
     return request_text(
@@ -1091,25 +1630,41 @@ def request_vk_mobile_audio_load_section(
         cookies=cookies,
         headers=VK_MOBILE_AUDIO_REQUEST_HEADERS,
         timeout_seconds=timeout_seconds,
-        data={
-            "act": "load_section",
-            "al": "1",
-            "claim": "0",
-            "owner_id": owner_id,
-            "playlist_id": "-1",
-            "offset": "0",
-            "type": "playlist",
-            "is_loading_all": "1",
-        },
+        data=build_mobile_load_section_request_data(
+            owner_id=owner_id,
+            playlist_id=playlist_id,
+            access_hash=access_hash,
+        ),
         error_context=f"VK mobile load_section {load_section_url}",
     )
+
+
+def build_mobile_load_section_request_data(
+    *,
+    owner_id: str,
+    playlist_id: str,
+    access_hash: str | None,
+) -> dict[str, str]:
+    data = {
+        "act": "load_section",
+        "owner_id": owner_id,
+        "playlist_id": playlist_id,
+        "offset": "0",
+        "type": "playlist",
+        "is_loading_all": "1",
+    }
+
+    if access_hash is not None:
+        data["access_hash"] = access_hash
+
+    return data
 
 
 def request_vk_mobile_audio_reload(
     *,
     reload_url: str,
     audio_ids: tuple[str, ...],
-    cookies: Mapping[str, str],
+    cookies: httpx.Cookies,
     timeout_seconds: float,
 ) -> str:
     return request_text(
@@ -1120,9 +1675,6 @@ def request_vk_mobile_audio_reload(
         timeout_seconds=timeout_seconds,
         data={
             "act": "reload_audio",
-            "al": "1",
-            "claim": "0",
-            "from": "audio",
             "ids": ",".join(audio_ids),
         },
         error_context=f"VK mobile reload_audio {reload_url}",
@@ -1132,7 +1684,7 @@ def request_vk_mobile_audio_reload(
 def request_vk_audio_page(
     *,
     url: str,
-    cookies: Mapping[str, str],
+    cookies: httpx.Cookies,
     timeout_seconds: float,
 ) -> str:
     return request_text(
@@ -1160,7 +1712,7 @@ def request_text(
     *,
     url: str,
     method: str,
-    cookies: Mapping[str, str],
+    cookies: httpx.Cookies,
     headers: Mapping[str, str],
     timeout_seconds: float,
     data: Mapping[str, str] | None,
@@ -1170,7 +1722,7 @@ def request_text(
         with httpx.Client(
             follow_redirects=True,
             timeout=timeout_seconds,
-            cookies=dict(cookies),
+            cookies=cookies,
             headers=dict(headers),
         ) as client:
             response = client.request(method, url, data=data)
@@ -2060,21 +2612,30 @@ def convert_m3u8_audio_url_to_mp3_if_possible(*, url: str) -> str:
 
 
 def has_login_required_response(*, response_dump_parts: Iterable[tuple[str, str]]) -> bool:
-    return any(is_login_required_response_text(text=response_text) for _, response_text in response_dump_parts)
+    meaningful_responses = tuple(
+        response_text for _, response_text in response_dump_parts if not has_bad_hash_response_text(text=response_text)
+    )
+
+    return any(is_login_required_response_text(text=response_text) for response_text in meaningful_responses)
 
 
 def is_login_required_response_text(*, text: str) -> bool:
-    normalized_text = text.casefold()
-
-    if "login.vk.com" in normalized_text or "act=login" in normalized_text or "login?" in normalized_text:
-        return True
-
     try:
         payload = parse_json_response(text=text)
     except VkAudioProbeError:
-        return False
+        return has_strong_login_required_text_marker(text=text)
 
     return is_login_required_payload(value=payload)
+
+
+def has_strong_login_required_text_marker(*, text: str) -> bool:
+    normalized_text = text.casefold()
+    compact_text = "".join(normalized_text.split())
+
+    if '"payload":["3"' in compact_text and '"location"' in compact_text:
+        return True
+
+    return "location" in normalized_text and is_login_location(value=normalized_text)
 
 
 def is_login_required_payload(*, value: object) -> bool:
@@ -2083,26 +2644,21 @@ def is_login_required_payload(*, value: object) -> bool:
 
     location = normalize_optional_text(value=value.get("location"))
 
-    if location is not None and is_login_location(value=location):
-        return True
-
-    payload_value = value.get("payload")
-
-    if isinstance(payload_value, Sequence) and not isinstance(payload_value, str | bytes):
-        payload_code = normalize_optional_text_at(value=payload_value, index=0)
-        return payload_code == "3"
-
-    return False
+    return location is not None and is_login_location(value=location)
 
 
 def is_login_location(*, value: str) -> bool:
     normalized_value = value.casefold()
 
-    return "login.vk.com" in normalized_value or "act=login" in normalized_value or "login?" in normalized_value
+    return "login.vk.com" in normalized_value or "login.vk.ru" in normalized_value or "act=login" in normalized_value
 
 
 def has_bad_hash_response(*, response_dump_parts: Iterable[tuple[str, str]]) -> bool:
-    return any("bad_hash" in response_text.casefold() for _, response_text in response_dump_parts)
+    return any(has_bad_hash_response_text(text=response_text) for _, response_text in response_dump_parts)
+
+
+def has_bad_hash_response_text(*, text: str) -> bool:
+    return "bad_hash" in text.casefold()
 
 
 def has_audio_api_unavailable_response(*, response_dump_parts: Iterable[tuple[str, str]]) -> bool:
@@ -2136,7 +2692,8 @@ def format_response_marker_diagnostics(*, source: str, response_text: str) -> st
         f"bad_hash={'bad_hash' in normalized_text}, "
         f"audio_api_unavailable={'audio_api_unavailable' in normalized_text}, "
         f"payload={'payload' in normalized_text}, "
-        f"login={'login' in normalized_text or 'remixsid' in normalized_text}"
+        f"login={'login' in normalized_text or 'remixsid' in normalized_text}, "
+        f"preview={build_safe_response_preview(text=response_text)!r}"
     )
 
 

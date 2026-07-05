@@ -48,3 +48,23 @@ def test_other_key_is_not_queue_shortcut() -> None:
 
     assert is_remove_selected_tasks_key_event(event=event) is False
     assert is_clear_queue_key_event(event=event) is False
+
+
+def test_shift_delete_with_keypad_modifier_is_clear_queue_shortcut() -> None:
+    event = FakeKeyEvent(
+        key=Qt.Key.Key_Delete,
+        modifiers=Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.KeypadModifier,
+    )
+
+    assert is_clear_queue_key_event(event=event) is True
+    assert is_remove_selected_tasks_key_event(event=event) is False
+
+
+def test_ctrl_shift_delete_is_not_queue_shortcut() -> None:
+    event = FakeKeyEvent(
+        key=Qt.Key.Key_Delete,
+        modifiers=Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+    )
+
+    assert is_clear_queue_key_event(event=event) is False
+    assert is_remove_selected_tasks_key_event(event=event) is False

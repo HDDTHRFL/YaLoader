@@ -89,12 +89,57 @@ def build_queue_empty_hint_label_rect(
     )
 
 
+QUEUE_SHORTCUT_BLOCKING_MODIFIERS = (
+    Qt.KeyboardModifier.ControlModifier,
+    Qt.KeyboardModifier.AltModifier,
+    Qt.KeyboardModifier.MetaModifier,
+)
+
+
 def is_remove_selected_tasks_key_event(*, event: QKeyEvent) -> bool:
-    return event.key() == Qt.Key.Key_Delete and event.modifiers() == Qt.KeyboardModifier.NoModifier
+    if event.key() != Qt.Key.Key_Delete:
+        return False
+
+    modifiers = event.modifiers()
+
+    return not has_keyboard_modifier(
+        modifiers=modifiers,
+        modifier=Qt.KeyboardModifier.ShiftModifier,
+    ) and not has_any_keyboard_modifier(
+        modifiers=modifiers,
+        candidates=QUEUE_SHORTCUT_BLOCKING_MODIFIERS,
+    )
 
 
 def is_clear_queue_key_event(*, event: QKeyEvent) -> bool:
-    return event.key() == Qt.Key.Key_Delete and event.modifiers() == Qt.KeyboardModifier.ShiftModifier
+    if event.key() != Qt.Key.Key_Delete:
+        return False
+
+    modifiers = event.modifiers()
+
+    return has_keyboard_modifier(
+        modifiers=modifiers,
+        modifier=Qt.KeyboardModifier.ShiftModifier,
+    ) and not has_any_keyboard_modifier(
+        modifiers=modifiers,
+        candidates=QUEUE_SHORTCUT_BLOCKING_MODIFIERS,
+    )
+
+
+def has_keyboard_modifier(
+    *,
+    modifiers: Qt.KeyboardModifier,
+    modifier: Qt.KeyboardModifier,
+) -> bool:
+    return bool(modifiers & modifier)
+
+
+def has_any_keyboard_modifier(
+    *,
+    modifiers: Qt.KeyboardModifier,
+    candidates: tuple[Qt.KeyboardModifier, ...],
+) -> bool:
+    return any(has_keyboard_modifier(modifiers=modifiers, modifier=modifier) for modifier in candidates)
 
 
 class DownloadQueueTable(QTableWidget):

@@ -13,6 +13,7 @@ from yaloader.ui.status_messages import (
 
 DEFAULT_STATUS_KIND = "default"
 TRANSIENT_STATUS_KIND = "transient"
+WARNING_STATUS_KIND = "warning"
 ACTIVITY_STATUS_KIND = "activity"
 
 MIN_PROGRESS_PERCENT = 0
@@ -71,6 +72,24 @@ class FooterStatusPresenter:
         self._is_default_restore_pending = False
         self._label.setText(message)
         self._set_status_kind(kind=TRANSIENT_STATUS_KIND)
+        self._start_blink_animation()
+        self._reset_timer.start()
+
+    def show_warning(
+        self,
+        *,
+        message: str,
+        fallback_status_message: str | None = None,
+    ) -> None:
+        if self._activity_message is not None:
+            return
+
+        if fallback_status_message is not None:
+            self._default_status_message = fallback_status_message
+
+        self._is_default_restore_pending = False
+        self._label.setText(message)
+        self._set_status_kind(kind=WARNING_STATUS_KIND)
         self._start_blink_animation()
         self._reset_timer.start()
 

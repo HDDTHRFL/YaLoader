@@ -4,6 +4,7 @@ import pytest
 
 from yaloader.domain.source_policy import (
     is_known_source_url,
+    is_vk_audio_url,
     is_youtube_url,
     validate_supported_media_url,
 )
@@ -46,6 +47,30 @@ def test_known_source_url_rejects_ytdlp_auto_url() -> None:
 
 def test_validate_supported_media_url_returns_valid_youtube_url() -> None:
     url = "https://www.youtube.com/watch?v=test"
+
+    result = validate_supported_media_url(url=url)
+
+    assert result == url
+
+
+def test_is_vk_audio_url_accepts_public_negative_vk_audio_url() -> None:
+    assert is_vk_audio_url("https://vk.com/audio-2001247451_41247451") is True
+
+
+def test_validate_supported_media_url_returns_public_negative_vk_audio_url() -> None:
+    url = "https://vk.com/audio-2001247451_41247451"
+
+    result = validate_supported_media_url(url=url)
+
+    assert result == url
+
+
+def test_is_vk_audio_url_accepts_public_negative_vk_audio_url_with_access_key() -> None:
+    assert is_vk_audio_url("https://vk.com/audio-2001247451_41247451_c98d766105ddecb1b3") is True
+
+
+def test_validate_supported_media_url_returns_public_negative_vk_audio_url_with_access_key() -> None:
+    url = "https://vk.com/audio-2001247451_41247451_c98d766105ddecb1b3"
 
     result = validate_supported_media_url(url=url)
 

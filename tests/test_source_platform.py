@@ -82,8 +82,20 @@ def test_detect_source_platform_for_vk_audio() -> None:
     assert detect_source_platform(url=url) is SourcePlatform.VK_AUDIO
 
 
+def test_detect_source_platform_for_public_negative_vk_audio_with_access_key() -> None:
+    url = "https://vk.com/audio-2001247451_41247451_c98d766105ddecb1b3"
+
+    assert detect_source_platform(url=url) is SourcePlatform.VK_AUDIO
+
+
 def test_vk_audio_is_supported_source_url() -> None:
     assert is_supported_source_url(url="https://vk.com/audio133993362_456242612_cb6b8410a741a6993a")
+
+
+def test_detect_source_platform_for_public_negative_vk_audio() -> None:
+    url = "https://vk.com/audio-2001247451_41247451"
+
+    assert detect_source_platform(url=url) is SourcePlatform.VK_AUDIO
 
 
 def test_detect_source_platform_for_vk_audio_without_access_key() -> None:

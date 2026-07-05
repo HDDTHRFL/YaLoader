@@ -12,7 +12,7 @@ from PyQt6.QtCore import (
     QUrl,
     QVariantAnimation,
 )
-from PyQt6.QtGui import QCloseEvent, QDesktopServices, QShowEvent
+from PyQt6.QtGui import QCloseEvent, QDesktopServices, QKeySequence, QShortcut, QShowEvent
 from PyQt6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -209,6 +209,7 @@ class MainWindow(QMainWindow):
         self._start_queue_button = self._queue_panel.start_queue_button
         self._remove_from_queue_button = self._queue_panel.remove_from_queue_button
         self._clear_queue_button = self._queue_panel.clear_queue_button
+        self._clear_queue_shortcut = QShortcut(QKeySequence("Shift+Delete"), self)
         self._history_toggle_button = self._header.history_toggle_button
 
         self._status_label = QLabel(DEFAULT_STATUS_MESSAGE, self)
@@ -426,6 +427,7 @@ class MainWindow(QMainWindow):
         self._start_queue_button.clicked.connect(self._handle_start_or_cancel_queue_clicked)
         self._remove_from_queue_button.clicked.connect(self._handle_remove_selected_tasks_clicked)
         self._clear_queue_button.clicked.connect(self._handle_clear_queue_clicked)
+        self._clear_queue_shortcut.activated.connect(self._handle_clear_queue_clicked)
         self._queue_table.itemSelectionChanged.connect(self._sync_queue_controls_state)
         self._queue_table.row_selection_mode_changed.connect(self._handle_row_selection_mode_changed)
 
@@ -885,7 +887,10 @@ class MainWindow(QMainWindow):
             self._input_panel.clear_url()
 
         if update.status_message is not None:
-            self._show_transient_status_message(update.status_message)
+            if update.is_warning_status:
+                self._show_warning_status_message(update.status_message)
+            else:
+                self._show_transient_status_message(update.status_message)
 
         self._sync_queue_controls_state()
 
@@ -1594,6 +1599,17 @@ class MainWindow(QMainWindow):
         fallback_status_message: str | None = None,
     ) -> None:
         self._footer_status_presenter.show_transient(
+            message=message,
+            fallback_status_message=fallback_status_message,
+        )
+
+    def _show_warning_status_message(
+        self,
+        message: str,
+        *,
+        fallback_status_message: str | None = None,
+    ) -> None:
+        self._footer_status_presenter.show_warning(
             message=message,
             fallback_status_message=fallback_status_message,
         )

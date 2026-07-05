@@ -82,6 +82,11 @@ QLabel#StatusLabel {
     color: #9AA4B2;
 }
 
+QLabel#StatusLabel[statusKind="warning"] {
+    color: #FCD34D;
+    font-weight: 600;
+}
+
 QLabel#StatusLabel[statusKind="activity"] {
     color: #58A6FF;
     font-weight: 600;

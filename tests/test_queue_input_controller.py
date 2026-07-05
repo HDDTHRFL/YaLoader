@@ -4,6 +4,7 @@ from pathlib import Path
 
 from yaloader.application.services.download_queue_service import DownloadQueueService
 from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
+from yaloader.domain.vk_audio_url import VK_AUDIO_PUBLIC_CATALOG_UNSUPPORTED_STATUS_MESSAGE
 from yaloader.ui.controllers.queue_input_controller import QueueInputController
 
 
@@ -205,3 +206,23 @@ def test_add_from_input_accepts_ytdlp_auto_http_source_url(tmp_path: Path) -> No
     assert update.metadata_request.url == "https://vimeo.com/123456"
     assert update.metadata_request.mode is DownloadMode.VIDEO
     assert queue_service.count() == 1
+
+
+def test_add_from_input_rejects_vk_public_catalog_audio_link_with_warning(tmp_path: Path) -> None:
+    queue_service = DownloadQueueService()
+    controller = QueueInputController(queue_service=queue_service)
+
+    update = controller.add_from_input(
+        url="https://vk.com/audio-2001247451_41247451_c98d766105ddecb1b3",
+        target_dir=tmp_path,
+        output_format=OutputFormat.MP3,
+        video_quality=VideoQuality.BEST,
+    )
+
+    assert update.added_task is None
+    assert update.metadata_request is None
+    assert update.status_message == VK_AUDIO_PUBLIC_CATALOG_UNSUPPORTED_STATUS_MESSAGE
+    assert update.should_clear_url_input is False
+    assert update.should_focus_url_input is True
+    assert update.is_warning_status is True
+    assert queue_service.count() == 0

@@ -13,6 +13,10 @@ from yaloader.domain.enums import DownloadMode, OutputFormat, VideoQuality
 from yaloader.domain.format_rules import get_download_mode_for_output_format
 from yaloader.domain.source_download_defaults import resolve_output_format_for_source_url
 from yaloader.domain.source_playlist_policy import should_include_playlist_for_url
+from yaloader.domain.vk_audio_url import (
+    VK_AUDIO_PUBLIC_CATALOG_UNSUPPORTED_STATUS_MESSAGE,
+    is_unsupported_vk_audio_public_catalog_url,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +26,7 @@ class QueueInputControllerUpdate:
     metadata_request: DownloadRequest | None = None
     should_clear_url_input: bool = False
     should_focus_url_input: bool = False
+    is_warning_status: bool = False
 
 
 class QueueInputController:
@@ -45,6 +50,13 @@ class QueueInputController:
             return QueueInputControllerUpdate(
                 status_message="Сначала вставьте ссылку",
                 should_focus_url_input=True,
+            )
+
+        if is_unsupported_vk_audio_public_catalog_url(url=normalized_url):
+            return QueueInputControllerUpdate(
+                status_message=VK_AUDIO_PUBLIC_CATALOG_UNSUPPORTED_STATUS_MESSAGE,
+                should_focus_url_input=True,
+                is_warning_status=True,
             )
 
         include_playlist = should_include_playlist_for_url(url=normalized_url)

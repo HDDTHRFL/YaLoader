@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from loguru import logger
+
 from yaloader.application.dto.download_request import DownloadRequest
 from yaloader.application.dto.download_result import DownloadResult
 from yaloader.application.dto.media_metadata import MediaMetadataProbe
@@ -11,6 +13,7 @@ from yaloader.application.ports.downloader import CancellationToken, Downloader,
 from yaloader.application.ports.media_metadata_extractor import MediaMetadataExtractor
 from yaloader.domain.entities.download_task import DownloadTask
 from yaloader.domain.source_platform import SourcePlatform, detect_source_platform
+from yaloader.infrastructure.vk_audio.client import VkAudioProbeError
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,9 +23,22 @@ class RoutedMediaMetadataExtractor:
 
     def extract(self, request: DownloadRequest) -> MediaMetadataProbe:
         if is_vk_audio_source_url(url=request.url):
-            return self.vk_audio_extractor.extract(request)
+            return self._extract_vk_audio_metadata(request=request)
 
         return self.fallback_extractor.extract(request)
+
+    def _extract_vk_audio_metadata(self, *, request: DownloadRequest) -> MediaMetadataProbe:
+        try:
+            return self.vk_audio_extractor.extract(request)
+        except VkAudioProbeError as error:
+            logger.warning(
+                "VK Audio metadata extractor failed; keeping unresolved metadata. url={} error_type={} error={}",
+                request.url,
+                type(error).__name__,
+                error,
+            )
+
+            return MediaMetadataProbe(url=request.url)
 
 
 @dataclass(frozen=True, slots=True)
