@@ -11,7 +11,7 @@ dependencies = [
     "pyqt6>=6.11.0",
     "pywin32>=312",
     "qasync>=0.28.0",
-    "yt-dlp[default]>=2026.6.9",
+    "yt-dlp[default]>=2026.7.4",
 ]
 
 [dependency-groups]
