@@ -4,6 +4,18 @@ YaLoader is a Windows desktop application that helps download video and audio fr
 
 The main workflow is handled directly in the app interface. Add a link to the queue, choose the format and quality, and the app will check the required download components and download the selected files.
 
+## Release archive contents
+
+The release archive is intentionally portable and minimal. It contains:
+
+- `YaLoader.exe`;
+- `README.md`;
+- `README_RU.md`;
+- `LICENSE`;
+- `SHA256SUMS.txt`.
+
+Release archives do not include local settings, logs, downloaded files, browser cookies, or developer-only documentation.
+
 ## Features
 
 YaLoader can:
@@ -22,6 +34,12 @@ YaLoader can:
 - use `cookies.txt` for content that requires account access;
 - check whether the required download tools are available.
 
+## Supported sources
+
+YaLoader relies on `yt-dlp`, so the exact list of supported websites depends on the current yt-dlp runtime and on changes made by the platforms themselves.
+
+The application is focused on normal desktop use and currently includes platform detection for popular sources such as YouTube, Rutube, VK, Twitch, and SoundCloud when metadata is available.
+
 ## Installation
 
 1. Download the latest YaLoader version from the project releases page.
@@ -31,6 +49,12 @@ YaLoader can:
 5. Choose a downloads folder if the default folder does not suit you.
 
 Windows may show a SmartScreen warning because the application may not be signed with a digital certificate. Run the application only if you downloaded it from a trusted source.
+
+## Updating
+
+Use the latest archive from the GitHub Releases page. For a manual update, close YaLoader, replace the old application files with the files from the new archive, and start `YaLoader.exe` again.
+
+If the built-in update check is used, the application expects the official Windows x64 release archive name and checksum published with the release.
 
 ## Initial `cookies.txt` setup
 
@@ -98,6 +122,12 @@ Check the download history and the selected downloads folder. Also make sure tha
 ### Download speed is too slow
 
 Check the speed limit in the application settings. If the limit is enabled, disable it or choose a higher value.
+
+## Release checksums
+
+Each release archive contains `SHA256SUMS.txt`. The release packaging step also creates an external `.sha256` file next to the archive.
+
+Use the SHA-256 checksum from the GitHub Release description or from the `.sha256` file if you need to verify that the downloaded archive was not corrupted.
 
 ## License
 

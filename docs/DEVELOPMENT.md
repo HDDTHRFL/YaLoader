@@ -249,6 +249,14 @@ Do not commit:
 
 ## Checks before commit
 
+Preferred full local verification command:
+
+```powershell
+.\tools\verify_project.bat
+```
+
+The command above is the preferred local gate before commit. The individual commands below describe the checks that should remain aligned with CI.
+
 ```powershell
 uv run ruff check . --fix
 uv run ruff format .
@@ -257,7 +265,6 @@ uv run mypy src
 uv run pytest
 .\tools\check_secrets.bat
 ```
-
 
 ## GitHub Actions CI
 
@@ -296,6 +303,36 @@ The PyInstaller spec is located here:
 ```text
 specs/yaloader.spec
 ```
+
+## Creating a release package
+
+```powershell
+.\tools\package_release.bat
+.\tools\check_release_ready.bat <version>
+```
+
+The release archive is created in `dist/release/` and must keep the official asset name:
+
+```text
+YaLoader-v<version>-windows-x64.zip
+```
+
+The release archive contains only end-user files:
+
+- `YaLoader.exe`;
+- `README.md`;
+- `README_RU.md`;
+- `LICENSE`;
+- `SHA256SUMS.txt`.
+
+`docs/DEVELOPMENT.md` is repository-only developer documentation and must not be copied into release archives.
+
+The release packaging step also creates:
+
+- `YaLoader-v<version>-windows-x64.zip.sha256`;
+- `GITHUB_RELEASE_DESCRIPTION-v<version>.md`.
+
+Copy the generated GitHub release description into the GitHub Release body and upload the archive from `dist/release/` as the main release asset.
 
 ## Creating a bundle for review
 
